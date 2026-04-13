@@ -1,8 +1,40 @@
 const express = require('express')
+const path = require('path')
+const fs = require('fs')
+const multer = require('multer')
 const prisma = require('../lib/prisma')
 const { requireAuth } = require('../middleware/auth')
 
 const router = express.Router()
+
+// ── Photo upload setup ────────────────────────────────────────────────────────
+const partsPhotosDir = path.join(__dirname, '../../uploads/parts')
+if (!fs.existsSync(partsPhotosDir)) {
+  fs.mkdirSync(partsPhotosDir, { recursive: true })
+}
+
+const photoStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, partsPhotosDir),
+  filename: (_req, file, cb) => {
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e6)}`
+    const ext = path.extname(file.originalname)
+    cb(null, `part-${unique}${ext}`)
+  },
+})
+
+const photoUpload = multer({
+  storage: photoStorage,
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.tiff', '.bmp', '.heic', '.heif']
+    const ext = path.extname(file.originalname).toLowerCase()
+    if (allowed.includes(ext)) {
+      cb(null, true)
+    } else {
+      cb(new Error(`File type not allowed: ${ext}`))
+    }
+  },
+})
 
 /**
  * Recompute partsStatus for an RO based on all its parts.
@@ -187,6 +219,91 @@ router.delete('/:id', requireAuth, async (req, res) => {
     return res.json({ success: true, data: { message: 'Part deleted.' } })
   } catch (err) {
     console.error('Delete part error:', err)
+    return res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// POST /api/parts/:id/photos — upload a photo for a part
+router.post('/:id/photos', requireAuth, photoUpload.single('file'), async (req, res) => {
+  const id = parseInt(req.params.id)
+
+  if (!req.file) {
+    return res.status(400).json({ success: false, error: 'No file uploaded.' })
+  }
+
+  try {
+    const part = await prisma.part.findUnique({ where: { id } })
+    if (!part) {
+      fs.unlinkSync(req.file.path)
+      return res.status(404).json({ success: false, error: 'Part not found.' })
+    }
+
+    const photo = await prisma.partPhoto.create({
+      data: {
+        partId: id,
+        originalFilename: req.file.originalname,
+        storedPath: req.file.filename,
+      },
+    })
+
+    return res.status(201).json({ success: true, data: photo })
+  } catch (err) {
+    console.error('Upload part photo error:', err)
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path)
+    }
+    return res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// GET /api/parts/:id/photos — list photos for a part
+router.get('/:id/photos', requireAuth, async (req, res) => {
+  const id = parseInt(req.params.id)
+  try {
+    const photos = await prisma.partPhoto.findMany({
+      where: { partId: id },
+      orderBy: { createdAt: 'asc' },
+    })
+    return res.json({ success: true, data: photos })
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// GET /api/parts/photos/:photoId/file — serve photo file
+router.get('/photos/:photoId/file', requireAuth, async (req, res) => {
+  const photoId = parseInt(req.params.photoId)
+  try {
+    const photo = await prisma.partPhoto.findUnique({ where: { id: photoId } })
+    if (!photo) {
+      return res.status(404).json({ success: false, error: 'Photo not found.' })
+    }
+    const filePath = path.join(partsPhotosDir, photo.storedPath)
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ success: false, error: 'File not found on disk.' })
+    }
+    res.setHeader('Content-Disposition', `inline; filename="${photo.originalFilename || photo.storedPath}"`)
+    return res.sendFile(filePath)
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// DELETE /api/parts/photos/:photoId — delete a photo
+router.delete('/photos/:photoId', requireAuth, async (req, res) => {
+  const photoId = parseInt(req.params.photoId)
+  try {
+    const photo = await prisma.partPhoto.findUnique({ where: { id: photoId } })
+    if (!photo) {
+      return res.status(404).json({ success: false, error: 'Photo not found.' })
+    }
+    await prisma.partPhoto.delete({ where: { id: photoId } })
+    const filePath = path.join(partsPhotosDir, photo.storedPath)
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath)
+    }
+    return res.json({ success: true, data: { message: 'Photo deleted.' } })
+  } catch (err) {
     return res.status(500).json({ success: false, error: err.message })
   }
 })
