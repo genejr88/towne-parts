@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion'
-import { ChevronLeft, ChevronRight, Car, AlertCircle, Check, FileText } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import {
+  ChevronLeft, ChevronRight, Car, FileText, Check, ClipboardList, X, Clock,
+} from 'lucide-react'
 import toast from 'react-hot-toast'
 import { productionApi } from '@/lib/api'
 import { STAGES, formatDate } from '@/lib/utils'
@@ -10,11 +12,11 @@ import Spinner from '@/components/ui/Spinner'
 import EmptyState from '@/components/ui/EmptyState'
 import Textarea from '@/components/ui/Textarea'
 
-// Card background based on parts status
+// Card left-border accent based on parts status
 function cardBg(partsStatus) {
-  if (partsStatus === 'missing') return 'from-red-950/60 to-gray-900'
-  if (partsStatus === 'acknowledged') return 'from-amber-950/40 to-gray-900'
-  if (partsStatus === 'all_here') return 'from-emerald-950/40 to-gray-900'
+  if (partsStatus === 'MISSING') return 'from-red-950/60 to-gray-900'
+  if (partsStatus === 'ACKNOWLEDGED') return 'from-amber-950/40 to-gray-900'
+  if (partsStatus === 'ALL_HERE') return 'from-emerald-950/40 to-gray-900'
   return 'from-gray-800 to-gray-900'
 }
 
@@ -33,14 +35,98 @@ function StageButton({ stage, active, onClick }) {
   )
 }
 
+// ── Daily Log Sheet ──────────────────────────────────────────────────────────
+function DailyLogSheet({ open, onClose }) {
+  const { data: logs, isLoading } = useQuery({
+    queryKey: ['production-activity'],
+    queryFn: () => productionApi.activity(),
+    enabled: open,
+    refetchInterval: open ? 30_000 : false,
+  })
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 z-40"
+            onClick={onClose}
+          />
+          <motion.div
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', stiffness: 300, damping: 35 }}
+            className="fixed bottom-0 left-0 right-0 z-50 bg-gray-900 border-t border-gray-700/60 rounded-t-2xl max-h-[80vh] flex flex-col"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-4 border-b border-gray-800/60 shrink-0">
+              <div className="flex items-center gap-2">
+                <ClipboardList size={18} className="text-blue-400" />
+                <h2 className="text-base font-bold text-gray-100">Today's Board Updates</h2>
+              </div>
+              <button onClick={onClose} className="text-gray-500 hover:text-gray-300 p-1">
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {isLoading && (
+                <div className="flex justify-center py-8">
+                  <Spinner size="lg" />
+                </div>
+              )}
+              {!isLoading && (!logs || logs.length === 0) && (
+                <div className="text-center py-10 text-gray-500">
+                  <ClipboardList size={32} className="mx-auto mb-3 opacity-30" />
+                  <p className="text-sm">No board updates today</p>
+                </div>
+              )}
+              {logs && logs.map((log) => (
+                <div
+                  key={log.id}
+                  className="bg-gray-800/60 border border-gray-700/40 rounded-xl p-3.5"
+                >
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <span className="text-sm font-bold text-gray-100 font-mono">
+                      {log.ro?.roNumber}
+                    </span>
+                    <span className="text-xs text-gray-500 flex items-center gap-1 shrink-0">
+                      <Clock size={11} />
+                      {new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  {log.ro && (
+                    <p className="text-xs text-gray-500 mb-1.5">
+                      {[log.ro.vehicleYear, log.ro.vehicleMake, log.ro.vehicleModel].filter(Boolean).join(' ')}
+                    </p>
+                  )}
+                  <p className="text-sm text-gray-300">{log.message}</p>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  )
+}
+
+// ── Main Component ────────────────────────────────────────────────────────────
 export default function ProductionBoard() {
   const queryClient = useQueryClient()
   const [index, setIndex] = useState(0)
   const [direction, setDirection] = useState(0) // -1 prev, 1 next
-  const [localEdits, setLocalEdits] = useState({}) // { [roId]: { stage, statusNote, finalSupplement, supplementNote } }
+  const [localEdits, setLocalEdits] = useState({})
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [logOpen, setLogOpen] = useState(false)
   const saveTimeout = useRef(null)
+  const touchStart = useRef(null) // { x, y }
 
   const { data: ros, isLoading } = useQuery({
     queryKey: ['production'],
@@ -62,21 +148,21 @@ export default function ProductionBoard() {
     },
   })
 
-  const activeROs = ros?.filter((r) => !r.archived) || []
+  const activeROs = ros?.filter((r) => !r.isArchived) || []
   const currentRO = activeROs[index]
 
-  // Get the current state for this RO (local edit or server data)
+  // Merge local edits over server data
   const getState = (ro) => {
     const local = localEdits[ro?.id] || {}
     return {
-      stage: local.stage ?? ro?.stage ?? 'Unassigned',
-      statusNote: local.statusNote ?? ro?.statusNote ?? '',
-      finalSupplement: local.finalSupplement ?? ro?.finalSupplement ?? false,
-      supplementNote: local.supplementNote ?? ro?.supplementNote ?? '',
+      productionStage: local.productionStage ?? ro?.productionStage ?? 'Unassigned',
+      productionStatusNote: local.productionStatusNote ?? ro?.productionStatusNote ?? '',
+      productionFinalSupplement: local.productionFinalSupplement ?? ro?.productionFinalSupplement ?? false,
+      productionSupplementNote: local.productionSupplementNote ?? ro?.productionSupplementNote ?? '',
     }
   }
 
-  // Auto-save with debounce
+  // Debounced auto-save
   const scheduleSave = useCallback((roId, data) => {
     if (saveTimeout.current) clearTimeout(saveTimeout.current)
     setSaving(true)
@@ -89,15 +175,12 @@ export default function ProductionBoard() {
   const updateField = (field, value) => {
     if (!currentRO) return
     const roId = currentRO.id
-    const newEdits = {
-      ...localEdits,
-      [roId]: { ...getState(currentRO), ...localEdits[roId], [field]: value },
-    }
-    setLocalEdits(newEdits)
-    scheduleSave(roId, { ...getState(currentRO), ...localEdits[roId], [field]: value })
+    const merged = { ...getState(currentRO), ...localEdits[currentRO.id], [field]: value }
+    setLocalEdits((prev) => ({ ...prev, [roId]: merged }))
+    scheduleSave(roId, merged)
   }
 
-  // Save current card before navigating
+  // Flush pending save before navigating
   const saveAndNavigate = (newIndex) => {
     if (saveTimeout.current) {
       clearTimeout(saveTimeout.current)
@@ -106,32 +189,38 @@ export default function ProductionBoard() {
         mutation.mutate({ roId: currentRO.id, data: state })
       }
     }
-    const dir = newIndex > index ? 1 : -1
-    setDirection(dir)
+    setDirection(newIndex > index ? 1 : -1)
     setIndex(newIndex)
   }
 
-  const goPrev = () => {
-    if (index > 0) saveAndNavigate(index - 1)
-  }
+  const goPrev = () => { if (index > 0) saveAndNavigate(index - 1) }
+  const goNext = () => { if (index < activeROs.length - 1) saveAndNavigate(index + 1) }
 
-  const goNext = () => {
-    if (index < activeROs.length - 1) saveAndNavigate(index + 1)
-  }
+  // Keyboard arrow keys
+  useEffect(() => {
+    const onKey = (e) => {
+      if (logOpen) return
+      if (e.key === 'ArrowLeft') goPrev()
+      if (e.key === 'ArrowRight') goNext()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [index, activeROs.length, logOpen, localEdits, currentRO])
 
-  // Swipe gesture handling
-  const startX = useRef(null)
+  // Touch swipe — horizontal only (won't conflict with vertical scroll)
   const handleTouchStart = (e) => {
-    startX.current = e.touches[0].clientX
+    touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
   }
   const handleTouchEnd = (e) => {
-    if (startX.current == null) return
-    const dx = e.changedTouches[0].clientX - startX.current
-    if (Math.abs(dx) > 60) {
+    if (!touchStart.current) return
+    const dx = e.changedTouches[0].clientX - touchStart.current.x
+    const dy = e.changedTouches[0].clientY - touchStart.current.y
+    touchStart.current = null
+    // Only trigger if horizontal movement is dominant and > 55px
+    if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.5) {
       if (dx < 0) goNext()
       else goPrev()
     }
-    startX.current = null
   }
 
   if (isLoading) {
@@ -159,29 +248,28 @@ export default function ProductionBoard() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Counter + save status */}
+      {/* Top bar: counter + save status + log button */}
       <div className="flex items-center justify-between px-4 py-2 bg-gray-950 border-b border-gray-800/60 shrink-0">
         <span className="text-sm font-medium text-gray-400">
           {index + 1} <span className="text-gray-600">of</span> {activeROs.length}
         </span>
-        <div className="flex items-center gap-1.5 text-xs text-gray-500">
-          {saving && (
-            <>
-              <Spinner size="sm" />
-              <span>Saving...</span>
-            </>
-          )}
-          {!saving && saved && (
-            <>
-              <Check size={13} className="text-emerald-400" />
-              <span className="text-emerald-400">Saved</span>
-            </>
-          )}
-          {!saving && !saved && <span>Auto-saves</span>}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 text-xs text-gray-500">
+            {saving && <><Spinner size="sm" /><span>Saving…</span></>}
+            {!saving && saved && <><Check size={13} className="text-emerald-400" /><span className="text-emerald-400">Saved</span></>}
+            {!saving && !saved && <span>Auto-saves</span>}
+          </div>
+          <button
+            onClick={() => setLogOpen(true)}
+            className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 px-2 py-1 rounded-lg bg-blue-950/40 border border-blue-900/50 transition-colors"
+          >
+            <ClipboardList size={13} />
+            Today's Log
+          </button>
         </div>
       </div>
 
-      {/* Card area — takes remaining space */}
+      {/* Swipeable card area */}
       <div
         className="flex-1 overflow-y-auto px-4 py-3"
         onTouchStart={handleTouchStart}
@@ -196,9 +284,8 @@ export default function ProductionBoard() {
             exit={{ opacity: 0, x: -direction * 60 }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
           >
-            {/* Main card */}
+            {/* RO card */}
             <div className={`bg-gradient-to-b ${cardBg(ro.partsStatus)} border border-gray-700/50 rounded-2xl p-5 mb-4`}>
-              {/* RO header */}
               <div className="flex items-start justify-between gap-3 mb-4">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
@@ -212,8 +299,8 @@ export default function ProductionBoard() {
                     <p className="text-xs text-gray-500 mt-0.5">{ro.vendor.name}</p>
                   )}
                 </div>
-                {ro.finalSupplement && (
-                  <div className="bg-amber-500/15 border border-amber-500/30 rounded-xl px-3 py-1.5">
+                {state.productionFinalSupplement && (
+                  <div className="bg-amber-500/15 border border-amber-500/30 rounded-xl px-3 py-1.5 shrink-0">
                     <p className="text-xs font-semibold text-amber-400 flex items-center gap-1">
                       <FileText size={12} /> Final Supp.
                     </p>
@@ -223,8 +310,8 @@ export default function ProductionBoard() {
 
               {/* Parts summary */}
               {ro.parts && ro.parts.length > 0 && (
-                <div className="bg-gray-900/60 rounded-xl p-3 mb-4 text-xs">
-                  <div className="flex gap-4 text-center">
+                <div className="bg-gray-900/60 rounded-xl p-3 text-xs">
+                  <div className="flex gap-6 text-center">
                     <div>
                       <p className="text-gray-500">Total</p>
                       <p className="text-gray-200 font-bold text-base">{ro.parts.length}</p>
@@ -232,13 +319,13 @@ export default function ProductionBoard() {
                     <div>
                       <p className="text-emerald-500">Received</p>
                       <p className="text-emerald-400 font-bold text-base">
-                        {ro.parts.filter((p) => p.received).length}
+                        {ro.parts.filter((p) => p.isReceived).length}
                       </p>
                     </div>
                     <div>
                       <p className="text-red-500">Pending</p>
                       <p className="text-red-400 font-bold text-base">
-                        {ro.parts.filter((p) => !p.received).length}
+                        {ro.parts.filter((p) => !p.isReceived).length}
                       </p>
                     </div>
                   </div>
@@ -254,8 +341,8 @@ export default function ProductionBoard() {
                   <StageButton
                     key={s}
                     stage={s}
-                    active={state.stage === s}
-                    onClick={() => updateField('stage', s)}
+                    active={state.productionStage === s}
+                    onClick={() => updateField('productionStage', s)}
                   />
                 ))}
               </div>
@@ -265,8 +352,8 @@ export default function ProductionBoard() {
             <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-4 mb-3">
               <Textarea
                 label="Status Note"
-                value={state.statusNote}
-                onChange={(e) => updateField('statusNote', e.target.value)}
+                value={state.productionStatusNote}
+                onChange={(e) => updateField('productionStatusNote', e.target.value)}
                 rows={3}
                 placeholder="Add a note about current status..."
                 className="bg-gray-900/60"
@@ -277,13 +364,13 @@ export default function ProductionBoard() {
             <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-4 mb-3">
               <label className="flex items-center gap-3 cursor-pointer">
                 <div
-                  onClick={() => updateField('finalSupplement', !state.finalSupplement)}
+                  onClick={() => updateField('productionFinalSupplement', !state.productionFinalSupplement)}
                   className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex items-center ${
-                    state.finalSupplement ? 'bg-amber-500' : 'bg-gray-700'
+                    state.productionFinalSupplement ? 'bg-amber-500' : 'bg-gray-700'
                   }`}
                 >
                   <motion.div
-                    animate={{ x: state.finalSupplement ? 24 : 2 }}
+                    animate={{ x: state.productionFinalSupplement ? 24 : 2 }}
                     transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                     className="w-5 h-5 bg-white rounded-full shadow-md absolute"
                   />
@@ -295,7 +382,7 @@ export default function ProductionBoard() {
               </label>
 
               <AnimatePresence>
-                {state.finalSupplement && (
+                {state.productionFinalSupplement && (
                   <motion.div
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: 'auto' }}
@@ -304,8 +391,8 @@ export default function ProductionBoard() {
                   >
                     <Textarea
                       label="Supplement Note"
-                      value={state.supplementNote}
-                      onChange={(e) => updateField('supplementNote', e.target.value)}
+                      value={state.productionSupplementNote}
+                      onChange={(e) => updateField('productionSupplementNote', e.target.value)}
                       rows={2}
                       placeholder="Supplement details..."
                       className="bg-gray-900/60"
@@ -318,7 +405,7 @@ export default function ProductionBoard() {
         </AnimatePresence>
       </div>
 
-      {/* Prev / Next navigation — fixed at bottom above bottom nav */}
+      {/* Prev / Next navigation */}
       <div className="shrink-0 bg-gray-950 border-t border-gray-800/60 px-4 py-3 pb-safe flex gap-3">
         <button
           onClick={goPrev}
@@ -337,6 +424,9 @@ export default function ProductionBoard() {
           <ChevronRight size={20} />
         </button>
       </div>
+
+      {/* Daily log sheet */}
+      <DailyLogSheet open={logOpen} onClose={() => setLogOpen(false)} />
     </div>
   )
 }

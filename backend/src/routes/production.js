@@ -30,6 +30,33 @@ router.get('/', requireAuth, async (req, res) => {
   }
 })
 
+// GET /api/production/activity — today's production activity log
+router.get('/activity', requireAuth, async (req, res) => {
+  try {
+    const { date } = req.query
+    const day = date ? new Date(date) : new Date()
+    const start = new Date(day)
+    start.setHours(0, 0, 0, 0)
+    const end = new Date(day)
+    end.setHours(23, 59, 59, 999)
+
+    const logs = await prisma.activityLog.findMany({
+      where: {
+        createdAt: { gte: start, lte: end },
+      },
+      include: {
+        ro: { select: { id: true, roNumber: true, vehicleYear: true, vehicleMake: true, vehicleModel: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    return res.json({ success: true, data: logs })
+  } catch (err) {
+    console.error('Get production activity error:', err)
+    return res.status(500).json({ success: false, error: err.message })
+  }
+})
+
 // POST /api/production/:roId — save production stage/notes for an RO
 router.post('/:roId', requireAuth, async (req, res) => {
   const roId = parseInt(req.params.roId)

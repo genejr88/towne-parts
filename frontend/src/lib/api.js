@@ -72,7 +72,8 @@ export const partsApi = {
 // ── Production Board ──────────────────────────────────────────────────────────
 export const productionApi = {
   list: () => unwrap(api.get('/production')),
-  save: (roId, data) => unwrap(api.put(`/production/${roId}`, data)),
+  save: (roId, data) => unwrap(api.post(`/production/${roId}`, data)),
+  activity: (date) => unwrap(api.get('/production/activity', { params: date ? { date } : {} })),
 }
 
 // ── Invoices ──────────────────────────────────────────────────────────────────
