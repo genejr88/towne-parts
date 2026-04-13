@@ -57,7 +57,7 @@ function ROCard({ ro, onClick }) {
             {ro.vendor?.name && (
               <span className="text-xs text-gray-500">{ro.vendor.name}</span>
             )}
-            {ro.productionStage && ro.productionStage !== 'Unassigned' && (
+            {ro.productionStage && ro.productionStage.toLowerCase() !== 'unassigned' && (
               <span className="text-xs text-blue-400 font-medium">{ro.productionStage}</span>
             )}
             {ro.parts && ro.parts.length > 0 && (
