@@ -1,9 +1,9 @@
 import Badge from './Badge'
 
 const STATUS_MAP = {
-  missing: { label: 'Parts Missing', variant: 'red' },
-  acknowledged: { label: 'Acknowledged', variant: 'yellow' },
-  all_here: { label: 'All Here', variant: 'green' },
+  MISSING: { label: 'Parts Missing', variant: 'red' },
+  ACKNOWLEDGED: { label: 'Acknowledged', variant: 'yellow' },
+  ALL_HERE: { label: 'All Here', variant: 'green' },
 }
 
 export default function PartsBadge({ status, className }) {

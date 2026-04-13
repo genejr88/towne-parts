@@ -57,9 +57,16 @@ export const rosApi = {
 
 // ── Parts ─────────────────────────────────────────────────────────────────────
 export const partsApi = {
-  create: (roId, data) => unwrap(api.post(`/ros/${roId}/parts`, data)),
+  create: (roId, data) => unwrap(api.post(`/parts/ro/${roId}`, data)),
   update: (id, data) => unwrap(api.put(`/parts/${id}`, data)),
   remove: (id) => unwrap(api.delete(`/parts/${id}`)),
+  uploadPhoto: (partId, file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return unwrap(api.post(`/parts/${partId}/photos`, form, { headers: { 'Content-Type': 'multipart/form-data' } }))
+  },
+  deletePhoto: (photoId) => unwrap(api.delete(`/parts/photos/${photoId}`)),
+  photoUrl: (storedPath) => `${API_URL}/uploads/parts/${storedPath}`,
 }
 
 // ── Production Board ──────────────────────────────────────────────────────────
@@ -87,7 +94,7 @@ export const invoicesApi = {
 // ── SRC (Supplement / Return / Core) ─────────────────────────────────────────
 export const srcApi = {
   list: (params) => unwrap(api.get('/src', { params })),
-  create: (roId, data) => unwrap(api.post(`/ros/${roId}/src`, data)),
+  create: (roId, data) => unwrap(api.post(`/src/ro/${roId}`, data)),
   update: (id, data) => unwrap(api.put(`/src/${id}`, data)),
   remove: (id) => unwrap(api.delete(`/src/${id}`)),
 }

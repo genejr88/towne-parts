@@ -153,7 +153,7 @@ function AddPartModal({ open, onClose, roId }) {
 // ── Add SRC Modal ──────────────────────────────────────────────────────────────
 function AddSRCModal({ open, onClose, roId }) {
   const queryClient = useQueryClient()
-  const [form, setForm] = useState({ type: 'Return', note: '', partNumber: '' })
+  const [form, setForm] = useState({ entryType: 'RETURN', note: '' })
 
   const mutation = useMutation({
     mutationFn: (data) => srcApi.create(roId, data),
@@ -161,7 +161,7 @@ function AddSRCModal({ open, onClose, roId }) {
       queryClient.invalidateQueries({ queryKey: ['ro', roId] })
       queryClient.invalidateQueries({ queryKey: ['src'] })
       toast.success('SRC entry added')
-      setForm({ type: 'Return', note: '', partNumber: '' })
+      setForm({ entryType: 'RETURN', note: '' })
       onClose()
     },
     onError: (err) => toast.error(err.message || 'Failed to add SRC'),
@@ -172,14 +172,14 @@ function AddSRCModal({ open, onClose, roId }) {
   return (
     <Modal open={open} onClose={onClose} title="Add S.R.C. Entry">
       <div className="space-y-4">
-        <Select label="Type" value={form.type} onChange={set('type')}>
-          {SRC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+        <Select label="Type" value={form.entryType} onChange={set('entryType')}>
+          <option value="RETURN">Return</option>
+          <option value="CORE_RETURN">Core Return</option>
         </Select>
-        <Input label="Part Number" value={form.partNumber} onChange={set('partNumber')} placeholder="Optional" />
         <Textarea label="Note" value={form.note} onChange={set('note')} rows={3} placeholder="Details..." />
         <div className="flex gap-3 pt-2">
           <Button variant="secondary" onClick={onClose} className="flex-1">Cancel</Button>
-          <Button variant="primary" loading={mutation.isPending} onClick={() => mutation.mutate(form)} className="flex-1">Add</Button>
+          <Button variant="primary" loading={mutation.isPending} onClick={() => mutation.mutate({ entryType: form.entryType, note: form.note })} className="flex-1">Add</Button>
         </div>
       </div>
     </Modal>
@@ -226,26 +226,26 @@ function PartRow({ part, roId }) {
   })
 
   const toggle = (field) => updateMutation.mutate({ [field]: !part[field] })
-  const cycleFinish = () => updateMutation.mutate({ finishStatus: nextFinishStatus(part.finishStatus || 'no_finish_needed') })
+  const cycleFinish = () => updateMutation.mutate({ finishStatus: nextFinishStatus(part.finishStatus || 'NO_FINISH_NEEDED') })
 
   return (
-    <div className={`border border-gray-700/40 rounded-xl p-3.5 mb-2 transition-opacity ${part.received ? 'opacity-50' : ''}`}>
+    <div className={`border border-gray-700/40 rounded-xl p-3.5 mb-2 transition-opacity ${part.isReceived ? 'opacity-50' : ''}`}>
       <div className="flex items-start gap-3">
         {/* Received checkbox */}
         <button
-          onClick={() => toggle('received')}
+          onClick={() => toggle('isReceived')}
           className={`mt-0.5 w-6 h-6 rounded-lg border-2 flex items-center justify-center shrink-0 transition-colors ${
-            part.received ? 'bg-emerald-600 border-emerald-600' : 'border-gray-600 bg-gray-800'
+            part.isReceived ? 'bg-emerald-600 border-emerald-600' : 'border-gray-600 bg-gray-800'
           }`}
         >
-          {part.received && <Check size={13} className="text-white" />}
+          {part.isReceived && <Check size={13} className="text-white" />}
         </button>
 
         {/* Part info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             {part.partNumber && (
-              <span className={`text-xs font-mono font-semibold ${part.received ? 'line-through text-gray-600' : 'text-gray-300'}`}>
+              <span className={`text-xs font-mono font-semibold ${part.isReceived ? 'line-through text-gray-600' : 'text-gray-300'}`}>
                 {part.partNumber}
               </span>
             )}
@@ -254,24 +254,43 @@ function PartRow({ part, roId }) {
                 ×{part.qty}
               </span>
             )}
-            {part.core && (
+            {part.hasCore && (
               <Badge variant="orange" className="text-[10px] py-0.5 px-2">Core</Badge>
             )}
           </div>
-          <p className={`text-sm mt-0.5 ${part.received ? 'line-through text-gray-600' : 'text-gray-200'}`}>
+          <p className={`text-sm mt-0.5 ${part.isReceived ? 'line-through text-gray-600' : 'text-gray-200'}`}>
             {part.description || <span className="text-gray-600 italic">No description</span>}
           </p>
           <div className="flex items-center gap-3 mt-2 flex-wrap">
-            {part.eta && (
+            {part.etaDate && (
               <span className="text-xs text-gray-500 flex items-center gap-1">
-                <Clock size={11} /> ETA {formatDate(part.eta)}
+                <Clock size={11} /> ETA {formatDate(part.etaDate)}
               </span>
             )}
             {part.price != null && (
               <span className="text-xs text-gray-500">{formatCurrency(part.price)}</span>
             )}
-            <FinishChip value={part.finishStatus || 'no_finish_needed'} onClick={cycleFinish} />
+            <FinishChip value={part.finishStatus || 'NO_FINISH_NEEDED'} onClick={cycleFinish} />
           </div>
+          {part.photos && part.photos.length > 0 && (
+            <div className="flex gap-2 mt-2 overflow-x-auto pb-1">
+              {part.photos.map((photo) => (
+                <a
+                  key={photo.id}
+                  href={partsApi.photoUrl(photo.storedPath)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0"
+                >
+                  <img
+                    src={partsApi.photoUrl(photo.storedPath)}
+                    alt={photo.originalFilename || 'Part photo'}
+                    className="w-16 h-16 object-cover rounded-lg border border-gray-600 hover:border-blue-400 transition-colors"
+                  />
+                </a>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Delete */}
@@ -407,10 +426,10 @@ export default function RODetail() {
                 <p className="text-gray-200">{ro.vendor.name}</p>
               </div>
             )}
-            {ro.stage && (
+            {ro.productionStage && (
               <div>
                 <p className="text-xs text-gray-500 mb-0.5">Stage</p>
-                <p className="text-blue-400 font-medium">{ro.stage}</p>
+                <p className="text-blue-400 font-medium">{ro.productionStage}</p>
               </div>
             )}
           </div>
@@ -467,7 +486,7 @@ export default function RODetail() {
               {invoices.map((inv) => (
                 <div key={inv.id} className="flex items-center gap-3 bg-gray-800 border border-gray-700/40 rounded-xl px-3.5 py-3">
                   <FileText size={16} className="text-gray-400 shrink-0" />
-                  <span className="flex-1 text-sm text-gray-200 truncate">{inv.filename}</span>
+                  <span className="flex-1 text-sm text-gray-200 truncate">{inv.originalFilename}</span>
                   <a
                     href={invoicesApi.fileUrl(inv.id)}
                     target="_blank"
@@ -510,14 +529,11 @@ export default function RODetail() {
               {srcEntries.map((entry) => (
                 <div key={entry.id} className="bg-gray-800 border border-gray-700/40 rounded-xl px-3.5 py-3">
                   <div className="flex items-center justify-between">
-                    <Badge variant={entry.completed ? 'green' : 'orange'}>
-                      {entry.type}
+                    <Badge variant={entry.status === 'COMPLETED' ? 'green' : 'orange'}>
+                      {entry.entryType}
                     </Badge>
                     <span className="text-xs text-gray-500">{formatDate(entry.createdAt)}</span>
                   </div>
-                  {entry.partNumber && (
-                    <p className="text-xs text-gray-400 mt-1.5 font-mono">{entry.partNumber}</p>
-                  )}
                   {entry.note && (
                     <p className="text-sm text-gray-300 mt-1.5">{entry.note}</p>
                   )}
@@ -536,7 +552,7 @@ export default function RODetail() {
                   <div className="w-1.5 h-1.5 rounded-full bg-gray-600 mt-1.5 shrink-0" />
                   <div>
                     <p className="text-sm text-gray-300">{log.message}</p>
-                    <p className="text-xs text-gray-600 mt-0.5">{formatDate(log.createdAt)} · {log.user?.name || 'System'}</p>
+                    <p className="text-xs text-gray-600 mt-0.5">{formatDate(log.createdAt)}</p>
                   </div>
                 </div>
               ))}

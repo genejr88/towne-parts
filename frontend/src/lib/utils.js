@@ -45,10 +45,10 @@ export const PARTS_STATUSES = {
 }
 
 export const FINISH_STATUSES = [
-  { value: 'needs_paint', label: 'Needs Paint', color: 'blue' },
-  { value: 'painted', label: 'Painted', color: 'purple' },
-  { value: 'textured', label: 'Textured', color: 'orange' },
-  { value: 'no_finish_needed', label: 'No Finish', color: 'gray' },
+  { value: 'NEEDS_PAINT', label: 'Needs Paint', color: 'blue' },
+  { value: 'PAINTED', label: 'Painted', color: 'purple' },
+  { value: 'TEXTURED', label: 'Textured', color: 'orange' },
+  { value: 'NO_FINISH_NEEDED', label: 'No Finish', color: 'gray' },
 ]
 
 export function nextFinishStatus(current) {

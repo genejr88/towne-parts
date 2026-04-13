@@ -24,9 +24,9 @@ const FILTER_TABS = [
 
 function ROCard({ ro, onClick }) {
   const statusBg = {
-    missing: 'border-l-red-500',
-    acknowledged: 'border-l-amber-500',
-    all_here: 'border-l-emerald-500',
+    MISSING: 'border-l-red-500',
+    ACKNOWLEDGED: 'border-l-amber-500',
+    ALL_HERE: 'border-l-emerald-500',
   }[ro.partsStatus] || 'border-l-gray-600'
 
   return (
@@ -57,8 +57,13 @@ function ROCard({ ro, onClick }) {
             {ro.vendor?.name && (
               <span className="text-xs text-gray-500">{ro.vendor.name}</span>
             )}
-            {ro.stage && ro.stage !== 'Unassigned' && (
-              <span className="text-xs text-blue-400 font-medium">{ro.stage}</span>
+            {ro.productionStage && ro.productionStage !== 'Unassigned' && (
+              <span className="text-xs text-blue-400 font-medium">{ro.productionStage}</span>
+            )}
+            {ro.parts && ro.parts.length > 0 && (
+              <span className="text-xs text-gray-500">
+                {ro.parts.filter(p => p.isReceived).length}/{ro.parts.length} parts
+              </span>
             )}
           </div>
         </div>
@@ -205,7 +210,7 @@ export default function ROList() {
   } else {
     queryParams.archived = false
     if (activeFilter !== 'active') {
-      queryParams.partsStatus = activeFilter
+      queryParams.partsStatus = activeFilter.toUpperCase()
     }
   }
   if (search.trim()) {
