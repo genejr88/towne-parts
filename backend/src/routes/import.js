@@ -40,14 +40,18 @@ async function parseCCCPDF(buffer) {
   const pdfParse = require('pdf-parse')
   const rawItems = []
 
-  // Collect individual text items with their x,y positions
+  // Collect individual text items with their x,y positions.
+  // Offset y by page index so multi-page PDFs sort correctly (page 1 items
+  // have higher y than page 2 items, preserving top-to-bottom reading order).
+  let pageIndex = 0
   function renderPage(pageData) {
+    const pg = pageIndex++
     return pageData.getTextContent().then((tc) => {
       tc.items.forEach((item) => {
         rawItems.push({
           text: item.str,
           x: Math.round(item.transform[4]),
-          y: Math.round(item.transform[5]),
+          y: Math.round(item.transform[5]) - pg * 10000,
         })
       })
       return ''
@@ -115,20 +119,26 @@ async function parseCCCPDF(buffer) {
 
     if (!inTable) continue
 
-    // Footer (date line) signals end of table
-    if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(joined)) break
+    // Footer (date line) — skip and reset so next page's header re-enables table
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(joined)) { inTable = false; continue }
 
     // Only include rows that have data in Part Number or Price column
     const hasPart  = row.some((i) => getCol(i.x) === 'PART')
     const hasPrice = row.some((i) => getCol(i.x) === 'PRICE')
-    if (!hasPart && !hasPrice) continue // section header row (REAR BUMPER, FRONT DOOR, etc.)
-
-    // Aggregate text by column
     const byCol = {}
     for (const item of row) {
       const c = getCol(item.x)
       if (c) byCol[c] = (byCol[c] || '') + item.text
     }
+
+    // Wrapped description continuation (e.g. tire spec on second line: "111H")
+    // Detected by: has DESC text, no PART/PRICE, no LINE number
+    if (!hasPart && !hasPrice && byCol.DESC && !byCol.LINE && parts.length > 0) {
+      parts[parts.length - 1].description += ' ' + byCol.DESC.trim()
+      continue
+    }
+
+    if (!hasPart && !hasPrice) continue // section header (REAR BUMPER, FRONT DOOR, etc.)
 
     const description = (byCol.DESC  || '').trim()
     const partNumber  = (byCol.PART  || '').trim()
