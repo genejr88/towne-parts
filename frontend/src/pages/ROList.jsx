@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Search, Plus, X, ChevronRight, Car, Package, Archive, RefreshCw } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { rosApi, vendorsApi } from '@/lib/api'
-import { formatDate } from '@/lib/utils'
+import { formatDate, STAGE_COLORS } from '@/lib/utils'
 import PartsBadge from '@/components/ui/PartsBadge'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
@@ -58,7 +58,9 @@ function ROCard({ ro, onClick }) {
               <span className="text-xs text-gray-500">{ro.vendor.name}</span>
             )}
             {ro.productionStage && ro.productionStage.toLowerCase() !== 'unassigned' && (
-              <span className="text-xs text-blue-400 font-medium">{ro.productionStage}</span>
+              <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-md ${STAGE_COLORS[ro.productionStage] || 'bg-gray-700/50 text-gray-400'}`}>
+                {ro.productionStage}
+              </span>
             )}
             {ro.parts && ro.parts.length > 0 && (
               <span className="text-xs text-gray-500">

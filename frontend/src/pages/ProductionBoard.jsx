@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { productionApi } from '@/lib/api'
-import { STAGES, formatDate } from '@/lib/utils'
+import { STAGES, STAGE_COLORS, formatTimeAgo } from '@/lib/utils'
 import PartsBadge from '@/components/ui/PartsBadge'
 import Spinner from '@/components/ui/Spinner'
 import EmptyState from '@/components/ui/EmptyState'
@@ -21,13 +21,15 @@ function cardBg(partsStatus) {
 }
 
 function StageButton({ stage, active, onClick }) {
+  const colorClass = active
+    ? (STAGE_COLORS[stage] || 'bg-blue-600 text-white')
+    : 'bg-gray-800/70 text-gray-500 hover:text-gray-200 hover:bg-gray-700/60'
+
   return (
     <button
       onClick={onClick}
       className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150 border ${
-        active
-          ? 'bg-blue-600 text-white border-blue-500'
-          : 'bg-gray-800/70 text-gray-400 border-gray-700/50 hover:text-gray-200 hover:border-gray-600 active:bg-gray-700'
+        active ? `${colorClass} border-transparent ring-2 ring-white/20` : `${colorClass} border-gray-700/50`
       }`}
     >
       {stage}
@@ -297,6 +299,12 @@ export default function ProductionBoard() {
                   </p>
                   {ro.vendor?.name && (
                     <p className="text-xs text-gray-500 mt-0.5">{ro.vendor.name}</p>
+                  )}
+                  {ro.productionUpdatedAt && (
+                    <p className="text-xs text-gray-600 mt-1 flex items-center gap-1">
+                      <Clock size={10} />
+                      Updated {formatTimeAgo(ro.productionUpdatedAt)}
+                    </p>
                   )}
                 </div>
                 {state.productionFinalSupplement && (
