@@ -26,6 +26,7 @@ const invoicesRoutes = require('./routes/invoices')
 const srcRoutes = require('./routes/src')
 const vendorsRoutes = require('./routes/vendors')
 const usersRoutes = require('./routes/users')
+const importRoutes = require('./routes/import')
 
 app.use('/api/auth', authRoutes)
 app.use('/api/ros', rosRoutes)
@@ -35,6 +36,7 @@ app.use('/api/invoices', invoicesRoutes)
 app.use('/api/src', srcRoutes)
 app.use('/api/vendors', vendorsRoutes)
 app.use('/api/users', usersRoutes)
+app.use('/api/import', importRoutes)
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }))
 

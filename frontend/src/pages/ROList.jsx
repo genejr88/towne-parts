@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Search, Plus, X, ChevronRight, Car, Package, Archive, RefreshCw } from 'lucide-react'
+import { Search, Plus, X, ChevronRight, Car, Package, Archive, RefreshCw, Upload } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { rosApi, vendorsApi } from '@/lib/api'
 import { formatDate, STAGE_COLORS } from '@/lib/utils'
@@ -13,6 +13,7 @@ import Select from '@/components/ui/Select'
 import Modal from '@/components/ui/Modal'
 import Spinner from '@/components/ui/Spinner'
 import EmptyState from '@/components/ui/EmptyState'
+import ImportPartsModal from '@/components/ImportPartsModal'
 
 const FILTER_TABS = [
   { key: 'active', label: 'Active' },
@@ -196,6 +197,7 @@ export default function ROList() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [search, setSearch] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
 
   // Read filter from URL or default to 'active'
   const urlStatus = searchParams.get('status')
@@ -318,6 +320,16 @@ export default function ROList() {
         )}
       </div>
 
+      {/* Import FAB */}
+      <motion.button
+        whileTap={{ scale: 0.93 }}
+        onClick={() => setImportOpen(true)}
+        className="fixed bottom-20 right-20 z-30 w-14 h-14 rounded-2xl bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center shadow-xl"
+        title="Import Parts List PDF"
+      >
+        <Upload size={22} strokeWidth={2} />
+      </motion.button>
+
       {/* FAB */}
       <motion.button
         whileTap={{ scale: 0.93 }}
@@ -328,6 +340,7 @@ export default function ROList() {
       </motion.button>
 
       <CreateROModal open={createOpen} onClose={() => setCreateOpen(false)} />
+      <ImportPartsModal open={importOpen} onClose={() => setImportOpen(false)} />
     </div>
   )
 }

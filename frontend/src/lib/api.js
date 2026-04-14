@@ -115,4 +115,13 @@ export const usersApi = {
   remove: (id) => unwrap(api.delete(`/users/${id}`)),
 }
 
+// ── Import (CCC ONE estimate parser) ─────────────────────────────────────────
+export const importApi = {
+  parse: (file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return unwrap(api.post('/import/parse', form, { headers: { 'Content-Type': 'multipart/form-data' } }))
+  },
+}
+
 export default api
