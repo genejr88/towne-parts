@@ -60,21 +60,52 @@ async function main() {
 }
 
 async function resetSequences() {
-  // After data migration from SQLite, PostgreSQL sequences can be out of sync with
-  // the actual max IDs in each table. Reset all of them to max(id)+1 on every startup.
+  // After data migration from SQLite, PostgreSQL sequences are out of sync with
+  // actual max IDs. Use ALTER SEQUENCE RESTART which works regardless of sequence
+  // naming conventions (SERIAL vs IDENTITY columns).
   const tables = ['users', 'vendors', 'ros', 'parts', 'part_photos', 'ro_invoices', 'src_entries', 'activity_log']
+
   for (const table of tables) {
     try {
-      await prisma.$executeRawUnsafe(`
-        SELECT setval(
-          pg_get_serial_sequence('${table}', 'id'),
-          COALESCE((SELECT MAX(id) FROM "${table}"), 0) + 1,
-          false
-        )
-      `)
-      console.log(`[seq] ${table} sequence reset`)
+      // Get current max id
+      const rows = await prisma.$queryRawUnsafe(`SELECT COALESCE(MAX(id), 0) AS max_id FROM "${table}"`)
+      const maxId = Number(rows[0].max_id)
+      const nextVal = maxId + 1
+
+      // Try pg_get_serial_sequence first (SERIAL columns)
+      const seqRows = await prisma.$queryRawUnsafe(
+        `SELECT pg_get_serial_sequence('"${table}"', 'id') AS seq`
+      )
+      const seqName = seqRows[0]?.seq
+
+      if (seqName) {
+        await prisma.$executeRawUnsafe(`SELECT setval('${seqName}', ${nextVal}, false)`)
+        console.log(`[seq] ${table}: set sequence "${seqName}" to ${nextVal} (max id=${maxId})`)
+      } else {
+        // IDENTITY column — use ALTER SEQUENCE via information_schema lookup
+        const identRows = await prisma.$queryRawUnsafe(`
+          SELECT s.seqrelid::regclass AS seq_name
+          FROM pg_class c
+          JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'id'
+          JOIN pg_sequence s ON s.seqrelid = (
+            SELECT d.refobjid FROM pg_depend d
+            WHERE d.objid = c.oid AND d.refobjsubid = a.attnum
+            AND d.classid = 'pg_class'::regclass
+            AND d.deptype = 'i'
+            LIMIT 1
+          )
+          WHERE c.relname = '${table}'
+        `)
+        if (identRows.length > 0) {
+          const identSeq = identRows[0].seq_name
+          await prisma.$executeRawUnsafe(`ALTER SEQUENCE ${identSeq} RESTART WITH ${nextVal}`)
+          console.log(`[seq] ${table}: restarted IDENTITY sequence ${identSeq} at ${nextVal} (max id=${maxId})`)
+        } else {
+          console.warn(`[seq] ${table}: could not find sequence (max id=${maxId})`)
+        }
+      }
     } catch (e) {
-      console.warn(`[seq] Could not reset sequence for ${table}: ${e.message}`)
+      console.warn(`[seq] ${table}: error — ${e.message}`)
     }
   }
 }
