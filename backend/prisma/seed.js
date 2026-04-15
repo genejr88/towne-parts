@@ -60,24 +60,27 @@ async function main() {
 }
 
 async function resetSequences() {
-  // Brute-force: restart every known sequence at 10000.
-  // All migrated data has IDs well below that, so new inserts will never collide.
-  const seqNames = [
-    'users_id_seq', 'vendors_id_seq', 'ros_id_seq', 'parts_id_seq',
-    'part_photos_id_seq', 'ro_invoices_id_seq', 'src_entries_id_seq', 'activity_log_id_seq',
+  // Set each sequence to MAX(current max id, 10000) + 1 so it never conflicts
+  // with existing rows, whether from migration or normal use.
+  const tables = [
+    { seq: 'users_id_seq',       table: '"User"' },
+    { seq: 'vendors_id_seq',     table: '"Vendor"' },
+    { seq: 'ros_id_seq',         table: '"RO"' },
+    { seq: 'parts_id_seq',       table: '"Part"' },
+    { seq: 'part_photos_id_seq', table: '"PartPhoto"' },
+    { seq: 'ro_invoices_id_seq', table: '"ROInvoice"' },
+    { seq: 'src_entries_id_seq', table: '"SRCEntry"' },
+    { seq: 'activity_log_id_seq',table: '"ActivityLog"' },
   ]
-  for (const seq of seqNames) {
+  for (const { seq, table } of tables) {
     try {
-      await prisma.$executeRawUnsafe(`ALTER SEQUENCE "${seq}" RESTART WITH 10000`)
-      console.log(`[seq] ${seq} → restarted at 10000`)
+      const rows = await prisma.$queryRawUnsafe(`SELECT COALESCE(MAX(id), 0) AS m FROM ${table}`)
+      const maxId = Number(rows[0].m)
+      const next = Math.max(maxId + 1, 10000)
+      await prisma.$executeRawUnsafe(`SELECT setval('${seq}', ${next}, false)`)
+      console.log(`[seq] ${seq} → ${next} (max id was ${maxId})`)
     } catch (e) {
-      console.warn(`[seq] ${seq} not found, trying setval fallback`)
-      try {
-        await prisma.$executeRawUnsafe(`SELECT setval('${seq}', 10000, false)`)
-        console.log(`[seq] ${seq} → setval 10000 ok`)
-      } catch (e2) {
-        console.warn(`[seq] ${seq} both methods failed: ${e2.message}`)
-      }
+      console.warn(`[seq] ${seq} skipped: ${e.message}`)
     }
   }
 }
