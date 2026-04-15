@@ -83,15 +83,47 @@ export default function ImportPartsModal({ open, onClose }) {
 
     setSubmitting(true)
     try {
-      const ro = await rosApi.create({
+      const roData = {
         roNumber: form.roNumber.trim(),
         vehicleYear: form.vehicleYear || undefined,
         vehicleMake: form.vehicleMake || undefined,
         vehicleModel: form.vehicleModel || undefined,
         vin: form.vin || undefined,
         vendorId: form.vendorId ? parseInt(form.vendorId) : undefined,
-      })
+      }
 
+      let ro
+      let isNew = true
+
+      try {
+        ro = await rosApi.create(roData)
+      } catch (createErr) {
+        // RO already exists — find it and patch any missing fields
+        const status = createErr.response?.status ?? (createErr.message?.includes('409') ? 409 : null)
+        if (status === 409) {
+          const list = await rosApi.list({ search: form.roNumber.trim() })
+          ro = list.find((r) => r.roNumber === form.roNumber.trim()) || list[0]
+          if (!ro) throw new Error('RO already exists but could not be located.')
+
+          // Patch missing vehicle info
+          const patch = {}
+          if (!ro.vehicleYear  && roData.vehicleYear)  patch.vehicleYear  = roData.vehicleYear
+          if (!ro.vehicleMake  && roData.vehicleMake)  patch.vehicleMake  = roData.vehicleMake
+          if (!ro.vehicleModel && roData.vehicleModel) patch.vehicleModel = roData.vehicleModel
+          if (!ro.vin          && roData.vin)          patch.vin          = roData.vin
+          if (!ro.vendorId     && roData.vendorId)     patch.vendorId     = roData.vendorId
+          if (Object.keys(patch).length > 0) {
+            ro = await rosApi.update(ro.id, patch)
+          }
+
+          isNew = false
+        } else {
+          throw createErr
+        }
+      }
+
+      // Add parts
+      let partsAdded = 0
       for (const part of form.parts) {
         if (!part.description && !part.partNumber) continue
         await partsApi.create(ro.id, {
@@ -100,14 +132,20 @@ export default function ImportPartsModal({ open, onClose }) {
           qty: parseInt(part.qty) || 1,
           price: part.price != null ? part.price : undefined,
         })
+        partsAdded++
       }
 
       await queryClient.invalidateQueries({ queryKey: ['ros'] })
-      toast.success(`RO ${ro.roNumber} created with ${form.parts.length} parts`)
+      toast.success(
+        isNew
+          ? `RO ${ro.roNumber} created with ${partsAdded} parts`
+          : `Added ${partsAdded} parts to existing RO ${ro.roNumber}`
+      )
       handleClose()
       navigate(`/ros/${ro.id}`)
     } catch (err) {
-      toast.error(err.message || 'Failed to create RO')
+      const msg = err.response?.data?.error || err.message || 'Failed to import'
+      toast.error(msg)
     } finally {
       setSubmitting(false)
     }
