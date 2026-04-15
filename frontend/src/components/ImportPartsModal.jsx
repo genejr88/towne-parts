@@ -123,16 +123,40 @@ export default function ImportPartsModal({ open, onClose }) {
     onClose()
   }
 
+  const reviewFooter = step === 'review' && form ? (
+    <div className="flex gap-3">
+      <Button
+        variant="secondary"
+        onClick={() => setStep('upload')}
+        className="flex-1"
+        disabled={submitting}
+      >
+        Back
+      </Button>
+      <Button
+        variant="primary"
+        onClick={handleConfirm}
+        loading={submitting}
+        disabled={submitting || !form.roNumber.trim() || form.parts.length === 0}
+        className="flex-1"
+      >
+        {!submitting && <Check size={15} />}
+        Import {form.parts.length} Parts
+      </Button>
+    </div>
+  ) : null
+
   return (
     <Modal
       open={open}
       onClose={handleClose}
       title={step === 'upload' ? 'Import Parts Estimate' : `Review — ${form?.parts?.length ?? 0} parts found`}
       size="lg"
+      footer={reviewFooter}
     >
       {/* ── Step 1: Upload ── */}
       {step === 'upload' && (
-        <div className="p-4 space-y-4">
+        <div className="space-y-4">
           <div
             onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
             onDragLeave={() => setDragOver(false)}
@@ -183,9 +207,9 @@ export default function ImportPartsModal({ open, onClose }) {
 
       {/* ── Step 2: Review & Edit ── */}
       {step === 'review' && form && (
-        <div className="flex flex-col" style={{ maxHeight: '78vh' }}>
+        <div className="space-y-4">
           {/* RO / Vehicle fields */}
-          <div className="px-4 pt-4 pb-3 border-b border-gray-800/60 space-y-3 shrink-0">
+          <div className="space-y-3 pb-4 border-b border-gray-800/60">
             <div className="grid grid-cols-2 gap-3">
               <Input
                 label="RO Number *"
@@ -231,7 +255,7 @@ export default function ImportPartsModal({ open, onClose }) {
           </div>
 
           {/* Parts list */}
-          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1.5">
+          <div className="space-y-1.5">
             {/* Column headers */}
             <div className="grid gap-2 px-3 mb-2" style={{ gridTemplateColumns: '1fr 6rem 3rem 1.75rem' }}>
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Description</p>
@@ -280,28 +304,6 @@ export default function ImportPartsModal({ open, onClose }) {
             >
               <Plus size={14} /> Add part
             </button>
-          </div>
-
-          {/* Action buttons */}
-          <div className="px-4 py-3 border-t border-gray-800/60 flex gap-3 shrink-0">
-            <Button
-              variant="secondary"
-              onClick={() => setStep('upload')}
-              className="flex-1"
-              disabled={submitting}
-            >
-              Back
-            </Button>
-            <Button
-              variant="primary"
-              onClick={handleConfirm}
-              loading={submitting}
-              disabled={submitting || !form.roNumber.trim() || form.parts.length === 0}
-              className="flex-1"
-            >
-              {!submitting && <Check size={15} />}
-              Import {form.parts.length} Parts
-            </Button>
           </div>
         </div>
       )}

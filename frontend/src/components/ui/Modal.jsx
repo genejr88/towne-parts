@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-export default function Modal({ open, onClose, title, children, className, size = 'md' }) {
+export default function Modal({ open, onClose, title, children, footer, className, size = 'md' }) {
   // Close on Escape key
   useEffect(() => {
     if (!open) return
@@ -26,7 +26,7 @@ export default function Modal({ open, onClose, title, children, className, size 
     }
   }, [open])
 
-  const maxW = size === 'sm' ? 'max-w-sm' : size === 'lg' ? 'max-w-lg' : 'max-w-md'
+  const maxW = size === 'sm' ? 'max-w-sm' : size === 'lg' ? 'max-w-2xl' : size === 'xl' ? 'max-w-4xl' : 'max-w-md'
 
   return (
     <AnimatePresence>
@@ -70,9 +70,16 @@ export default function Modal({ open, onClose, title, children, className, size 
             </div>
 
             {/* Content */}
-            <div className="overflow-y-auto p-5 flex-1">
+            <div className="overflow-y-auto p-5 flex-1 min-h-0">
               {children}
             </div>
+
+            {/* Optional pinned footer */}
+            {footer && (
+              <div className="shrink-0 px-5 py-4 border-t border-gray-700/50">
+                {footer}
+              </div>
+            )}
           </motion.div>
         </>
       )}

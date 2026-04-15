@@ -251,7 +251,7 @@ export default function ProductionBoard() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Top bar: counter + save status + log button */}
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-950 border-b border-gray-800/60 shrink-0">
+      <div className="flex items-center justify-between px-4 py-2 bg-gray-950 border-b border-gray-800/60 shrink-0 sm:px-6">
         <span className="text-sm font-medium text-gray-400">
           {index + 1} <span className="text-gray-600">of</span> {activeROs.length}
         </span>
@@ -273,10 +273,12 @@ export default function ProductionBoard() {
 
       {/* Swipeable card area */}
       <div
-        className="flex-1 overflow-y-auto px-4 py-3"
+        className="flex-1 overflow-y-auto px-4 py-4 sm:px-6"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
+        {/* Centered container — constrains width on large screens */}
+        <div className="mx-auto w-full max-w-2xl">
         <AnimatePresence mode="wait" custom={direction}>
           <motion.div
             key={ro.id}
@@ -287,7 +289,7 @@ export default function ProductionBoard() {
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
           >
             {/* RO card */}
-            <div className={`bg-gradient-to-b ${cardBg(ro.partsStatus)} border border-gray-700/50 rounded-2xl p-5 mb-4`}>
+            <div className={`bg-gradient-to-b ${cardBg(ro.partsStatus)} border border-gray-700/50 rounded-2xl p-5 mb-4 shadow-lg`}>
               <div className="flex items-start justify-between gap-3 mb-4">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
@@ -411,26 +413,29 @@ export default function ProductionBoard() {
             </div>
           </motion.div>
         </AnimatePresence>
+        </div> {/* end max-w-2xl container */}
       </div>
 
       {/* Prev / Next navigation */}
-      <div className="shrink-0 bg-gray-950 border-t border-gray-800/60 px-4 py-3 pb-safe flex gap-3">
-        <button
-          onClick={goPrev}
-          disabled={index === 0}
-          className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl bg-gray-800 border border-gray-700 text-gray-300 font-semibold text-sm disabled:opacity-30 disabled:pointer-events-none active:bg-gray-700 transition-colors"
-        >
-          <ChevronLeft size={20} />
-          Prev
-        </button>
-        <button
-          onClick={goNext}
-          disabled={index >= activeROs.length - 1}
-          className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl bg-blue-600 border border-blue-500 text-white font-semibold text-sm disabled:opacity-30 disabled:pointer-events-none active:bg-blue-700 transition-colors"
-        >
-          Next
-          <ChevronRight size={20} />
-        </button>
+      <div className="shrink-0 bg-gray-950 border-t border-gray-800/60 px-4 py-3 pb-safe sm:px-6">
+        <div className="mx-auto w-full max-w-2xl flex gap-3">
+          <button
+            onClick={goPrev}
+            disabled={index === 0}
+            className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl bg-gray-800 border border-gray-700 text-gray-300 font-semibold text-sm disabled:opacity-30 disabled:pointer-events-none active:bg-gray-700 transition-colors"
+          >
+            <ChevronLeft size={20} />
+            Prev
+          </button>
+          <button
+            onClick={goNext}
+            disabled={index >= activeROs.length - 1}
+            className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl bg-blue-600 border border-blue-500 text-white font-semibold text-sm disabled:opacity-30 disabled:pointer-events-none active:bg-blue-700 transition-colors"
+          >
+            Next
+            <ChevronRight size={20} />
+          </button>
+        </div>
       </div>
 
       {/* Daily log sheet */}
