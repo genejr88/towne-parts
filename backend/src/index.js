@@ -27,6 +27,7 @@ const srcRoutes = require('./routes/src')
 const vendorsRoutes = require('./routes/vendors')
 const usersRoutes = require('./routes/users')
 const importRoutes = require('./routes/import')
+const adminRoutes  = require('./routes/admin')
 
 app.use('/api/auth', authRoutes)
 app.use('/api/ros', rosRoutes)
@@ -37,6 +38,7 @@ app.use('/api/src', srcRoutes)
 app.use('/api/vendors', vendorsRoutes)
 app.use('/api/users', usersRoutes)
 app.use('/api/import', importRoutes)
+app.use('/api/admin',  adminRoutes)
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }))
 
