@@ -28,6 +28,7 @@ const vendorsRoutes = require('./routes/vendors')
 const usersRoutes = require('./routes/users')
 const importRoutes = require('./routes/import')
 const adminRoutes  = require('./routes/admin')
+const telegramRoutes = require('./routes/telegram')
 
 app.use('/api/auth', authRoutes)
 app.use('/api/ros', rosRoutes)
@@ -39,6 +40,7 @@ app.use('/api/vendors', vendorsRoutes)
 app.use('/api/users', usersRoutes)
 app.use('/api/import', importRoutes)
 app.use('/api/admin',  adminRoutes)
+app.use('/api/telegram', telegramRoutes)
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }))
 

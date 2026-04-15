@@ -5,10 +5,10 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Edit2, Check, X, Plus, Trash2, Upload, FileText,
   Package, RotateCcw, Archive, ArchiveRestore, ChevronDown, ChevronUp,
-  ExternalLink, Clock
+  ExternalLink, Clock, Send
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { rosApi, partsApi, invoicesApi, srcApi, vendorsApi } from '@/lib/api'
+import { rosApi, partsApi, invoicesApi, srcApi, vendorsApi, telegramApi } from '@/lib/api'
 import { formatDate, formatCurrency, FINISH_STATUSES, nextFinishStatus, SRC_TYPES } from '@/lib/utils'
 import PartsBadge from '@/components/ui/PartsBadge'
 import Badge from '@/components/ui/Badge'
@@ -331,6 +331,12 @@ export default function RODetail() {
     onError: (err) => toast.error(err.message),
   })
 
+  const aphMutation = useMutation({
+    mutationFn: () => telegramApi.sendAPH(id),
+    onSuccess: () => toast.success('Telegram sent to Billy ✅'),
+    onError: (err) => toast.error(err.message || 'Failed to send Telegram'),
+  })
+
   const uploadMutation = useMutation({
     mutationFn: (file) => invoicesApi.upload(id, file),
     onSuccess: () => {
@@ -434,7 +440,7 @@ export default function RODetail() {
             )}
           </div>
 
-          <div className="mt-3 pt-3 border-t border-gray-700/50">
+          <div className="mt-3 pt-3 border-t border-gray-700/50 flex items-center gap-2 flex-wrap">
             <Button
               variant={ro.archived ? 'secondary' : 'ghost'}
               size="sm"
@@ -444,6 +450,16 @@ export default function RODetail() {
             >
               {ro.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
               {ro.archived ? 'Unarchive' : 'Archive RO'}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => aphMutation.mutate()}
+              loading={aphMutation.isPending}
+              className="text-emerald-400 hover:text-emerald-300"
+            >
+              <Send size={15} />
+              APH
             </Button>
           </div>
         </div>

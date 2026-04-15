@@ -115,6 +115,11 @@ export const usersApi = {
   remove: (id) => unwrap(api.delete(`/users/${id}`)),
 }
 
+// ── Telegram ──────────────────────────────────────────────────────────────────
+export const telegramApi = {
+  sendAPH: (roId) => unwrap(api.post(`/telegram/aph/${roId}`)),
+}
+
 // ── Import (CCC ONE estimate parser) ─────────────────────────────────────────
 export const importApi = {
   parse: (file) => {
