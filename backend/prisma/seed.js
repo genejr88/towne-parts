@@ -59,4 +59,27 @@ async function main() {
   console.log('Vendors seeded')
 }
 
-main().catch(console.error).finally(() => prisma.$disconnect())
+async function resetSequences() {
+  // After data migration from SQLite, PostgreSQL sequences can be out of sync with
+  // the actual max IDs in each table. Reset all of them to max(id)+1 on every startup.
+  const tables = ['users', 'vendors', 'ros', 'parts', 'part_photos', 'ro_invoices', 'src_entries', 'activity_log']
+  for (const table of tables) {
+    try {
+      await prisma.$executeRawUnsafe(`
+        SELECT setval(
+          pg_get_serial_sequence('${table}', 'id'),
+          COALESCE((SELECT MAX(id) FROM "${table}"), 0) + 1,
+          false
+        )
+      `)
+      console.log(`[seq] ${table} sequence reset`)
+    } catch (e) {
+      console.warn(`[seq] Could not reset sequence for ${table}: ${e.message}`)
+    }
+  }
+}
+
+main()
+  .then(() => resetSequences())
+  .catch(console.error)
+  .finally(() => prisma.$disconnect())
