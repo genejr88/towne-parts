@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Edit2, Check, X, Plus, Trash2, Upload, FileText,
   Package, RotateCcw, Archive, ArchiveRestore, ChevronDown, ChevronUp,
-  ExternalLink, Clock, Send
+  ExternalLink, Clock, Send, Camera, Loader2
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { rosApi, partsApi, invoicesApi, srcApi, vendorsApi, telegramApi } from '@/lib/api'
@@ -209,6 +209,7 @@ function Section({ title, children, action, defaultOpen = true }) {
 // ── Part row ──────────────────────────────────────────────────────────────────
 function PartRow({ part, roId }) {
   const queryClient = useQueryClient()
+  const fileInputRef = useRef(null)
 
   const updateMutation = useMutation({
     mutationFn: (data) => partsApi.update(part.id, data),
@@ -224,6 +225,26 @@ function PartRow({ part, roId }) {
     },
     onError: (err) => toast.error(err.message),
   })
+
+  const photoMutation = useMutation({
+    mutationFn: async (file) => {
+      await partsApi.uploadPhoto(part.id, file)
+      if (!part.isReceived) {
+        await partsApi.update(part.id, { isReceived: true })
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ro', roId] })
+      toast.success('Photo saved — part marked received')
+    },
+    onError: (err) => toast.error(err.message),
+  })
+
+  const handlePhotoFile = (e) => {
+    const file = e.target.files?.[0]
+    if (file) photoMutation.mutate(file)
+    e.target.value = ''
+  }
 
   const toggle = (field) => updateMutation.mutate({ [field]: !part[field] })
   const cycleFinish = () => updateMutation.mutate({ finishStatus: nextFinishStatus(part.finishStatus || 'NO_FINISH_NEEDED') })
@@ -293,15 +314,35 @@ function PartRow({ part, roId }) {
           )}
         </div>
 
-        {/* Delete */}
-        <button
-          onClick={() => {
-            if (window.confirm('Remove this part?')) deleteMutation.mutate()
-          }}
-          className="p-1.5 text-gray-600 hover:text-red-400 active:text-red-500 transition-colors shrink-0"
-        >
-          <Trash2 size={15} />
-        </button>
+        {/* Camera + Delete */}
+        <div className="flex flex-col gap-1 shrink-0">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={photoMutation.isPending}
+            className="p-1.5 text-gray-500 hover:text-blue-400 active:text-blue-500 transition-colors disabled:opacity-40"
+            title="Add photo — marks part as received"
+          >
+            {photoMutation.isPending ? <Loader2 size={15} className="animate-spin" /> : <Camera size={15} />}
+          </button>
+          <button
+            onClick={() => {
+              if (window.confirm('Remove this part?')) deleteMutation.mutate()
+            }}
+            className="p-1.5 text-gray-600 hover:text-red-400 active:text-red-500 transition-colors"
+          >
+            <Trash2 size={15} />
+          </button>
+        </div>
+
+        {/* Hidden file input — capture="environment" opens rear camera on mobile */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={handlePhotoFile}
+        />
       </div>
     </div>
   )
