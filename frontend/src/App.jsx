@@ -11,6 +11,7 @@ import RODetail from '@/pages/RODetail'
 import ProductionBoard from '@/pages/ProductionBoard'
 import SRCTracker from '@/pages/SRCTracker'
 import Admin from '@/pages/Admin'
+import Inventory from '@/pages/Inventory'
 
 function ProtectedRoute({ children, adminOnly = false }) {
   const { user, loading } = useAuth()
@@ -67,6 +68,9 @@ export default function App() {
         } />
         <Route path="/admin" element={
           <ProtectedRoute adminOnly><AppLayout><Admin /></AppLayout></ProtectedRoute>
+        } />
+        <Route path="/inventory" element={
+          <ProtectedRoute><AppLayout><Inventory /></AppLayout></ProtectedRoute>
         } />
 
         <Route path="*" element={<Navigate to="/ros" replace />} />

@@ -129,4 +129,19 @@ export const importApi = {
   },
 }
 
+// ── Inventory (Surplus Parts Catalog) ────────────────────────────────────────
+export const inventoryApi = {
+  list: (search) => unwrap(api.get('/inventory', { params: search ? { search } : {} })),
+  create: (data) => unwrap(api.post('/inventory', data)),
+  update: (id, data) => unwrap(api.put(`/inventory/${id}`, data)),
+  remove: (id) => unwrap(api.delete(`/inventory/${id}`)),
+  uploadPhoto: (id, file) => {
+    const fd = new FormData()
+    fd.append('photo', file)
+    return unwrap(api.post(`/inventory/${id}/photos`, fd, { headers: { 'Content-Type': 'multipart/form-data' } }))
+  },
+  deletePhoto: (photoId) => unwrap(api.delete(`/inventory/photos/${photoId}`)),
+  photoUrl: (storedPath) => `${API_URL}/uploads/inventory/${storedPath}`,
+}
+
 export default api

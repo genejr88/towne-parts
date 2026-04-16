@@ -12,7 +12,8 @@ app.use(express.json())
 const uploadsBase = path.join(__dirname, '../uploads')
 const invoicesDir = path.join(uploadsBase, 'invoices')
 const partsDir = path.join(uploadsBase, 'parts')
-;[uploadsBase, invoicesDir, partsDir].forEach((dir) => {
+const inventoryDir = path.join(uploadsBase, 'inventory')
+;[uploadsBase, invoicesDir, partsDir, inventoryDir].forEach((dir) => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
 })
 
@@ -29,6 +30,7 @@ const usersRoutes = require('./routes/users')
 const importRoutes = require('./routes/import')
 const adminRoutes  = require('./routes/admin')
 const telegramRoutes = require('./routes/telegram')
+const inventoryRoutes = require('./routes/inventory')
 
 app.use('/api/auth', authRoutes)
 app.use('/api/ros', rosRoutes)
@@ -41,6 +43,7 @@ app.use('/api/users', usersRoutes)
 app.use('/api/import', importRoutes)
 app.use('/api/admin',  adminRoutes)
 app.use('/api/telegram', telegramRoutes)
+app.use('/api/inventory', inventoryRoutes)
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }))
 

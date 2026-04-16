@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { PackageCheck, Layers, RotateCcw, Settings } from 'lucide-react'
+import { PackageCheck, Layers, RotateCcw, Settings, Package } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 
@@ -7,6 +7,7 @@ const navItems = [
   { to: '/ros', icon: PackageCheck, label: 'Parts' },
   { to: '/board', icon: Layers, label: 'Board' },
   { to: '/src', icon: RotateCcw, label: 'S.R.C.' },
+  { to: '/inventory', icon: Package, label: 'Inventory' },
   { to: '/admin', icon: Settings, label: 'Admin' },
 ]
 

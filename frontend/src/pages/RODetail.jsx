@@ -8,7 +8,7 @@ import {
   ExternalLink, Clock, Send, Camera, Loader2
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import api, { rosApi, partsApi, invoicesApi, srcApi, vendorsApi, telegramApi } from '@/lib/api'
+import api, { rosApi, partsApi, invoicesApi, srcApi, vendorsApi, telegramApi, inventoryApi } from '@/lib/api'
 import { formatDate, formatCurrency, FINISH_STATUSES, nextFinishStatus, SRC_TYPES } from '@/lib/utils'
 import PartsBadge from '@/components/ui/PartsBadge'
 import Badge from '@/components/ui/Badge'
@@ -186,6 +186,88 @@ function AddSRCModal({ open, onClose, roId }) {
   )
 }
 
+// ── In-Stock Modal ─────────────────────────────────────────────────────────────
+function InStockModal({ open, onClose, inventoryPart }) {
+  const [lightboxSrc, setLightboxSrc] = useState(null)
+
+  if (!inventoryPart) return null
+
+  return (
+    <>
+      <Modal open={open} onClose={onClose} title="In Stock">
+        <div className="space-y-3">
+          <div className="bg-gray-700/40 border border-gray-600/40 rounded-xl p-3">
+            {inventoryPart.partNumber && (
+              <p className="text-xs font-mono text-gray-400 mb-0.5">{inventoryPart.partNumber}</p>
+            )}
+            <p className="text-sm font-semibold text-gray-100">{inventoryPart.description}</p>
+            <div className="flex items-center gap-3 mt-2">
+              <span className="text-xs bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-semibold">
+                Qty: {inventoryPart.qty}
+              </span>
+            </div>
+            {inventoryPart.notes && (
+              <p className="text-xs text-gray-400 mt-2">{inventoryPart.notes}</p>
+            )}
+          </div>
+
+          {inventoryPart.photos?.length > 0 && (
+            <div>
+              <p className="text-xs text-gray-500 mb-2">Photos</p>
+              <div className="flex flex-wrap gap-2">
+                {inventoryPart.photos.map((photo) => (
+                  <button
+                    key={photo.id}
+                    onClick={() => setLightboxSrc(inventoryApi.photoUrl(photo.storedPath))}
+                    className="w-20 h-20 rounded-lg overflow-hidden border border-gray-600 hover:border-blue-400 transition-colors shrink-0"
+                  >
+                    <img
+                      src={inventoryApi.photoUrl(photo.storedPath)}
+                      alt={photo.originalFilename}
+                      className="w-full h-full object-cover"
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <Button variant="secondary" onClick={onClose} className="w-full">Close</Button>
+        </div>
+      </Modal>
+
+      {/* Lightbox */}
+      <AnimatePresence>
+        {lightboxSrc && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center p-4"
+            onClick={() => setLightboxSrc(null)}
+          >
+            <button
+              onClick={() => setLightboxSrc(null)}
+              className="absolute top-4 right-4 p-2 rounded-xl bg-gray-800 text-gray-300 hover:text-white transition-colors"
+            >
+              <X size={20} />
+            </button>
+            <motion.img
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              src={lightboxSrc}
+              alt="Inventory photo"
+              className="max-w-full max-h-full object-contain rounded-xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  )
+}
+
 // ── Section wrapper ────────────────────────────────────────────────────────────
 function Section({ title, children, action, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen)
@@ -239,9 +321,10 @@ function AuthImage({ photoId, filename }) {
 }
 
 // ── Part row ──────────────────────────────────────────────────────────────────
-function PartRow({ part, roId }) {
+function PartRow({ part, roId, inventoryMatch }) {
   const queryClient = useQueryClient()
   const fileInputRef = useRef(null)
+  const [stockModalOpen, setStockModalOpen] = useState(false)
 
   const updateMutation = useMutation({
     mutationFn: (data) => partsApi.update(part.id, data),
@@ -314,6 +397,15 @@ function PartRow({ part, roId }) {
           <p className={`text-sm mt-0.5 ${part.isReceived ? 'line-through text-gray-600' : 'text-gray-200'}`}>
             {part.description || <span className="text-gray-600 italic">No description</span>}
           </p>
+          {inventoryMatch && (
+            <button
+              onClick={() => setStockModalOpen(true)}
+              className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors"
+            >
+              <Package size={9} />
+              IN STOCK
+            </button>
+          )}
           <div className="flex items-center gap-3 mt-2 flex-wrap">
             {part.etaDate && (
               <span className="text-xs text-gray-500 flex items-center gap-1">
@@ -364,6 +456,15 @@ function PartRow({ part, roId }) {
           onChange={handlePhotoFile}
         />
       </div>
+
+      {/* In-Stock modal */}
+      {inventoryMatch && (
+        <InStockModal
+          open={stockModalOpen}
+          onClose={() => setStockModalOpen(false)}
+          inventoryPart={inventoryMatch}
+        />
+      )}
     </div>
   )
 }
@@ -381,6 +482,25 @@ export default function RODetail() {
     queryKey: ['ro', id],
     queryFn: () => rosApi.get(id),
   })
+
+  const { data: inventoryParts = [] } = useQuery({
+    queryKey: ['inventory'],
+    queryFn: () => inventoryApi.list(),
+    staleTime: 30_000,
+  })
+
+  // Match a RO part against inventory: exact partNumber match (if both have one),
+  // otherwise description substring match (case-insensitive, either direction)
+  function findInventoryMatch(part) {
+    return inventoryParts.find((inv) => {
+      if (part.partNumber && inv.partNumber) {
+        return part.partNumber.toLowerCase() === inv.partNumber.toLowerCase()
+      }
+      const partDesc = (part.description || '').toLowerCase()
+      const invDesc = inv.description.toLowerCase()
+      return partDesc && invDesc && (partDesc.includes(invDesc) || invDesc.includes(partDesc))
+    }) || null
+  }
 
   const archiveMutation = useMutation({
     mutationFn: () => ro.archived ? rosApi.unarchive(id) : rosApi.archive(id),
@@ -540,7 +660,9 @@ export default function RODetail() {
           {parts.length === 0 ? (
             <p className="text-sm text-gray-600 py-2 text-center">No parts yet — tap Add to get started</p>
           ) : (
-            parts.map((p) => <PartRow key={p.id} part={p} roId={id} />)
+            parts.map((p) => (
+              <PartRow key={p.id} part={p} roId={id} inventoryMatch={findInventoryMatch(p)} />
+            ))
           )}
         </Section>
 

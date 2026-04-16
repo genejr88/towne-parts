@@ -154,3 +154,23 @@ model ActivityLog {
 
   @@map("activity_log")
 }
+
+model InventoryPart {
+  id          String               @id @default(cuid())
+  partNumber  String?
+  description String
+  qty         Int                  @default(1)
+  notes       String?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  photos      InventoryPartPhoto[]
+}
+
+model InventoryPartPhoto {
+  id                String        @id @default(cuid())
+  inventoryPartId   String
+  inventoryPart     InventoryPart @relation(fields: [inventoryPartId], references: [id], onDelete: Cascade)
+  originalFilename  String
+  storedPath        String
+  createdAt         DateTime      @default(now())
+}
