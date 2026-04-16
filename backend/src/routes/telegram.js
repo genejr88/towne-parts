@@ -23,7 +23,7 @@ router.post('/aph/:roId', requireAuth, async (req, res) => {
 
   try {
     const ro = await prisma.rO.findUnique({
-      where: { id: req.params.roId },
+      where: { id: parseInt(req.params.roId) },
       select: { id: true, roNumber: true, vehicleYear: true, vehicleMake: true, vehicleModel: true },
     })
 
