@@ -97,8 +97,8 @@ router.get('/ro/:roId', requireAuth, async (req, res) => {
   }
 })
 
-// GET /api/invoices/:id/file — serve the invoice file
-router.get('/:id/file', requireAuth, async (req, res) => {
+// GET /api/invoices/:id/file — serve the invoice file (no auth: browser <a> tags can't send headers)
+router.get('/:id/file', async (req, res) => {
   const id = parseInt(req.params.id)
 
   try {

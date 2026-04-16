@@ -44,6 +44,8 @@ router.get('/', requireAuth, async (req, res) => {
         { vehicleColor: { contains: s, mode: 'insensitive' } },
         { vin: { contains: s, mode: 'insensitive' } },
         { vendor: { name: { contains: s, mode: 'insensitive' } } },
+        { parts: { some: { partNumber: { contains: s, mode: 'insensitive' } } } },
+        { parts: { some: { description: { contains: s, mode: 'insensitive' } } } },
       ]
     }
 

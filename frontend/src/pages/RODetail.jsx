@@ -8,7 +8,7 @@ import {
   ExternalLink, Clock, Send, Camera, Loader2
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { rosApi, partsApi, invoicesApi, srcApi, vendorsApi, telegramApi } from '@/lib/api'
+import api, { rosApi, partsApi, invoicesApi, srcApi, vendorsApi, telegramApi } from '@/lib/api'
 import { formatDate, formatCurrency, FINISH_STATUSES, nextFinishStatus, SRC_TYPES } from '@/lib/utils'
 import PartsBadge from '@/components/ui/PartsBadge'
 import Badge from '@/components/ui/Badge'
@@ -206,6 +206,38 @@ function Section({ title, children, action, defaultOpen = true }) {
   )
 }
 
+// ── Authenticated image — fetches via API (with JWT) so it always works ──────
+function AuthImage({ photoId, filename }) {
+  const [blobUrl, setBlobUrl] = useState(null)
+  const [errored, setErrored] = useState(false)
+
+  useEffect(() => {
+    let url = null
+    api.get(`/parts/photos/${photoId}/file`, { responseType: 'blob' })
+      .then((res) => { url = URL.createObjectURL(res.data); setBlobUrl(url) })
+      .catch(() => setErrored(true))
+    return () => { if (url) URL.revokeObjectURL(url) }
+  }, [photoId])
+
+  if (errored) return (
+    <div className="w-16 h-16 rounded-lg bg-gray-800 border border-gray-700 flex items-center justify-center shrink-0">
+      <Camera size={12} className="text-gray-600" />
+    </div>
+  )
+  if (!blobUrl) return (
+    <div className="w-16 h-16 rounded-lg bg-gray-700/40 border border-gray-700 animate-pulse shrink-0" />
+  )
+  return (
+    <a href={blobUrl} target="_blank" rel="noopener noreferrer" className="shrink-0">
+      <img
+        src={blobUrl}
+        alt={filename || 'Part photo'}
+        className="w-16 h-16 object-cover rounded-lg border border-gray-600 hover:border-blue-400 transition-colors"
+      />
+    </a>
+  )
+}
+
 // ── Part row ──────────────────────────────────────────────────────────────────
 function PartRow({ part, roId }) {
   const queryClient = useQueryClient()
@@ -296,19 +328,7 @@ function PartRow({ part, roId }) {
           {part.photos && part.photos.length > 0 && (
             <div className="flex gap-2 mt-2 overflow-x-auto pb-1">
               {part.photos.map((photo) => (
-                <a
-                  key={photo.id}
-                  href={partsApi.photoUrl(photo.storedPath)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="shrink-0"
-                >
-                  <img
-                    src={partsApi.photoUrl(photo.storedPath)}
-                    alt={photo.originalFilename || 'Part photo'}
-                    className="w-16 h-16 object-cover rounded-lg border border-gray-600 hover:border-blue-400 transition-colors"
-                  />
-                </a>
+                <AuthImage key={photo.id} photoId={photo.id} filename={photo.originalFilename} />
               ))}
             </div>
           )}
