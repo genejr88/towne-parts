@@ -150,7 +150,8 @@ export default function ProductionBoard() {
     },
   })
 
-  const activeROs = ros?.filter((r) => !r.isArchived) || []
+  const activeROs = (ros?.filter((r) => !r.isArchived) || [])
+    .sort((a, b) => (parseInt(a.roNumber, 10) || 0) - (parseInt(b.roNumber, 10) || 0))
   const currentRO = activeROs[index]
 
   // Merge local edits over server data
@@ -198,16 +199,18 @@ export default function ProductionBoard() {
   const goPrev = () => { if (index > 0) saveAndNavigate(index - 1) }
   const goNext = () => { if (index < activeROs.length - 1) saveAndNavigate(index + 1) }
 
-  // Keyboard arrow keys
+  // Keyboard arrow keys — stable ref so listener is added once (not torn down on every keystroke)
+  const navRef = useRef({})
+  navRef.current = { goPrev, goNext, logOpen }
   useEffect(() => {
     const onKey = (e) => {
-      if (logOpen) return
-      if (e.key === 'ArrowLeft') goPrev()
-      if (e.key === 'ArrowRight') goNext()
+      if (navRef.current.logOpen) return
+      if (e.key === 'ArrowLeft') navRef.current.goPrev()
+      if (e.key === 'ArrowRight') navRef.current.goNext()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [index, activeROs.length, logOpen, localEdits, currentRO])
+  }, [])
 
   // Touch swipe — horizontal only (won't conflict with vertical scroll)
   const handleTouchStart = (e) => {
