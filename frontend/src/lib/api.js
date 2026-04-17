@@ -51,8 +51,8 @@ export const rosApi = {
   get: (id) => unwrap(api.get(`/ros/${id}`)),
   create: (data) => unwrap(api.post('/ros', data)),
   update: (id, data) => unwrap(api.put(`/ros/${id}`, data)),
-  archive: (id) => unwrap(api.put(`/ros/${id}/archive`)),
-  unarchive: (id) => unwrap(api.put(`/ros/${id}/unarchive`)),
+  archive: (id) => unwrap(api.delete(`/ros/${id}`)),
+  unarchive: (id) => unwrap(api.post(`/ros/${id}/unarchive`)),
 }
 
 // ── Parts ─────────────────────────────────────────────────────────────────────
