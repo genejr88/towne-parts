@@ -2,10 +2,10 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  ChevronLeft, ChevronRight, Car, FileText, Check, ClipboardList, X, Clock,
+  ChevronLeft, ChevronRight, Car, FileText, Check, ClipboardList, X, Clock, Truck,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { productionApi } from '@/lib/api'
+import { productionApi, rosApi } from '@/lib/api'
 import { STAGES, STAGE_COLORS, formatTimeAgo } from '@/lib/utils'
 import PartsBadge from '@/components/ui/PartsBadge'
 import Spinner from '@/components/ui/Spinner'
@@ -127,6 +127,7 @@ export default function ProductionBoard() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [logOpen, setLogOpen] = useState(false)
+  const [confirmDeliver, setConfirmDeliver] = useState(false)
   const saveTimeout = useRef(null)
   const touchStart = useRef(null) // { x, y }
 
@@ -147,6 +148,20 @@ export default function ProductionBoard() {
     onError: (err) => {
       setSaving(false)
       toast.error(err.message || 'Failed to save')
+    },
+  })
+
+  const deliverMutation = useMutation({
+    mutationFn: (id) => rosApi.archive(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['production'] })
+      setConfirmDeliver(false)
+      toast.success('RO marked as delivered')
+      // Stay at same index (next RO slides in), or go back if it was the last
+      setIndex((prev) => Math.max(0, Math.min(prev, activeROs.length - 2)))
+    },
+    onError: (err) => {
+      toast.error(err.message || 'Failed to mark delivered')
     },
   })
 
@@ -419,25 +434,71 @@ export default function ProductionBoard() {
         </div> {/* end max-w-2xl container */}
       </div>
 
-      {/* Prev / Next navigation */}
+      {/* Prev / Next / Delivered navigation */}
       <div className="shrink-0 bg-gray-950 border-t border-gray-800/60 px-4 py-3 pb-safe sm:px-6">
-        <div className="mx-auto w-full max-w-2xl flex gap-3">
-          <button
-            onClick={goPrev}
-            disabled={index === 0}
-            className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl bg-gray-800 border border-gray-700 text-gray-300 font-semibold text-sm disabled:opacity-30 disabled:pointer-events-none active:bg-gray-700 transition-colors"
-          >
-            <ChevronLeft size={20} />
-            Prev
-          </button>
-          <button
-            onClick={goNext}
-            disabled={index >= activeROs.length - 1}
-            className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl bg-blue-600 border border-blue-500 text-white font-semibold text-sm disabled:opacity-30 disabled:pointer-events-none active:bg-blue-700 transition-colors"
-          >
-            Next
-            <ChevronRight size={20} />
-          </button>
+        <div className="mx-auto w-full max-w-2xl space-y-2">
+          {/* Prev + Next */}
+          <div className="flex gap-3">
+            <button
+              onClick={goPrev}
+              disabled={index === 0}
+              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-gray-800 border border-gray-700 text-gray-300 font-semibold text-sm disabled:opacity-30 disabled:pointer-events-none active:bg-gray-700 transition-colors"
+            >
+              <ChevronLeft size={20} />
+              Prev
+            </button>
+            <button
+              onClick={goNext}
+              disabled={index >= activeROs.length - 1}
+              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-blue-600 border border-blue-500 text-white font-semibold text-sm disabled:opacity-30 disabled:pointer-events-none active:bg-blue-700 transition-colors"
+            >
+              Next
+              <ChevronRight size={20} />
+            </button>
+          </div>
+
+          {/* Delivered button / confirm */}
+          <AnimatePresence mode="wait">
+            {!confirmDeliver ? (
+              <motion.button
+                key="deliver-btn"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setConfirmDeliver(true)}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-emerald-600/20 border border-emerald-600/40 text-emerald-400 font-semibold text-sm hover:bg-emerald-600/30 active:bg-emerald-600/40 transition-colors"
+              >
+                <Truck size={16} />
+                Mark as Delivered
+              </motion.button>
+            ) : (
+              <motion.div
+                key="deliver-confirm"
+                initial={{ opacity: 0, scale: 0.97 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.97 }}
+                className="flex gap-2 items-center bg-emerald-950/60 border border-emerald-700/50 rounded-xl px-3 py-2"
+              >
+                <p className="flex-1 text-xs text-emerald-300 font-medium">
+                  Deliver RO #{ro.roNumber}? This removes it from the board.
+                </p>
+                <button
+                  onClick={() => setConfirmDeliver(false)}
+                  className="px-3 py-1.5 rounded-lg bg-gray-700 text-gray-300 text-xs font-semibold hover:bg-gray-600 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => deliverMutation.mutate(ro.id)}
+                  disabled={deliverMutation.isPending}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-500 disabled:opacity-50 transition-colors flex items-center gap-1"
+                >
+                  {deliverMutation.isPending ? <Spinner size="sm" /> : <Truck size={12} />}
+                  Confirm
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
