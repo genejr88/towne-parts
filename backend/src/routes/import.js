@@ -153,6 +153,160 @@ async function parseCCCPDF(buffer) {
   return { roNumber, vin, vehicleYear, vehicleMake, vehicleModel, parts }
 }
 
+// ── Text-based CCC ONE parser (for OCR output — no x/y coords) ───────────────
+// Reuses the same regexes as parseCCCPDF but works on raw newline-delimited text.
+function parseCCCText(text) {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+
+  let roNumber = null, vehicleYear = null, vehicleMake = null, vehicleModel = null, vin = null
+  let inTable = false
+  const parts = []
+
+  for (const line of lines) {
+    // RO Number
+    if (!roNumber) {
+      const roM = line.match(/RO\s*(?:Number|#|No\.?)[\s:]*(\d+)/i)
+      if (roM) roNumber = roM[1]
+      else {
+        const custM = line.match(/(?:Customer|Owner):\s*P\.\.(\d+)-(\d+)/i)
+        if (custM) roNumber = custM[1] + custM[2]
+      }
+    }
+
+    // VIN
+    if (!vin) {
+      const vinM = line.match(/VIN[\s:]*([A-HJ-NPR-Z0-9]{17})/i)
+      if (vinM) vin = vinM[1]
+    }
+
+    // Vehicle: "YYYY MAKE Model ..."
+    if (!vehicleYear) {
+      const vehM = line.match(
+        /^(\d{4})\s+([A-Z]{2,5})\s+(.+?)(?:\s+\d+D\b|\s+AWD\b|\s+FWD\b|\s+4WD\b|\s+RWD\b|$)/
+      )
+      if (vehM) {
+        vehicleYear = vehM[1]
+        vehicleMake = MAKE_MAP[vehM[2]] || vehM[2]
+        vehicleModel = vehM[3].trim()
+      }
+    }
+
+    // Table header
+    if (/Part\s*Number|Line\s+Description/i.test(line)) {
+      inTable = true
+      continue
+    }
+
+    // Footer date line — reset so next page re-enables table
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(line)) { inTable = false; continue }
+
+    if (!inTable) continue
+
+    // Skip section headers (all caps, short, no digits) e.g. "REAR BUMPER"
+    if (/^[A-Z\s\/\-]{4,}$/.test(line) && !/\d/.test(line)) continue
+
+    // CCC ONE parts lines look like:
+    //   "1  Front Bumper Cover  12345-AB  1  299.50"
+    //   or "1  Front Bumper Cover  12345-AB"
+    // We try to parse: [lineNum] description [partNum] [qty] [price]
+    // A relaxed approach: split on 2+ spaces to get columns
+    const cols = line.split(/\s{2,}/).map((c) => c.trim()).filter(Boolean)
+
+    if (cols.length < 2) continue
+
+    // Try to detect and extract price (last token if it's a number)
+    let price = null
+    let lastCol = cols[cols.length - 1]
+    const priceM = lastCol.match(/^\$?([\d,]+\.\d{2})$/)
+    if (priceM) {
+      price = parseFloat(priceM[1].replace(/,/g, ''))
+      cols.pop()
+      lastCol = cols[cols.length - 1]
+    }
+
+    // Try to detect qty (last remaining token if it's a small integer 1-99)
+    let qty = 1
+    const qtyM = lastCol.match(/^(\d{1,2})$/)
+    if (qtyM && cols.length > 2) {
+      qty = parseInt(qtyM[1]) || 1
+      cols.pop()
+    }
+
+    // Try to detect line number (first token if it's a small integer)
+    if (cols.length > 0 && /^\d{1,3}$/.test(cols[0])) cols.shift()
+
+    if (cols.length === 0) continue
+
+    // Remaining: description + optional part number (part numbers usually alphanumeric with dashes)
+    // Heuristic: if last column looks like a part number (contains digit + letter or dash), split it off
+    let description = ''
+    let partNumber = null
+
+    const possiblePart = cols[cols.length - 1]
+    const looksLikePart = cols.length > 1 && /^[A-Z0-9][A-Z0-9\-]{3,}$/i.test(possiblePart) && /\d/.test(possiblePart)
+    if (looksLikePart) {
+      partNumber = possiblePart
+      description = cols.slice(0, -1).join(' ')
+    } else {
+      description = cols.join(' ')
+    }
+
+    description = description.trim()
+    if (description || partNumber) {
+      parts.push({ description, partNumber: partNumber || null, qty, price })
+    }
+  }
+
+  return { roNumber, vin, vehicleYear, vehicleMake, vehicleModel, parts }
+}
+
+// POST /api/import/photo
+const photoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/tiff', 'image/bmp']
+    if (allowed.includes(file.mimetype)) return cb(null, true)
+    cb(new Error('Only image files are accepted (jpg, png, webp, tiff, bmp).'))
+  },
+})
+
+router.post('/photo', requireAuth, photoUpload.single('file'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, error: 'No image uploaded.' })
+  }
+
+  let worker
+  try {
+    const { createWorker } = require('tesseract.js')
+    worker = await createWorker('eng')
+    const { data: { text } } = await worker.recognize(req.file.buffer)
+    await worker.terminate()
+
+    if (!text || text.trim().length < 50) {
+      return res.status(422).json({
+        success: false,
+        error: 'Could not read text from image. Please ensure the estimate is flat, well-lit, and in focus.',
+      })
+    }
+
+    const result = parseCCCText(text)
+
+    if (!result.parts || result.parts.length === 0) {
+      return res.status(422).json({
+        success: false,
+        error: 'No parts found in the image. Make sure you are photographing a CCC ONE Parts List and that the table is visible.',
+      })
+    }
+
+    return res.json({ success: true, data: result })
+  } catch (err) {
+    if (worker) { try { await worker.terminate() } catch (_) {} }
+    console.error('Photo OCR error:', err)
+    return res.status(500).json({ success: false, error: 'OCR failed: ' + err.message })
+  }
+})
+
 // POST /api/import/parse
 router.post('/parse', requireAuth, upload.single('file'), async (req, res) => {
   if (!req.file) {

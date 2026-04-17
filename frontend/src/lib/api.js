@@ -127,6 +127,11 @@ export const importApi = {
     form.append('file', file)
     return unwrap(api.post('/import/parse', form, { headers: { 'Content-Type': 'multipart/form-data' } }))
   },
+  photoImport: (file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return unwrap(api.post('/import/photo', form, { headers: { 'Content-Type': 'multipart/form-data' } }))
+  },
 }
 
 // ── Inventory (Surplus Parts Catalog) ────────────────────────────────────────

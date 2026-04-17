@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Search, Plus, X, ChevronRight, Car, Package, Archive, RefreshCw, Upload } from 'lucide-react'
+import { Search, Plus, X, ChevronRight, Car, Package, Archive, RefreshCw, Upload, Camera } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { rosApi, vendorsApi } from '@/lib/api'
 import { formatDate, STAGE_COLORS } from '@/lib/utils'
@@ -319,6 +319,16 @@ export default function ROList() {
           </button>
         )}
       </div>
+
+      {/* Photo Import FAB */}
+      <motion.button
+        whileTap={{ scale: 0.93 }}
+        onClick={() => setImportOpen(true)}
+        className="fixed bottom-20 right-36 z-30 w-14 h-14 rounded-2xl bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center shadow-xl"
+        title="Photo Import — point camera at estimate"
+      >
+        <Camera size={22} strokeWidth={2} />
+      </motion.button>
 
       {/* Import FAB */}
       <motion.button

@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Upload, Trash2, Plus, Check, AlertCircle } from 'lucide-react'
+import { Upload, Trash2, Plus, Check, AlertCircle, Camera, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { importApi, vendorsApi, rosApi, partsApi } from '@/lib/api'
 import Modal from '@/components/ui/Modal'
@@ -14,9 +14,11 @@ export default function ImportPartsModal({ open, onClose }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const fileInputRef = useRef(null)
+  const photoInputRef = useRef(null)
 
   const [step, setStep] = useState('upload') // 'upload' | 'review'
   const [parsing, setParsing] = useState(false)
+  const [parsingMode, setParsingMode] = useState('pdf') // 'pdf' | 'photo'
   const [parseError, setParseError] = useState(null)
   const [dragOver, setDragOver] = useState(false)
   const [form, setForm] = useState(null)
@@ -34,6 +36,7 @@ export default function ImportPartsModal({ open, onClose }) {
       return
     }
     setParsing(true)
+    setParsingMode('pdf')
     setParseError(null)
     try {
       const data = await importApi.parse(file)
@@ -49,6 +52,30 @@ export default function ImportPartsModal({ open, onClose }) {
       setStep('review')
     } catch (err) {
       setParseError(err.message || 'Failed to read PDF. Make sure it is a CCC ONE Parts List export.')
+    } finally {
+      setParsing(false)
+    }
+  }
+
+  const handlePhotoFile = async (file) => {
+    if (!file) return
+    setParsing(true)
+    setParsingMode('photo')
+    setParseError(null)
+    try {
+      const data = await importApi.photoImport(file)
+      setForm({
+        roNumber: data.roNumber || '',
+        vehicleYear: data.vehicleYear || '',
+        vehicleMake: data.vehicleMake || '',
+        vehicleModel: data.vehicleModel || '',
+        vin: data.vin || '',
+        vendorId: '',
+        parts: data.parts.map((p, i) => ({ _key: i, ...p })),
+      })
+      setStep('review')
+    } catch (err) {
+      setParseError(err.message || 'Could not read estimate from image. Make sure the estimate is flat, well-lit, and in focus.')
     } finally {
       setParsing(false)
     }
@@ -157,6 +184,7 @@ export default function ImportPartsModal({ open, onClose }) {
     setForm(null)
     setParseError(null)
     setParsing(false)
+    setParsingMode('pdf')
     setDragOver(false)
     onClose()
   }
@@ -195,6 +223,7 @@ export default function ImportPartsModal({ open, onClose }) {
       {/* ── Step 1: Upload ── */}
       {step === 'upload' && (
         <div className="space-y-4">
+          {/* PDF drop zone */}
           <div
             onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
             onDragLeave={() => setDragOver(false)}
@@ -216,7 +245,7 @@ export default function ImportPartsModal({ open, onClose }) {
               onChange={(e) => handleFile(e.target.files[0])}
             />
 
-            {parsing ? (
+            {parsing && parsingMode === 'pdf' ? (
               <div className="flex flex-col items-center gap-3">
                 <Spinner size="lg" />
                 <p className="text-sm text-gray-400">Reading estimate…</p>
@@ -233,6 +262,49 @@ export default function ImportPartsModal({ open, onClose }) {
               </div>
             )}
           </div>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-gray-700/60" />
+            <span className="text-xs text-gray-600 font-medium">or</span>
+            <div className="flex-1 h-px bg-gray-700/60" />
+          </div>
+
+          {/* Photo import button */}
+          <button
+            disabled={parsing}
+            onClick={() => !parsing && photoInputRef.current?.click()}
+            className={`w-full flex items-center justify-center gap-2.5 py-3.5 rounded-2xl border transition-colors select-none ${
+              parsing && parsingMode === 'photo'
+                ? 'border-gray-700 bg-gray-800/30 cursor-default text-gray-500'
+                : 'border-gray-700 hover:border-gray-500 bg-gray-800/40 hover:bg-gray-700/50 cursor-pointer text-gray-300 hover:text-gray-100'
+            }`}
+          >
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) handlePhotoFile(file)
+                e.target.value = ''
+              }}
+            />
+            {parsing && parsingMode === 'photo' ? (
+              <>
+                <Loader2 size={18} className="animate-spin text-gray-400" />
+                <span className="text-sm font-medium text-gray-400">Reading image…</span>
+              </>
+            ) : (
+              <>
+                <Camera size={18} className="text-gray-400" />
+                <span className="text-sm font-medium">Photo Import</span>
+                <span className="text-xs text-gray-600 ml-1">— point at estimate</span>
+              </>
+            )}
+          </button>
 
           {parseError && (
             <div className="flex items-start gap-2 p-3 bg-red-950/40 border border-red-800/50 rounded-xl">
