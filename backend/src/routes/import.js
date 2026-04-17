@@ -260,6 +260,88 @@ function parseCCCText(text) {
   return { roNumber, vin, vehicleYear, vehicleMake, vehicleModel, parts }
 }
 
+// ── Lenient fallback parser — no header needed ────────────────────────────────
+// Scans every line for anything that looks like a part: has a description
+// and optionally a part number / price. Used when the strict parser finds nothing.
+function parseCCCTextLenient(text) {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 2)
+  let roNumber = null, vehicleYear = null, vehicleMake = null, vehicleModel = null, vin = null
+  const parts = []
+  const seen = new Set()
+
+  for (const line of lines) {
+    // Still try to extract metadata
+    if (!roNumber) {
+      const m = line.match(/RO\s*(?:Number|#|No\.?)[\s:]*(\d+)/i)
+      if (m) roNumber = m[1]
+    }
+    if (!vin) {
+      const m = line.match(/VIN[\s:]*([A-HJ-NPR-Z0-9]{17})/i)
+      if (m) vin = m[1]
+    }
+    if (!vehicleYear) {
+      const m = line.match(/^(\d{4})\s+([A-Z]{2,5})\s+(\S+)/)
+      if (m) {
+        vehicleYear = m[1]
+        vehicleMake = MAKE_MAP[m[2]] || m[2]
+        vehicleModel = m[3]
+      }
+    }
+
+    // Skip obvious non-part lines
+    if (/^(Page|Date|Total|Subtotal|Tax|Labor|Parts|PARTS|Estimate|CCC|Insurance|Owner|Customer|VIN|RO|Adjuster)/i.test(line)) continue
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(line)) continue
+    if (line.length < 4) continue
+
+    // Split on 2+ spaces
+    const cols = line.split(/\s{2,}/).map(c => c.trim()).filter(Boolean)
+    if (cols.length < 1) continue
+
+    // Extract price from last token
+    let price = null
+    if (cols.length > 1) {
+      const pm = cols[cols.length - 1].match(/^\$?([\d,]+\.\d{2})$/)
+      if (pm) { price = parseFloat(pm[1].replace(/,/g, '')); cols.pop() }
+    }
+
+    // Extract qty
+    let qty = 1
+    if (cols.length > 1) {
+      const qm = cols[cols.length - 1].match(/^(\d{1,2})$/)
+      if (qm) { qty = parseInt(qm[1]) || 1; cols.pop() }
+    }
+
+    // Strip leading line number
+    if (cols.length > 0 && /^\d{1,3}$/.test(cols[0])) cols.shift()
+    if (cols.length === 0) continue
+
+    // Must have at least a description that looks like a real part name (not a number)
+    let description = ''
+    let partNumber = null
+    const last = cols[cols.length - 1]
+    const looksLikePart = cols.length > 1 && /^[A-Z0-9][A-Z0-9\-]{3,}$/i.test(last) && /\d/.test(last)
+    if (looksLikePart) {
+      partNumber = last
+      description = cols.slice(0, -1).join(' ').trim()
+    } else {
+      description = cols.join(' ').trim()
+    }
+
+    // Skip pure-number descriptions or single characters
+    if (!description || /^\d+$/.test(description) || description.length < 3) continue
+    // Skip all-caps short words that are likely headers
+    if (/^[A-Z\s]{1,6}$/.test(description)) continue
+
+    const key = description.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+
+    parts.push({ description, partNumber: partNumber || null, qty, price })
+  }
+
+  return { roNumber, vin, vehicleYear, vehicleMake, vehicleModel, parts }
+}
+
 // POST /api/import/photo
 const photoUpload = multer({
   storage: multer.memoryStorage(),
@@ -282,20 +364,29 @@ router.post('/photo', requireAuth, photoUpload.single('file'), async (req, res) 
     worker = await createWorker('eng')
     const { data: { text } } = await worker.recognize(req.file.buffer)
     await worker.terminate()
+    worker = null
 
-    if (!text || text.trim().length < 50) {
+    const extracted = (text || '').trim()
+    console.log(`[photo-ocr] extracted ${extracted.length} chars`)
+
+    if (extracted.length < 10) {
       return res.status(422).json({
         success: false,
-        error: 'Could not read text from image. Please ensure the estimate is flat, well-lit, and in focus.',
+        error: 'Could not read any text from the image. Make sure the estimate is flat, well-lit, and in focus.',
       })
     }
 
-    const result = parseCCCText(text)
+    const result = parseCCCText(extracted)
 
+    // If strict parse found nothing, try the lenient fallback
     if (!result.parts || result.parts.length === 0) {
+      const fallback = parseCCCTextLenient(extracted)
+      if (fallback.parts && fallback.parts.length > 0) {
+        return res.json({ success: true, data: { ...result, ...fallback } })
+      }
       return res.status(422).json({
         success: false,
-        error: 'No parts found in the image. Make sure you are photographing a CCC ONE Parts List and that the table is visible.',
+        error: `Image was read (${extracted.length} characters) but no parts table was found. Make sure the Parts List section is visible and in frame. Tip: capture just the parts table, not the full screen.`,
       })
     }
 
