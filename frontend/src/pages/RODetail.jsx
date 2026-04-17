@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Edit2, Check, X, Plus, Trash2, Upload, FileText,
   Package, RotateCcw, Archive, ArchiveRestore, ChevronDown, ChevronUp,
-  ExternalLink, Clock, Send, Camera, Loader2
+  ExternalLink, Clock, Send, Camera, Loader2, CheckCheck
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api, { rosApi, partsApi, invoicesApi, srcApi, vendorsApi, telegramApi, inventoryApi } from '@/lib/api'
@@ -324,7 +324,10 @@ function AuthImage({ photoId, filename }) {
 function PartRow({ part, roId, inventoryMatch }) {
   const queryClient = useQueryClient()
   const fileInputRef = useRef(null)
+  const noteRef = useRef(null)
   const [stockModalOpen, setStockModalOpen] = useState(false)
+  const [editingNote, setEditingNote] = useState(false)
+  const [noteValue, setNoteValue] = useState(part.notes || '')
 
   const updateMutation = useMutation({
     mutationFn: (data) => partsApi.update(part.id, data),
@@ -354,6 +357,26 @@ function PartRow({ part, roId, inventoryMatch }) {
     },
     onError: (err) => toast.error(err.message),
   })
+
+  const noteMutation = useMutation({
+    mutationFn: (notes) => partsApi.update(part.id, { notes }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ro', roId] }),
+    onError: (err) => toast.error(err.message),
+  })
+
+  const saveNote = () => {
+    const trimmed = noteValue.trim()
+    if (trimmed !== (part.notes || '').trim()) {
+      noteMutation.mutate(trimmed || null)
+    }
+    setEditingNote(false)
+  }
+
+  const openNote = () => {
+    setNoteValue(part.notes || '')
+    setEditingNote(true)
+    setTimeout(() => noteRef.current?.focus(), 0)
+  }
 
   const handlePhotoFile = (e) => {
     const file = e.target.files?.[0]
@@ -424,6 +447,39 @@ function PartRow({ part, roId, inventoryMatch }) {
               ))}
             </div>
           )}
+
+          {/* Inline note */}
+          <div className="mt-2">
+            {editingNote ? (
+              <textarea
+                ref={noteRef}
+                value={noteValue}
+                onChange={(e) => setNoteValue(e.target.value)}
+                onBlur={saveNote}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveNote() }
+                  if (e.key === 'Escape') { setNoteValue(part.notes || ''); setEditingNote(false) }
+                }}
+                rows={2}
+                placeholder="Add a note…"
+                className="w-full text-xs bg-gray-800/80 border border-gray-600/60 rounded-lg px-2.5 py-1.5 text-gray-300 placeholder-gray-600 resize-none focus:outline-none focus:border-blue-500/50"
+              />
+            ) : part.notes ? (
+              <button
+                onClick={openNote}
+                className="text-left w-full text-xs text-gray-500 italic hover:text-gray-400 transition-colors"
+              >
+                {part.notes}
+              </button>
+            ) : (
+              <button
+                onClick={openNote}
+                className="text-xs text-gray-700 hover:text-gray-500 transition-colors italic"
+              >
+                + Add note
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Camera + Delete */}
@@ -510,6 +566,15 @@ export default function RODetail() {
       toast.success(ro.archived ? 'RO unarchived' : 'RO archived')
     },
     onError: (err) => toast.error(err.message),
+  })
+
+  const bulkReceivedMutation = useMutation({
+    mutationFn: () => partsApi.bulkReceived(id),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['ro', id] })
+      toast.success(`${data?.count ?? 'All'} parts marked received`)
+    },
+    onError: (err) => toast.error(err.message || 'Failed to mark parts received'),
   })
 
   const aphMutation = useMutation({
@@ -649,12 +714,31 @@ export default function RODetail() {
         <Section
           title={`Parts (${parts.length})`}
           action={
-            <button
-              onClick={() => setAddPartOpen(true)}
-              className="flex items-center gap-1 text-xs text-blue-400 font-semibold"
-            >
-              <Plus size={14} /> Add
-            </button>
+            <div className="flex items-center gap-2">
+              {parts.some((p) => !p.isReceived) && (
+                <button
+                  onClick={() => {
+                    if (window.confirm('Mark all remaining parts as received?')) {
+                      bulkReceivedMutation.mutate()
+                    }
+                  }}
+                  disabled={bulkReceivedMutation.isPending}
+                  className="flex items-center gap-1 text-xs text-emerald-400 font-semibold disabled:opacity-50"
+                  title="Mark all parts received"
+                >
+                  {bulkReceivedMutation.isPending
+                    ? <Loader2 size={13} className="animate-spin" />
+                    : <CheckCheck size={13} />}
+                  All Received
+                </button>
+              )}
+              <button
+                onClick={() => setAddPartOpen(true)}
+                className="flex items-center gap-1 text-xs text-blue-400 font-semibold"
+              >
+                <Plus size={14} /> Add
+              </button>
+            </div>
           }
         >
           {parts.length === 0 ? (

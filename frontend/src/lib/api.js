@@ -60,6 +60,7 @@ export const partsApi = {
   create: (roId, data) => unwrap(api.post(`/parts/ro/${roId}`, data)),
   update: (id, data) => unwrap(api.put(`/parts/${id}`, data)),
   remove: (id) => unwrap(api.delete(`/parts/${id}`)),
+  bulkReceived: (roId) => unwrap(api.post(`/parts/bulk-received/${roId}`)),
   uploadPhoto: (partId, file) => {
     const form = new FormData()
     form.append('file', file)

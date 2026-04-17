@@ -124,6 +124,41 @@ router.post('/ro/:roId', requireAuth, async (req, res) => {
   }
 })
 
+// POST /api/parts/bulk-received/:roId — mark all unrecieved parts on an RO as received
+router.post('/bulk-received/:roId', requireAuth, async (req, res) => {
+  const roId = parseInt(req.params.roId)
+  const username = req.user?.username || 'unknown'
+
+  try {
+    const ro = await prisma.rO.findUnique({ where: { id: roId } })
+    if (!ro) {
+      return res.status(404).json({ success: false, error: 'RO not found.' })
+    }
+
+    const result = await prisma.part.updateMany({
+      where: { roId, isReceived: false },
+      data: { isReceived: true, receivedAt: new Date() },
+    })
+
+    if (result.count > 0) {
+      await syncROPartsStatus(roId)
+
+      await prisma.activityLog.create({
+        data: {
+          roId,
+          eventType: 'PARTS_BULK_RECEIVED',
+          message: `All parts marked as received by ${username}`,
+        },
+      })
+    }
+
+    return res.json({ success: true, data: { count: result.count } })
+  } catch (err) {
+    console.error('Bulk received error:', err)
+    return res.status(500).json({ success: false, error: err.message })
+  }
+})
+
 // PUT /api/parts/:id — update a part
 router.put('/:id', requireAuth, async (req, res) => {
   const id = parseInt(req.params.id)
@@ -137,6 +172,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     isReceived,
     hasCore,
     price,
+    notes,
   } = req.body
 
   try {
@@ -154,6 +190,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     if (finishStatus !== undefined) updateData.finishStatus = finishStatus
     if (hasCore !== undefined) updateData.hasCore = Boolean(hasCore)
     if (price !== undefined) updateData.price = price != null ? price : null
+    if (notes !== undefined) updateData.notes = notes || null
 
     // Handle received status change
     if (isReceived !== undefined) {
