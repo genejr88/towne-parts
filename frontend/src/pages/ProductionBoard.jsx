@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChevronLeft, ChevronRight, Car, FileText, Check, ClipboardList, X, Clock, Truck,
+  Search, Package, CheckCircle2, XCircle,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { productionApi, rosApi } from '@/lib/api'
@@ -34,6 +35,87 @@ function StageButton({ stage, active, onClick }) {
     >
       {stage}
     </button>
+  )
+}
+
+// ── Parts Sheet ──────────────────────────────────────────────────────────────
+function PartsSheet({ open, onClose, parts, roNumber }) {
+  const received = parts.filter((p) => p.isReceived)
+  const pending  = parts.filter((p) => !p.isReceived)
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 z-40"
+            onClick={onClose}
+          />
+          <motion.div
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', stiffness: 300, damping: 35 }}
+            className="fixed bottom-0 left-0 right-0 z-50 bg-gray-900 border-t border-gray-700/60 rounded-t-2xl max-h-[75vh] flex flex-col"
+          >
+            <div className="flex items-center justify-between px-4 py-4 border-b border-gray-800/60 shrink-0">
+              <div className="flex items-center gap-2">
+                <Package size={17} className="text-blue-400" />
+                <h2 className="text-base font-bold text-gray-100">Parts — RO #{roNumber}</h2>
+              </div>
+              <button onClick={onClose} className="text-gray-500 hover:text-gray-300 p-1">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* Pending */}
+              {pending.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-red-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <XCircle size={13} /> Missing / Not Received ({pending.length})
+                  </p>
+                  <div className="space-y-1.5">
+                    {pending.map((p) => (
+                      <div key={p.id} className="bg-red-950/30 border border-red-900/40 rounded-lg px-3 py-2">
+                        <p className="text-sm text-gray-200">{p.description || '(no description)'}</p>
+                        {p.partNumber && <p className="text-xs text-gray-500 mt-0.5">#{p.partNumber}</p>}
+                        {p.qty > 1 && <p className="text-xs text-gray-500">Qty: {p.qty}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Received */}
+              {received.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <CheckCircle2 size={13} /> Received ({received.length})
+                  </p>
+                  <div className="space-y-1.5">
+                    {received.map((p) => (
+                      <div key={p.id} className="bg-emerald-950/30 border border-emerald-900/40 rounded-lg px-3 py-2">
+                        <p className="text-sm text-gray-200">{p.description || '(no description)'}</p>
+                        {p.partNumber && <p className="text-xs text-gray-500 mt-0.5">#{p.partNumber}</p>}
+                        {p.qty > 1 && <p className="text-xs text-gray-500">Qty: {p.qty}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {parts.length === 0 && (
+                <p className="text-center text-gray-500 text-sm py-8">No parts on this RO</p>
+              )}
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
   )
 }
 
@@ -128,13 +210,18 @@ export default function ProductionBoard() {
   const [saved, setSaved] = useState(false)
   const [logOpen, setLogOpen] = useState(false)
   const [confirmDeliver, setConfirmDeliver] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [partsOpen, setPartsOpen] = useState(false)
+  const searchRef = useRef(null)
   const saveTimeout = useRef(null)
   const touchStart = useRef(null) // { x, y }
 
   const { data: ros, isLoading } = useQuery({
     queryKey: ['production'],
     queryFn: productionApi.list,
-    refetchInterval: 60_000,
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
   })
 
   const mutation = useMutation({
@@ -168,6 +255,37 @@ export default function ProductionBoard() {
   const activeROs = (ros?.filter((r) => !r.isArchived) || [])
     .sort((a, b) => (parseInt(a.roNumber, 10) || 0) - (parseInt(b.roNumber, 10) || 0))
   const currentRO = activeROs[index]
+
+  // Search results
+  const searchResults = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return []
+    return activeROs.filter((r) =>
+      r.roNumber?.toLowerCase().includes(q) ||
+      r.vehicleMake?.toLowerCase().includes(q) ||
+      r.vehicleModel?.toLowerCase().includes(q)
+    ).slice(0, 8)
+  }, [searchQuery, activeROs])
+
+  const jumpTo = (ro) => {
+    const idx = activeROs.findIndex((r) => r.id === ro.id)
+    if (idx !== -1) saveAndNavigate(idx)
+    setSearchOpen(false)
+    setSearchQuery('')
+  }
+
+  // Close search on outside click
+  useEffect(() => {
+    if (!searchOpen) return
+    const handler = (e) => {
+      if (searchRef.current && !searchRef.current.contains(e.target)) {
+        setSearchOpen(false)
+        setSearchQuery('')
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [searchOpen])
 
   // Merge local edits over server data
   const getState = (ro) => {
@@ -216,10 +334,10 @@ export default function ProductionBoard() {
 
   // Keyboard arrow keys — stable ref so listener is added once (not torn down on every keystroke)
   const navRef = useRef({})
-  navRef.current = { goPrev, goNext, logOpen }
+  navRef.current = { goPrev, goNext, logOpen, partsOpen, searchOpen }
   useEffect(() => {
     const onKey = (e) => {
-      if (navRef.current.logOpen) return
+      if (navRef.current.logOpen || navRef.current.partsOpen || navRef.current.searchOpen) return
       if (e.key === 'ArrowLeft') navRef.current.goPrev()
       if (e.key === 'ArrowRight') navRef.current.goNext()
     }
@@ -268,23 +386,70 @@ export default function ProductionBoard() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Top bar: counter + save status + log button */}
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-950 border-b border-gray-800/60 shrink-0 sm:px-6">
-        <span className="text-sm font-medium text-gray-400">
+      {/* Top bar: counter + search + save status + log button */}
+      <div className="flex items-center justify-between px-4 py-2 bg-gray-950 border-b border-gray-800/60 shrink-0 sm:px-6 gap-2">
+        <span className="text-sm font-medium text-gray-400 shrink-0">
           {index + 1} <span className="text-gray-600">of</span> {activeROs.length}
         </span>
-        <div className="flex items-center gap-3">
+
+        {/* Search */}
+        <div ref={searchRef} className="relative flex-1 max-w-[200px]">
+          {searchOpen ? (
+            <input
+              autoFocus
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Escape' && (setSearchOpen(false), setSearchQuery(''))}
+              placeholder="RO #, make, model…"
+              className="w-full bg-gray-800 border border-gray-600 rounded-lg px-2.5 py-1 text-xs text-gray-100 placeholder-gray-500 outline-none focus:border-blue-500"
+            />
+          ) : (
+            <button
+              onClick={() => setSearchOpen(true)}
+              className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-200 px-2 py-1 rounded-lg bg-gray-800/60 border border-gray-700/50 transition-colors"
+            >
+              <Search size={13} />
+              Jump to RO
+            </button>
+          )}
+
+          {/* Dropdown results */}
+          <AnimatePresence>
+            {searchOpen && searchResults.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="absolute top-full left-0 right-0 mt-1 bg-gray-800 border border-gray-700 rounded-xl shadow-xl z-50 overflow-hidden"
+              >
+                {searchResults.map((r) => (
+                  <button
+                    key={r.id}
+                    onClick={() => jumpTo(r)}
+                    className="w-full text-left px-3 py-2 hover:bg-gray-700 transition-colors border-b border-gray-700/50 last:border-0"
+                  >
+                    <span className="text-sm font-bold text-gray-100 font-mono">{r.roNumber}</span>
+                    <span className="text-xs text-gray-400 ml-2">
+                      {[r.vehicleYear, r.vehicleMake, r.vehicleModel].filter(Boolean).join(' ')}
+                    </span>
+                  </button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
           <div className="flex items-center gap-1.5 text-xs text-gray-500">
             {saving && <><Spinner size="sm" /><span>Saving…</span></>}
             {!saving && saved && <><Check size={13} className="text-emerald-400" /><span className="text-emerald-400">Saved</span></>}
-            {!saving && !saved && <span>Auto-saves</span>}
           </div>
           <button
             onClick={() => setLogOpen(true)}
             className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 px-2 py-1 rounded-lg bg-blue-950/40 border border-blue-900/50 transition-colors"
           >
             <ClipboardList size={13} />
-            Today's Log
+            Log
           </button>
         </div>
       </div>
@@ -336,9 +501,12 @@ export default function ProductionBoard() {
                 )}
               </div>
 
-              {/* Parts summary */}
+              {/* Parts summary — tap to see full list */}
               {ro.parts && ro.parts.length > 0 && (
-                <div className="bg-gray-900/60 rounded-xl p-3 text-xs">
+                <button
+                  onClick={() => setPartsOpen(true)}
+                  className="w-full bg-gray-900/60 rounded-xl p-3 text-xs text-left hover:bg-gray-900/80 transition-colors active:bg-gray-900"
+                >
                   <div className="flex gap-6 text-center">
                     <div>
                       <p className="text-gray-500">Total</p>
@@ -356,8 +524,12 @@ export default function ProductionBoard() {
                         {ro.parts.filter((p) => !p.isReceived).length}
                       </p>
                     </div>
+                    <div className="ml-auto flex items-center text-gray-600 text-xs gap-1">
+                      <Package size={11} />
+                      <span>View</span>
+                    </div>
                   </div>
-                </div>
+                </button>
               )}
             </div>
 
@@ -504,6 +676,9 @@ export default function ProductionBoard() {
 
       {/* Daily log sheet */}
       <DailyLogSheet open={logOpen} onClose={() => setLogOpen(false)} />
+
+      {/* Parts sheet */}
+      <PartsSheet open={partsOpen} onClose={() => setPartsOpen(false)} parts={ro?.parts || []} roNumber={ro?.roNumber} />
     </div>
   )
 }
