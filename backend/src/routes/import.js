@@ -10,7 +10,7 @@ const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024 },
 })
 
-// CCC ONE make abbreviation map
+// CCC ONE make abbreviation map — ONLY recognized codes match as vehicle lines
 const MAKE_MAP = {
   PORS: 'Porsche', HOND: 'Honda', TOYT: 'Toyota', CHEV: 'Chevrolet', FORD: 'Ford',
   NISS: 'Nissan', DODG: 'Dodge', SUBA: 'Subaru', MERZ: 'Mercedes-Benz', AUDI: 'Audi',
@@ -18,6 +18,9 @@ const MAKE_MAP = {
   MITS: 'Mitsubishi', MZDA: 'Mazda', VOLV: 'Volvo', ACUR: 'Acura', INFI: 'Infiniti',
   LEXS: 'Lexus', CADI: 'Cadillac', BUIC: 'Buick', GMC: 'GMC', LINC: 'Lincoln',
   CHRY: 'Chrysler', FIAT: 'Fiat', MINI: 'MINI', LAND: 'Land Rover', JAGR: 'Jaguar',
+  PONT: 'Pontiac', OLDS: 'Oldsmobile', SATU: 'Saturn', ISZU: 'Isuzu', SUZK: 'Suzuki',
+  TESL: 'Tesla', ALFA: 'Alfa Romeo', GNSS: 'Genesis', HUMD: 'Hummer', PLYM: 'Plymouth',
+  SCIN: 'Scion', SMRT: 'Smart', STRN: 'Saturn', RIVN: 'Rivian', LCVR: 'Land Cruiser',
 }
 
 // CCC ONE Parts List column x-ranges (points from left margin)
@@ -102,11 +105,11 @@ async function parseCCCPDF(buffer) {
     // Vehicle info: "YYYY MAKE Model AWD 4D ..."
     if (!vehicleYear) {
       const vehM = joined.match(
-        /^(\d{4})\s+([A-Z]{2,5})\s+(.+?)(?:\s+\d+D\s|\s+AWD\b|\s+FWD\b|\s+4WD\b|\s+RWD\b|$)/
+        /^(\d{4})\s+([A-Z]{2,5})\s+(.+?)(?:\s+\d+D\b|\s+AWD\b|\s+FWD\b|\s+4WD\b|\s+RWD\b|$)/
       )
-      if (vehM) {
+      if (vehM && MAKE_MAP[vehM[2]]) {
         vehicleYear = vehM[1]
-        vehicleMake = MAKE_MAP[vehM[2]] || vehM[2]
+        vehicleMake = MAKE_MAP[vehM[2]]
         vehicleModel = vehM[3].trim()
       }
     }
@@ -179,14 +182,14 @@ function parseCCCText(text) {
       if (vinM) vin = vinM[1]
     }
 
-    // Vehicle: "YYYY MAKE Model ..."
+    // Vehicle: "YYYY MAKE Model ..." — only match if make is a known CCC code
     if (!vehicleYear) {
       const vehM = line.match(
         /^(\d{4})\s+([A-Z]{2,5})\s+(.+?)(?:\s+\d+D\b|\s+AWD\b|\s+FWD\b|\s+4WD\b|\s+RWD\b|$)/
       )
-      if (vehM) {
+      if (vehM && MAKE_MAP[vehM[2]]) {
         vehicleYear = vehM[1]
-        vehicleMake = MAKE_MAP[vehM[2]] || vehM[2]
+        vehicleMake = MAKE_MAP[vehM[2]]
         vehicleModel = vehM[3].trim()
       }
     }
@@ -281,9 +284,9 @@ function parseCCCTextLenient(text) {
     }
     if (!vehicleYear) {
       const m = line.match(/^(\d{4})\s+([A-Z]{2,5})\s+(\S+)/)
-      if (m) {
+      if (m && MAKE_MAP[m[2]]) {
         vehicleYear = m[1]
-        vehicleMake = MAKE_MAP[m[2]] || m[2]
+        vehicleMake = MAKE_MAP[m[2]]
         vehicleModel = m[3]
       }
     }

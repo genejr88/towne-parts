@@ -13,7 +13,7 @@ router.get('/', requireAuth, async (req, res) => {
       include: {
         vendor: true,
         parts: {
-          select: { id: true, isReceived: true, finishStatus: true },
+          select: { id: true, isReceived: true, finishStatus: true, description: true, partNumber: true },
         },
         _count: { select: { srcEntries: true } },
       },
