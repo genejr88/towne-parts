@@ -158,4 +158,25 @@ export const inventoryApi = {
   photoUrl: (storedPath) => `${API_URL}/uploads/inventory/${storedPath}`,
 }
 
+// ── Private (BMW RO Tracking) ─────────────────────────────────────────────────
+export const privateApi = {
+  verify: (pin) => unwrap(api.post('/private/verify', { pin })),
+  listFiles: (pin) =>
+    unwrap(api.get('/private/files', { headers: { 'x-private-pin': pin } })),
+  uploadFile: (pin, file, caption) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    if (caption) fd.append('caption', caption)
+    return unwrap(
+      api.post('/private/upload', fd, {
+        headers: { 'Content-Type': 'multipart/form-data', 'x-private-pin': pin },
+      })
+    )
+  },
+  deleteFile: (pin, id) =>
+    unwrap(api.delete(`/private/files/${id}`, { headers: { 'x-private-pin': pin } })),
+  fileViewUrl: (id, pin) =>
+    `${API_URL}/api/private/files/${id}/view?pin=${encodeURIComponent(pin)}`,
+}
+
 export default api

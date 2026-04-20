@@ -170,6 +170,16 @@ model ActivityLog {
   @@map("activity_log")
 }
 
+model PrivateFile {
+  id               Int      @id @default(autoincrement())
+  storedPath       String
+  originalFilename String?
+  caption          String?
+  createdAt        DateTime @default(now())
+
+  @@map("private_files")
+}
+
 model InventoryPart {
   id          String               @id @default(cuid())
   partNumber  String?
