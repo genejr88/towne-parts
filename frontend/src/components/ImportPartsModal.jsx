@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Upload, Trash2, Plus, Check, AlertCircle, Camera, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { importApi, vendorsApi, rosApi, partsApi } from '@/lib/api'
+import { importApi, vendorsApi, rosApi, partsApi, invoicesApi } from '@/lib/api'
 import Modal from '@/components/ui/Modal'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
@@ -22,6 +22,7 @@ export default function ImportPartsModal({ open, onClose }) {
   const [parseError, setParseError] = useState(null)
   const [dragOver, setDragOver] = useState(false)
   const [form, setForm] = useState(null)
+  const [originalFile, setOriginalFile] = useState(null)
   const [submitting, setSubmitting] = useState(false)
 
   const { data: vendors } = useQuery({
@@ -40,6 +41,7 @@ export default function ImportPartsModal({ open, onClose }) {
     setParseError(null)
     try {
       const data = await importApi.parse(file)
+      setOriginalFile(file)
       setForm({
         roNumber: data.roNumber || '',
         vehicleYear: data.vehicleYear || '',
@@ -64,6 +66,7 @@ export default function ImportPartsModal({ open, onClose }) {
     setParseError(null)
     try {
       const data = await importApi.photoImport(file)
+      setOriginalFile(file)
       setForm({
         roNumber: data.roNumber || '',
         vehicleYear: data.vehicleYear || '',
@@ -162,6 +165,16 @@ export default function ImportPartsModal({ open, onClose }) {
         partsAdded++
       }
 
+      // Save the original parts list file attached to the RO
+      if (originalFile) {
+        try {
+          await invoicesApi.upload(ro.id, originalFile, 'PARTS_LIST')
+        } catch (_) {
+          // Non-fatal — parts are already imported, just log it
+          console.warn('Could not save original parts list file')
+        }
+      }
+
       await queryClient.invalidateQueries({ queryKey: ['ros'] })
       toast.success(
         isNew
@@ -182,6 +195,7 @@ export default function ImportPartsModal({ open, onClose }) {
     if (submitting) return
     setStep('upload')
     setForm(null)
+    setOriginalFile(null)
     setParseError(null)
     setParsing(false)
     setParsingMode('pdf')

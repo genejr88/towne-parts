@@ -52,20 +52,23 @@ router.post('/ro/:roId', requireAuth, upload.single('file'), async (req, res) =>
       return res.status(404).json({ success: false, error: 'RO not found.' })
     }
 
+    const fileType = req.body?.fileType === 'PARTS_LIST' ? 'PARTS_LIST' : 'INVOICE'
+
     const invoice = await prisma.rOInvoice.create({
       data: {
         roId,
         originalFilename: req.file.originalname,
         storedPath: req.file.filename,
         uploadedBy: req.user.username,
+        fileType,
       },
     })
 
     await prisma.activityLog.create({
       data: {
         roId,
-        eventType: 'INVOICE_UPLOADED',
-        message: `Invoice uploaded: ${req.file.originalname} by ${req.user.username}`,
+        eventType: fileType === 'PARTS_LIST' ? 'PARTS_LIST_SAVED' : 'INVOICE_UPLOADED',
+        message: `${fileType === 'PARTS_LIST' ? 'Parts list' : 'Invoice'} uploaded: ${req.file.originalname} by ${req.user.username}`,
       },
     })
 

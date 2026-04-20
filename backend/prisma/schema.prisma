@@ -115,6 +115,7 @@ model ROInvoice {
   originalFilename String?
   storedPath       String
   uploadedBy       String?
+  fileType         String   @default("INVOICE")
   createdAt        DateTime @default(now())
 
   @@map("ro_invoices")

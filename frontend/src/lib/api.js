@@ -80,9 +80,10 @@ export const productionApi = {
 // ── Invoices ──────────────────────────────────────────────────────────────────
 export const invoicesApi = {
   list: (roId) => unwrap(api.get(`/invoices/ro/${roId}`)),
-  upload: (roId, file) => {
+  upload: (roId, file, fileType = 'INVOICE') => {
     const form = new FormData()
     form.append('file', file)
+    form.append('fileType', fileType)
     return unwrap(
       api.post(`/invoices/ro/${roId}`, form, {
         headers: { 'Content-Type': 'multipart/form-data' },

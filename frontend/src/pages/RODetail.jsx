@@ -625,7 +625,9 @@ export default function RODetail() {
   }
 
   const parts = ro.parts || []
-  const invoices = ro.invoices || []
+  const allFiles = ro.invoices || []
+  const invoices = allFiles.filter(f => f.fileType !== 'PARTS_LIST')
+  const partsLists = allFiles.filter(f => f.fileType === 'PARTS_LIST')
   const srcEntries = ro.srcEntries || []
   const activity = ro.activityLog || []
 
@@ -749,6 +751,36 @@ export default function RODetail() {
             ))
           )}
         </Section>
+
+        {/* Parts Lists section */}
+        {partsLists.length > 0 && (
+          <Section title={`Parts Lists (${partsLists.length})`} defaultOpen={true}>
+            <div className="space-y-2">
+              {partsLists.map((f) => (
+                <div key={f.id} className="flex items-center gap-3 bg-gray-800 border border-gray-700/40 rounded-xl px-3.5 py-3">
+                  <FileText size={16} className="text-emerald-400 shrink-0" />
+                  <span className="flex-1 text-sm text-gray-200 truncate">{f.originalFilename || 'Parts List'}</span>
+                  <a
+                    href={invoicesApi.fileUrl(f.id)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-1.5 text-blue-400 hover:text-blue-300 transition-colors"
+                  >
+                    <ExternalLink size={15} />
+                  </a>
+                  <button
+                    onClick={() => {
+                      if (window.confirm('Remove this parts list?')) removeInvoiceMutation.mutate(f.id)
+                    }}
+                    className="p-1.5 text-gray-600 hover:text-red-400 transition-colors"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </Section>
+        )}
 
         {/* Invoices section */}
         <Section
