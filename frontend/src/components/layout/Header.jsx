@@ -68,7 +68,7 @@ export default function Header() {
       sessionStorage.setItem('private_pin', pinValue.trim())
       setPinModalOpen(false)
       setPinValue('')
-      navigate('/bmw')
+      navigate('/vault')
     } catch {
       setPinError('Incorrect PIN. Try again.')
       setPinValue('')

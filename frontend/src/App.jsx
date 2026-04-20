@@ -12,7 +12,7 @@ import ProductionBoard from '@/pages/ProductionBoard'
 import SRCTracker from '@/pages/SRCTracker'
 import Admin from '@/pages/Admin'
 import Inventory from '@/pages/Inventory'
-import BMWTracking from '@/pages/BMWTracking'
+import SecureVault from '@/pages/SecureVault'
 
 function ProtectedRoute({ children, adminOnly = false }) {
   const { user, loading } = useAuth()
@@ -73,8 +73,8 @@ export default function App() {
         <Route path="/inventory" element={
           <ProtectedRoute><AppLayout><Inventory /></AppLayout></ProtectedRoute>
         } />
-        <Route path="/bmw" element={
-          <ProtectedRoute><AppLayout><BMWTracking /></AppLayout></ProtectedRoute>
+        <Route path="/vault" element={
+          <ProtectedRoute><AppLayout><SecureVault /></AppLayout></ProtectedRoute>
         } />
 
         <Route path="*" element={<Navigate to="/ros" replace />} />
