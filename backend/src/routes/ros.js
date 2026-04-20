@@ -33,6 +33,7 @@ const RO_DETAIL_INCLUDE = {
     orderBy: { createdAt: 'asc' },
   },
   invoices: { orderBy: { createdAt: 'desc' } },
+  locationPhotos: { orderBy: { createdAt: 'asc' } },
   srcEntries: { orderBy: { createdAt: 'desc' } },
   activityLog: { orderBy: { createdAt: 'desc' } },
 }
@@ -280,8 +281,8 @@ router.post('/:id/unarchive', requireAuth, requireAdmin, async (req, res) => {
   }
 })
 
-// POST /api/ros/:id/location-photo — upload or replace location photo
-router.post('/:id/location-photo', requireAuth, locationUpload.single('photo'), async (req, res) => {
+// POST /api/ros/:id/location-photos — add a location photo
+router.post('/:id/location-photos', requireAuth, locationUpload.single('photo'), async (req, res) => {
   const id = parseInt(req.params.id)
   if (!req.file) return res.status(400).json({ success: false, error: 'No photo uploaded.' })
 
@@ -292,20 +293,15 @@ router.post('/:id/location-photo', requireAuth, locationUpload.single('photo'), 
       return res.status(404).json({ success: false, error: 'RO not found.' })
     }
 
-    // Delete old location photo from disk if it exists
-    if (existing.locationPhotoUrl) {
-      const oldPath = path.join(locationDir, path.basename(existing.locationPhotoUrl))
-      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath)
-    }
-
-    const locationPhotoUrl = `location/${req.file.filename}`
-    const ro = await prisma.rO.update({
-      where: { id },
-      data: { locationPhotoUrl },
-      include: RO_DETAIL_INCLUDE,
+    const photo = await prisma.rOLocationPhoto.create({
+      data: {
+        roId: id,
+        storedPath: `location/${req.file.filename}`,
+        caption: req.body?.caption || null,
+      },
     })
 
-    return res.json({ success: true, data: ro })
+    return res.status(201).json({ success: true, data: photo })
   } catch (err) {
     if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path)
     console.error('Location photo upload error:', err)
@@ -313,25 +309,18 @@ router.post('/:id/location-photo', requireAuth, locationUpload.single('photo'), 
   }
 })
 
-// DELETE /api/ros/:id/location-photo — remove location photo
-router.delete('/:id/location-photo', requireAuth, async (req, res) => {
-  const id = parseInt(req.params.id)
+// DELETE /api/ros/:id/location-photos/:photoId — delete one location photo
+router.delete('/:id/location-photos/:photoId', requireAuth, async (req, res) => {
+  const photoId = parseInt(req.params.photoId)
   try {
-    const existing = await prisma.rO.findUnique({ where: { id } })
-    if (!existing) return res.status(404).json({ success: false, error: 'RO not found.' })
+    const photo = await prisma.rOLocationPhoto.findUnique({ where: { id: photoId } })
+    if (!photo) return res.status(404).json({ success: false, error: 'Photo not found.' })
 
-    if (existing.locationPhotoUrl) {
-      const oldPath = path.join(locationDir, path.basename(existing.locationPhotoUrl))
-      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath)
-    }
+    const filePath = path.join(locationDir, path.basename(photo.storedPath))
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
 
-    const ro = await prisma.rO.update({
-      where: { id },
-      data: { locationPhotoUrl: null },
-      include: RO_DETAIL_INCLUDE,
-    })
-
-    return res.json({ success: true, data: ro })
+    await prisma.rOLocationPhoto.delete({ where: { id: photoId } })
+    return res.json({ success: true, data: { id: photoId } })
   } catch (err) {
     console.error('Delete location photo error:', err)
     return res.status(500).json({ success: false, error: err.message })

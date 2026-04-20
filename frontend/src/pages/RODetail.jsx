@@ -583,20 +583,20 @@ export default function RODetail() {
     onError: (err) => toast.error(err.message || 'Failed to send Telegram'),
   })
 
-  const locationPhotoMutation = useMutation({
-    mutationFn: (file) => rosApi.uploadLocationPhoto(id, file),
+  const addLocationPhotoMutation = useMutation({
+    mutationFn: (file) => rosApi.addLocationPhoto(id, file),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ro', id] })
-      toast.success('Location photo saved')
+      toast.success('Location photo added')
     },
     onError: (err) => toast.error(err.message || 'Upload failed'),
   })
 
   const deleteLocationPhotoMutation = useMutation({
-    mutationFn: () => rosApi.deleteLocationPhoto(id),
+    mutationFn: (photoId) => rosApi.deleteLocationPhoto(id, photoId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ro', id] })
-      toast.success('Location photo removed')
+      toast.success('Photo removed')
     },
     onError: (err) => toast.error(err.message),
   })
@@ -677,13 +677,15 @@ export default function RODetail() {
       </div>
 
       <div className="px-4 py-4">
-        {/* Location Photo */}
+        {/* Location Photos */}
         <div className="mb-3">
           <div className="flex items-center justify-between mb-1.5">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Location</p>
-            <label className={`flex items-center gap-1 text-xs font-semibold cursor-pointer transition-colors ${locationPhotoMutation.isPending ? 'text-gray-500 pointer-events-none' : 'text-blue-400 hover:text-blue-300'}`}>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              Location {ro.locationPhotos?.length > 0 && `(${ro.locationPhotos.length})`}
+            </p>
+            <label className={`flex items-center gap-1 text-xs font-semibold cursor-pointer transition-colors ${addLocationPhotoMutation.isPending ? 'text-gray-500 pointer-events-none' : 'text-blue-400 hover:text-blue-300'}`}>
               <Camera size={13} />
-              {locationPhotoMutation.isPending ? 'Saving...' : ro.locationPhotoUrl ? 'Replace' : 'Add Photo'}
+              {addLocationPhotoMutation.isPending ? 'Saving...' : '+ Add Photo'}
               <input
                 type="file"
                 accept="image/*"
@@ -691,33 +693,53 @@ export default function RODetail() {
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0]
-                  if (file) locationPhotoMutation.mutate(file)
+                  if (file) addLocationPhotoMutation.mutate(file)
                   e.target.value = ''
                 }}
               />
             </label>
           </div>
 
-          {ro.locationPhotoUrl ? (
-            <div className="relative rounded-xl overflow-hidden border border-gray-700/50 bg-gray-800/60">
-              <img
-                src={rosApi.locationPhotoUrl(ro.locationPhotoUrl)}
-                alt="Parts location"
-                className="w-full object-cover max-h-52"
-              />
-              <button
-                onClick={() => {
-                  if (window.confirm('Remove location photo?')) deleteLocationPhotoMutation.mutate()
-                }}
-                className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/60 text-gray-300 hover:text-red-400 transition-colors"
-              >
-                <X size={14} />
-              </button>
+          {ro.locationPhotos?.length > 0 ? (
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+              {ro.locationPhotos.map((photo) => (
+                <div key={photo.id} className="relative flex-shrink-0 w-36 h-36 rounded-xl overflow-hidden border border-gray-700/50 bg-gray-800/60 group">
+                  <img
+                    src={rosApi.locationPhotoUrl(photo.storedPath)}
+                    alt="Parts location"
+                    className="w-full h-full object-cover"
+                  />
+                  <button
+                    onClick={() => {
+                      if (window.confirm('Remove this location photo?')) deleteLocationPhotoMutation.mutate(photo.id)
+                    }}
+                    className="absolute top-1.5 right-1.5 p-1 rounded-lg bg-black/70 text-gray-300 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              ))}
+              {/* Inline add button at end of row */}
+              <label className="flex-shrink-0 w-36 h-36 rounded-xl border border-dashed border-gray-700 bg-gray-800/40 text-gray-600 cursor-pointer hover:border-blue-500/40 hover:text-gray-400 transition-colors flex flex-col items-center justify-center gap-1">
+                <Camera size={20} />
+                <span className="text-xs font-medium">Add</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) addLocationPhotoMutation.mutate(file)
+                    e.target.value = ''
+                  }}
+                />
+              </label>
             </div>
           ) : (
             <label className="flex flex-col items-center justify-center gap-2 w-full h-24 rounded-xl border border-dashed border-gray-700 bg-gray-800/40 text-gray-600 cursor-pointer hover:border-blue-500/40 hover:text-gray-400 transition-colors">
               <Camera size={22} />
-              <span className="text-xs font-medium">Snap a photo of where parts are located</span>
+              <span className="text-xs font-medium">Snap photos of where parts are stored</span>
               <input
                 type="file"
                 accept="image/*"
@@ -725,7 +747,7 @@ export default function RODetail() {
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0]
-                  if (file) locationPhotoMutation.mutate(file)
+                  if (file) addLocationPhotoMutation.mutate(file)
                   e.target.value = ''
                 }}
               />

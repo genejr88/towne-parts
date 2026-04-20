@@ -55,12 +55,24 @@ model RO {
   locationPhotoUrl        String?
   parts                   Part[]
   invoices                ROInvoice[]
+  locationPhotos          ROLocationPhoto[]
   srcEntries              SRCEntry[]
   activityLog             ActivityLog[]
   createdAt               DateTime      @default(now())
   updatedAt               DateTime      @updatedAt
 
   @@map("ros")
+}
+
+model ROLocationPhoto {
+  id               Int      @id @default(autoincrement())
+  roId             Int
+  ro               RO       @relation(fields: [roId], references: [id], onDelete: Cascade)
+  storedPath       String
+  caption          String?
+  createdAt        DateTime @default(now())
+
+  @@map("ro_location_photos")
 }
 
 enum PartsStatus {
