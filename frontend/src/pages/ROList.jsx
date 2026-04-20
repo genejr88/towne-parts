@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Search, Plus, X, ChevronRight, Car, Package, Archive, RefreshCw, Upload, Camera } from 'lucide-react'
+import { Search, Plus, X, ChevronRight, Car, Package, Archive, RefreshCw, Upload, Camera, ArchiveRestore } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { rosApi, vendorsApi } from '@/lib/api'
 import { formatDate, STAGE_COLORS } from '@/lib/utils'
@@ -23,7 +23,7 @@ const FILTER_TABS = [
   { key: 'archived', label: 'Archived' },
 ]
 
-function ROCard({ ro, onClick }) {
+function ROCard({ ro, onClick, onUnarchive }) {
   const statusBg = {
     MISSING: 'border-l-red-500',
     ACKNOWLEDGED: 'border-l-amber-500',
@@ -34,44 +34,61 @@ function ROCard({ ro, onClick }) {
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      onClick={onClick}
-      className={`bg-gray-800/80 border border-gray-700/60 rounded-xl p-4 cursor-pointer active:scale-[0.98] transition-transform border-l-4 ${statusBg}`}
+      className={`bg-gray-800/80 border border-gray-700/60 rounded-xl border-l-4 overflow-hidden ${statusBg}`}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-sm font-bold text-gray-100 font-mono">
-              {ro.roNumber}
-            </span>
-            <PartsBadge status={ro.partsStatus} />
-          </div>
-          <div className="flex items-center gap-1.5 text-sm text-gray-400 mb-1">
-            <Car size={13} className="shrink-0" />
-            <span className="truncate">
-              {[ro.vehicleYear, ro.vehicleMake, ro.vehicleModel].filter(Boolean).join(' ') || 'No vehicle info'}
-            </span>
-          </div>
-          {ro.vin && (
-            <p className="text-xs text-gray-600 font-mono truncate">{ro.vin}</p>
-          )}
-          <div className="flex items-center gap-3 mt-2">
-            {ro.vendor?.name && (
-              <span className="text-xs text-gray-500">{ro.vendor.name}</span>
-            )}
-            {ro.productionStage && ro.productionStage.toLowerCase() !== 'unassigned' && (
-              <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-md ${STAGE_COLORS[ro.productionStage] || 'bg-gray-700/50 text-gray-400'}`}>
-                {ro.productionStage}
+      <div
+        onClick={onClick}
+        className="p-4 cursor-pointer active:scale-[0.98] transition-transform"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-sm font-bold text-gray-100 font-mono">
+                {ro.roNumber}
               </span>
-            )}
-            {ro.parts && ro.parts.length > 0 && (
-              <span className="text-xs text-gray-500">
-                {ro.parts.filter(p => p.isReceived).length}/{ro.parts.length} parts
+              <PartsBadge status={ro.partsStatus} />
+            </div>
+            <div className="flex items-center gap-1.5 text-sm text-gray-400 mb-1">
+              <Car size={13} className="shrink-0" />
+              <span className="truncate">
+                {[ro.vehicleYear, ro.vehicleMake, ro.vehicleModel].filter(Boolean).join(' ') || 'No vehicle info'}
               </span>
+            </div>
+            {ro.vin && (
+              <p className="text-xs text-gray-600 font-mono truncate">{ro.vin}</p>
             )}
+            <div className="flex items-center gap-3 mt-2">
+              {ro.vendor?.name && (
+                <span className="text-xs text-gray-500">{ro.vendor.name}</span>
+              )}
+              {ro.productionStage && ro.productionStage.toLowerCase() !== 'unassigned' && (
+                <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-md ${STAGE_COLORS[ro.productionStage] || 'bg-gray-700/50 text-gray-400'}`}>
+                  {ro.productionStage}
+                </span>
+              )}
+              {ro.parts && ro.parts.length > 0 && (
+                <span className="text-xs text-gray-500">
+                  {ro.parts.filter(p => p.isReceived).length}/{ro.parts.length} parts
+                </span>
+              )}
+            </div>
           </div>
+          <ChevronRight size={18} className="text-gray-600 shrink-0 mt-1" />
         </div>
-        <ChevronRight size={18} className="text-gray-600 shrink-0 mt-1" />
       </div>
+
+      {/* Unarchive button — only shown on archived ROs */}
+      {onUnarchive && (
+        <div className="border-t border-gray-700/50 px-4 py-2.5 flex justify-end">
+          <button
+            onClick={(e) => { e.stopPropagation(); onUnarchive(ro) }}
+            className="flex items-center gap-1.5 text-xs font-semibold text-amber-400 hover:text-amber-300 transition-colors"
+          >
+            <ArchiveRestore size={13} />
+            Restore to Active
+          </button>
+        </div>
+      )}
     </motion.div>
   )
 }
@@ -221,9 +238,20 @@ export default function ROList() {
     queryParams.search = search.trim()
   }
 
+  const queryClient = useQueryClient()
+
   const { data: ros, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['ros', queryParams],
     queryFn: () => rosApi.list(queryParams),
+  })
+
+  const unarchiveMutation = useMutation({
+    mutationFn: (id) => rosApi.unarchive(id),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['ros'] })
+      toast.success(`RO ${data.roNumber} restored to active`)
+    },
+    onError: (err) => toast.error(err.message || 'Failed to restore RO'),
   })
 
   // Sync URL when filter changes
@@ -302,6 +330,7 @@ export default function ROList() {
                 key={ro.id}
                 ro={ro}
                 onClick={() => navigate(`/ros/${ro.id}`)}
+                onUnarchive={activeFilter === 'archived' ? (r) => unarchiveMutation.mutate(r.id) : undefined}
               />
             ))}
           </AnimatePresence>
