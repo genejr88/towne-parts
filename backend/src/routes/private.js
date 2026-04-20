@@ -70,8 +70,8 @@ router.post('/upload', requireAuth, requirePin, privateUpload.single('file'), as
   }
 })
 
-// GET /api/private/files/:id/view — serve the file (PIN via query or header)
-router.get('/files/:id/view', requireAuth, requirePin, async (req, res) => {
+// GET /api/private/files/:id/view — serve the file (PIN via query param, no JWT needed for img tags)
+router.get('/files/:id/view', requirePin, async (req, res) => {
   try {
     const id = parseInt(req.params.id)
     const file = await prisma.privateFile.findUnique({ where: { id } })
