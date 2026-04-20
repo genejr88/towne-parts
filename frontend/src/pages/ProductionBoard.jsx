@@ -38,6 +38,125 @@ function StageButton({ stage, active, onClick }) {
   )
 }
 
+// ── Supplement Quick-Note Bubbles ─────────────────────────────────────────────
+const SUPP_PRESETS = ['PPD', 'Alignment', 'Scans', 'Calibrations', 'Scans & Calibrations', 'New Part']
+
+function SupplementBubbles({ value, onChange }) {
+  const [customInput, setCustomInput] = useState('')
+  const [showCustom, setShowCustom] = useState(false)
+
+  // Parse current value into active tags
+  const tags = value ? value.split(',').map(t => t.trim()).filter(Boolean) : []
+
+  const toggleTag = (tag) => {
+    if (tags.includes(tag)) {
+      onChange(tags.filter(t => t !== tag).join(', '))
+    } else {
+      onChange([...tags, tag].join(', '))
+    }
+  }
+
+  const addCustom = () => {
+    const trimmed = customInput.trim()
+    if (!trimmed) return
+    if (!tags.includes(trimmed)) {
+      onChange([...tags, trimmed].join(', '))
+    }
+    setCustomInput('')
+    setShowCustom(false)
+  }
+
+  const removeTag = (tag) => {
+    onChange(tags.filter(t => t !== tag).join(', '))
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Preset bubbles */}
+      <div className="flex flex-wrap gap-2">
+        {SUPP_PRESETS.map(preset => {
+          const active = tags.includes(preset)
+          return (
+            <button
+              key={preset}
+              type="button"
+              onClick={() => toggleTag(preset)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                active
+                  ? 'bg-amber-500/20 border-amber-500/60 text-amber-300'
+                  : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-amber-500/40 hover:text-gray-200'
+              }`}
+            >
+              {active && <span className="mr-1">✓</span>}
+              {preset}
+            </button>
+          )
+        })}
+        {/* Custom bubble trigger */}
+        <button
+          type="button"
+          onClick={() => setShowCustom(s => !s)}
+          className="px-3 py-1.5 rounded-full text-xs font-semibold border bg-gray-800 border-dashed border-gray-600 text-gray-500 hover:border-amber-500/40 hover:text-gray-200 transition-all"
+        >
+          + Custom
+        </button>
+      </div>
+
+      {/* Custom input */}
+      <AnimatePresence>
+        {showCustom && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="flex gap-2">
+              <input
+                autoFocus
+                type="text"
+                value={customInput}
+                onChange={e => setCustomInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') addCustom(); if (e.key === 'Escape') setShowCustom(false) }}
+                placeholder="Type custom note..."
+                className="flex-1 bg-gray-900/60 border border-gray-700 rounded-xl px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-amber-500/50"
+              />
+              <button
+                type="button"
+                onClick={addCustom}
+                className="px-3 py-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 text-sm font-semibold hover:bg-amber-500/30 transition-colors"
+              >
+                Add
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Active tags display */}
+      {tags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {tags.map(tag => (
+            <span
+              key={tag}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-200 text-xs font-medium"
+            >
+              {tag}
+              <button
+                type="button"
+                onClick={() => removeTag(tag)}
+                className="text-amber-400/60 hover:text-amber-300 ml-0.5 transition-colors"
+              >
+                <X size={10} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Parts Sheet ──────────────────────────────────────────────────────────────
 function PartsSheet({ open, onClose, parts, roNumber }) {
   const received = parts.filter((p) => p.isReceived)
@@ -589,13 +708,11 @@ export default function ProductionBoard() {
                     exit={{ opacity: 0, height: 0 }}
                     className="mt-3 overflow-hidden"
                   >
-                    <Textarea
-                      label="Supplement Note"
+                    {/* Quick-select bubbles */}
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Quick Notes</p>
+                    <SupplementBubbles
                       value={state.productionSupplementNote}
-                      onChange={(e) => updateField('productionSupplementNote', e.target.value)}
-                      rows={2}
-                      placeholder="Supplement details..."
-                      className="bg-gray-900/60"
+                      onChange={(val) => updateField('productionSupplementNote', val)}
                     />
                   </motion.div>
                 )}
