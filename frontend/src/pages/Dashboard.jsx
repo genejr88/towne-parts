@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { PackageX, PackageCheck, Package, Layers, RotateCcw, TrendingUp } from 'lucide-react'
+import { PackageX, PackageCheck, Package, Layers, RotateCcw, TrendingUp, FileWarning, ChevronRight } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { rosApi, srcApi } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
@@ -49,6 +49,11 @@ export default function Dashboard() {
   const { data: srcEntries, isLoading: srcLoading } = useQuery({
     queryKey: ['src', 'open'],
     queryFn: () => srcApi.list({ status: 'open' }),
+  })
+
+  const { data: missingPartsList } = useQuery({
+    queryKey: ['ros', 'missing-parts-list'],
+    queryFn: () => rosApi.list({ missingPartsList: true, archived: false }),
   })
 
   const isLoading = rosLoading || srcLoading
@@ -138,6 +143,45 @@ export default function Dashboard() {
             onClick={() => navigate('/src')}
           />
         </div>
+      )}
+
+      {/* ROs Missing Parts List */}
+      {missingPartsList && missingPartsList.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.35, duration: 0.3 }}
+          className="mt-6"
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <FileWarning size={16} className="text-amber-400" />
+            <h2 className="text-sm font-semibold text-amber-400 uppercase tracking-wider">
+              No Parts List Uploaded
+            </h2>
+            <span className="ml-auto text-xs font-bold bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full">
+              {missingPartsList.length}
+            </span>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            {missingPartsList.map((ro) => (
+              <button
+                key={ro.id}
+                onClick={() => navigate(`/ros/${ro.id}`)}
+                className="w-full flex items-center justify-between bg-gray-800/60 border border-amber-500/20 rounded-xl px-4 py-3 text-left active:scale-[0.98] transition-transform"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-gray-100">RO #{ro.roNumber}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {[ro.vehicleYear, ro.vehicleMake, ro.vehicleModel].filter(Boolean).join(' ') || 'No vehicle info'}
+                    {ro.vendor?.name ? ` · ${ro.vendor.name}` : ''}
+                  </p>
+                </div>
+                <ChevronRight size={16} className="text-gray-500 flex-shrink-0" />
+              </button>
+            ))}
+          </div>
+        </motion.div>
       )}
     </div>
   )

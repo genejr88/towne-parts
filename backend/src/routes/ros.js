@@ -39,10 +39,10 @@ const RO_DETAIL_INCLUDE = {
 }
 
 // GET /api/ros
-// Query: search, archived (bool string), partsStatus
+// Query: search, archived (bool string), partsStatus, missingPartsList (bool string)
 router.get('/', requireAuth, async (req, res) => {
   try {
-    const { search, archived, partsStatus } = req.query
+    const { search, archived, partsStatus, missingPartsList } = req.query
 
     const where = {}
 
@@ -55,6 +55,11 @@ router.get('/', requireAuth, async (req, res) => {
 
     if (partsStatus) {
       where.partsStatus = partsStatus
+    }
+
+    // Filter ROs that have no PARTS_LIST invoice attached
+    if (missingPartsList === 'true') {
+      where.invoices = { none: { fileType: 'PARTS_LIST' } }
     }
 
     if (search && search.trim()) {
