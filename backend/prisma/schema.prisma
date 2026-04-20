@@ -52,6 +52,7 @@ model RO {
   productionUpdatedAt     DateTime?
   isArchived              Boolean       @default(false)
   archivedAt              DateTime?
+  locationPhotoUrl        String?
   parts                   Part[]
   invoices                ROInvoice[]
   srcEntries              SRCEntry[]

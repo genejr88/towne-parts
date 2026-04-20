@@ -1,0 +1,1 @@
+ALTER TABLE "ros" ADD COLUMN IF NOT EXISTS "locationPhotoUrl" TEXT;

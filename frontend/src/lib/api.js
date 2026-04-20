@@ -53,6 +53,13 @@ export const rosApi = {
   update: (id, data) => unwrap(api.put(`/ros/${id}`, data)),
   archive: (id) => unwrap(api.delete(`/ros/${id}`)),
   unarchive: (id) => unwrap(api.post(`/ros/${id}/unarchive`)),
+  uploadLocationPhoto: (id, file) => {
+    const form = new FormData()
+    form.append('photo', file)
+    return unwrap(api.post(`/ros/${id}/location-photo`, form, { headers: { 'Content-Type': 'multipart/form-data' } }))
+  },
+  deleteLocationPhoto: (id) => unwrap(api.delete(`/ros/${id}/location-photo`)),
+  locationPhotoUrl: (url) => url ? `${API_URL}/uploads/${url}` : null,
 }
 
 // ── Parts ─────────────────────────────────────────────────────────────────────

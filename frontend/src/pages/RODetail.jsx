@@ -583,6 +583,24 @@ export default function RODetail() {
     onError: (err) => toast.error(err.message || 'Failed to send Telegram'),
   })
 
+  const locationPhotoMutation = useMutation({
+    mutationFn: (file) => rosApi.uploadLocationPhoto(id, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ro', id] })
+      toast.success('Location photo saved')
+    },
+    onError: (err) => toast.error(err.message || 'Upload failed'),
+  })
+
+  const deleteLocationPhotoMutation = useMutation({
+    mutationFn: () => rosApi.deleteLocationPhoto(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ro', id] })
+      toast.success('Location photo removed')
+    },
+    onError: (err) => toast.error(err.message),
+  })
+
   const uploadMutation = useMutation({
     mutationFn: (file) => invoicesApi.upload(id, file),
     onSuccess: () => {
@@ -659,6 +677,62 @@ export default function RODetail() {
       </div>
 
       <div className="px-4 py-4">
+        {/* Location Photo */}
+        <div className="mb-3">
+          <div className="flex items-center justify-between mb-1.5">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Location</p>
+            <label className={`flex items-center gap-1 text-xs font-semibold cursor-pointer transition-colors ${locationPhotoMutation.isPending ? 'text-gray-500 pointer-events-none' : 'text-blue-400 hover:text-blue-300'}`}>
+              <Camera size={13} />
+              {locationPhotoMutation.isPending ? 'Saving...' : ro.locationPhotoUrl ? 'Replace' : 'Add Photo'}
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) locationPhotoMutation.mutate(file)
+                  e.target.value = ''
+                }}
+              />
+            </label>
+          </div>
+
+          {ro.locationPhotoUrl ? (
+            <div className="relative rounded-xl overflow-hidden border border-gray-700/50 bg-gray-800/60">
+              <img
+                src={rosApi.locationPhotoUrl(ro.locationPhotoUrl)}
+                alt="Parts location"
+                className="w-full object-cover max-h-52"
+              />
+              <button
+                onClick={() => {
+                  if (window.confirm('Remove location photo?')) deleteLocationPhotoMutation.mutate()
+                }}
+                className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/60 text-gray-300 hover:text-red-400 transition-colors"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ) : (
+            <label className="flex flex-col items-center justify-center gap-2 w-full h-24 rounded-xl border border-dashed border-gray-700 bg-gray-800/40 text-gray-600 cursor-pointer hover:border-blue-500/40 hover:text-gray-400 transition-colors">
+              <Camera size={22} />
+              <span className="text-xs font-medium">Snap a photo of where parts are located</span>
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) locationPhotoMutation.mutate(file)
+                  e.target.value = ''
+                }}
+              />
+            </label>
+          )}
+        </div>
+
         {/* Vehicle info card */}
         <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-4 mb-3">
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
