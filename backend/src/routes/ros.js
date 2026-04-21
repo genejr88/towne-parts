@@ -57,9 +57,9 @@ router.get('/', requireAuth, async (req, res) => {
       where.partsStatus = partsStatus
     }
 
-    // Filter ROs that have no PARTS_LIST invoice attached
+    // Filter ROs that have no parts added yet
     if (missingPartsList === 'true') {
-      where.invoices = { none: { fileType: 'PARTS_LIST' } }
+      where.parts = { none: {} }
     }
 
     if (search && search.trim()) {

@@ -156,7 +156,7 @@ export default function Dashboard() {
           <div className="flex items-center gap-2 mb-3">
             <FileWarning size={16} className="text-amber-400" />
             <h2 className="text-sm font-semibold text-amber-400 uppercase tracking-wider">
-              No Parts List Uploaded
+              No Parts Added
             </h2>
             <span className="ml-auto text-xs font-bold bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full">
               {missingPartsList.length}
