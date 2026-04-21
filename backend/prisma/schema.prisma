@@ -172,7 +172,8 @@ enum SRCType {
 
 enum SRCStatus {
   OPEN
-  COMPLETED
+  RETURNED
+  CREDITED
 }
 
 model ActivityLog {

@@ -36,10 +36,11 @@ const SRC_INCLUDE = {
 }
 
 // ── GET /api/src/public — public live link (no auth) ─────────────────────────
+// Shows only entries explicitly marked RETURNED (physically sent back, awaiting credit)
 router.get('/public', async (_req, res) => {
   try {
     const entries = await prisma.sRCEntry.findMany({
-      where: { status: 'OPEN' },
+      where: { status: 'RETURNED' },
       include: SRC_INCLUDE,
       orderBy: { createdAt: 'desc' },
     })
@@ -54,7 +55,8 @@ router.get('/', requireAuth, async (req, res) => {
   const { status } = req.query
   const where = {}
   if (status === 'open') where.status = 'OPEN'
-  else if (status === 'completed') where.status = 'COMPLETED'
+  else if (status === 'returned') where.status = 'RETURNED'
+  else if (status === 'credited') where.status = 'CREDITED'
 
   try {
     const entries = await prisma.sRCEntry.findMany({
@@ -210,8 +212,8 @@ router.put('/:id', requireAuth, async (req, res) => {
     const existing = await prisma.sRCEntry.findUnique({ where: { id } })
     if (!existing) return res.status(404).json({ success: false, error: 'SRC entry not found.' })
 
-    if (status && !['OPEN', 'COMPLETED'].includes(status))
-      return res.status(400).json({ success: false, error: 'Invalid status.' })
+    if (status && !['OPEN', 'RETURNED', 'CREDITED'].includes(status))
+      return res.status(400).json({ success: false, error: 'Invalid status. Must be OPEN, RETURNED, or CREDITED.' })
 
     const updateData = {}
     if (note !== undefined) updateData.note = note
@@ -221,18 +223,20 @@ router.put('/:id', requireAuth, async (req, res) => {
     if (returnDate !== undefined) updateData.returnDate = returnDate ? new Date(returnDate) : null
     if (status !== undefined) {
       updateData.status = status
-      if (status === 'COMPLETED' && existing.status !== 'COMPLETED') updateData.completedAt = new Date()
-      else if (status === 'OPEN') updateData.completedAt = null
+      // completedAt marks when credit is confirmed
+      if (status === 'CREDITED' && existing.status !== 'CREDITED') updateData.completedAt = new Date()
+      else if (status !== 'CREDITED') updateData.completedAt = null
     }
 
     const entry = await prisma.sRCEntry.update({ where: { id }, data: updateData, include: SRC_INCLUDE })
 
     if (status && status !== existing.status && existing.roId) {
+      const statusLabel = status === 'RETURNED' ? 'Returned' : status === 'CREDITED' ? 'Credited' : 'Open'
       await prisma.activityLog.create({
         data: {
           roId: existing.roId,
           eventType: 'SRC_STATUS_CHANGED',
-          message: `SRC entry (${existing.entryType}) marked ${status} by ${req.user.username}`,
+          message: `SRC entry (${existing.entryType}) marked ${statusLabel} by ${req.user.username}`,
         },
       })
     }

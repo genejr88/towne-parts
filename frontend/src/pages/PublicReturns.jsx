@@ -49,7 +49,7 @@ export default function PublicReturns() {
                 <RotateCcw size={20} className="text-orange-400" />
                 Active Returns
               </h1>
-              <p className="text-sm text-gray-500 mt-0.5">Towne Body Shop · Live</p>
+              <p className="text-sm text-gray-500 mt-0.5">Towne Body Shop · Awaiting Credit</p>
             </div>
             <div className="text-right">
               <div className="flex items-center gap-1.5 text-xs text-emerald-400">
@@ -82,8 +82,8 @@ export default function PublicReturns() {
         ) : entries.length === 0 ? (
           <div className="text-center py-20">
             <RotateCcw size={40} className="text-gray-700 mx-auto mb-3" />
-            <p className="text-gray-400 font-semibold">No active returns</p>
-            <p className="text-gray-600 text-sm mt-1">All caught up!</p>
+            <p className="text-gray-400 font-semibold">No pending returns</p>
+            <p className="text-gray-600 text-sm mt-1">All credits received!</p>
           </div>
         ) : (
           <div className="space-y-3">
