@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Package, User, Lock, ArrowRight } from 'lucide-react'
+import { User, Lock, ArrowRight } from 'lucide-react'
+import TurboIcon from '@/components/ui/TurboIcon'
 import toast from 'react-hot-toast'
 import { useAuth } from '@/lib/auth'
 import Input from '@/components/ui/Input'
@@ -71,7 +72,7 @@ export default function Login() {
               transition={{ delay: 0.1, type: 'spring', stiffness: 200 }}
               className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-600 to-blue-400 flex items-center justify-center shadow-glow mb-4"
             >
-              <Package size={30} className="text-white" />
+              <TurboIcon size={30} className="text-white" />
             </motion.div>
             <motion.div
               initial={{ opacity: 0, y: 8 }}

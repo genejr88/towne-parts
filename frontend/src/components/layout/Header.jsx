@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Package, ChevronDown, LogOut, Lock, Eye, EyeOff } from 'lucide-react'
+import { ChevronDown, LogOut, Lock, Eye, EyeOff } from 'lucide-react'
+import TurboIcon from '@/components/ui/TurboIcon'
 import { useAuth } from '@/lib/auth'
 import { privateApi } from '@/lib/api'
 
@@ -87,7 +88,7 @@ export default function Header() {
             onClick={handleLogoTap}
           >
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-600 to-blue-400 flex items-center justify-center shadow-glow-sm">
-              <Package size={16} className="text-white" />
+              <TurboIcon size={16} className="text-white" />
             </div>
             <span className="font-bold text-base text-gray-100 tracking-tight">
               Towne<span className="text-blue-400">Parts</span>
