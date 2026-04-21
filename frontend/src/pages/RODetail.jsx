@@ -18,6 +18,7 @@ import Select from '@/components/ui/Select'
 import Textarea from '@/components/ui/Textarea'
 import Modal from '@/components/ui/Modal'
 import Spinner from '@/components/ui/Spinner'
+import InvoiceScanner from '@/components/ui/InvoiceScanner'
 
 // ── Finish chip ────────────────────────────────────────────────────────────────
 function FinishChip({ value, onClick }) {
@@ -619,10 +620,16 @@ export default function RODetail() {
     onError: (err) => toast.error(err.message),
   })
 
+  const [scannerOpen, setScannerOpen] = useState(false)
+
   const handleFileChange = (e) => {
     const file = e.target.files?.[0]
     if (file) uploadMutation.mutate(file)
     e.target.value = ''
+  }
+
+  const handleScanCapture = (file) => {
+    uploadMutation.mutate(file)
   }
 
   if (isLoading) {
@@ -882,11 +889,29 @@ export default function RODetail() {
         <Section
           title={`Invoices (${invoices.length})`}
           action={
-            <label className="flex items-center gap-1 text-xs text-blue-400 font-semibold cursor-pointer">
-              <Upload size={14} />
-              {uploadMutation.isPending ? 'Uploading...' : 'Upload'}
-              <input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png" onChange={handleFileChange} />
-            </label>
+            <div className="flex items-center gap-2">
+              {uploadMutation.isPending ? (
+                <span className="text-xs text-gray-500">Uploading…</span>
+              ) : (
+                <>
+                  {/* Scan button */}
+                  <button
+                    onClick={() => setScannerOpen(true)}
+                    className="flex items-center gap-1 text-xs text-blue-400 font-semibold hover:text-blue-300 transition-colors"
+                  >
+                    <Camera size={14} />
+                    Scan
+                  </button>
+                  <span className="text-gray-700 text-xs">|</span>
+                  {/* File upload */}
+                  <label className="flex items-center gap-1 text-xs text-blue-400 font-semibold cursor-pointer hover:text-blue-300 transition-colors">
+                    <Upload size={14} />
+                    Upload
+                    <input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png" onChange={handleFileChange} />
+                  </label>
+                </>
+              )}
+            </div>
           }
           defaultOpen={false}
         >
@@ -976,6 +1001,14 @@ export default function RODetail() {
       {ro && <EditROModal open={editOpen} onClose={() => setEditOpen(false)} ro={ro} />}
       <AddPartModal open={addPartOpen} onClose={() => setAddPartOpen(false)} roId={id} />
       <AddSRCModal open={addSRCOpen} onClose={() => setAddSRCOpen(false)} roId={id} />
+
+      {/* Invoice Scanner */}
+      {scannerOpen && (
+        <InvoiceScanner
+          onCapture={handleScanCapture}
+          onClose={() => setScannerOpen(false)}
+        />
+      )}
     </div>
   )
 }
