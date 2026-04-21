@@ -1,7 +1,10 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { RotateCcw, Plus, Check, Trash2, ChevronDown } from 'lucide-react'
+import {
+  RotateCcw, Plus, Check, Trash2, Camera, X, Link2, Package,
+  Building2, CalendarDays, FileText, ExternalLink,
+} from 'lucide-react'
 import toast from 'react-hot-toast'
 import { srcApi, rosApi } from '@/lib/api'
 import { formatDate, SRC_TYPES } from '@/lib/utils'
@@ -20,8 +23,9 @@ const FILTER_TABS = [
   { key: 'all', label: 'All' },
 ]
 
-function SRCCard({ entry, onComplete, onDelete }) {
-  const [expanded, setExpanded] = useState(false)
+// ── SRC Card ─────────────────────────────────────────────────────────────────
+function SRCCard({ entry, onComplete, onDeletePhoto, onDelete }) {
+  const done = entry.status === 'COMPLETED'
 
   return (
     <motion.div
@@ -30,55 +34,126 @@ function SRCCard({ entry, onComplete, onDelete }) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, x: -20 }}
       className={`bg-gray-800/70 border rounded-xl overflow-hidden transition-colors ${
-        entry.completed ? 'border-gray-700/30 opacity-60' : 'border-gray-700/60'
+        done ? 'border-gray-700/30 opacity-60' : 'border-gray-700/60'
       }`}
     >
       <div className="p-4">
         <div className="flex items-start gap-3">
-          {/* Complete button */}
-          {!entry.completed && (
-            <button
-              onClick={() => onComplete(entry.id)}
-              className="mt-0.5 w-7 h-7 rounded-xl border-2 border-gray-600 bg-gray-800 flex items-center justify-center shrink-0 hover:border-emerald-500 active:bg-emerald-500/20 transition-colors"
-            >
-              <Check size={14} className="text-gray-600" />
-            </button>
-          )}
-          {entry.completed && (
-            <div className="mt-0.5 w-7 h-7 rounded-xl bg-emerald-600/20 border border-emerald-600/40 flex items-center justify-center shrink-0">
-              <Check size={14} className="text-emerald-400" />
-            </div>
-          )}
+          {/* Complete toggle */}
+          <button
+            onClick={() => !done && onComplete(entry.id)}
+            className={`mt-0.5 w-7 h-7 rounded-xl border-2 flex items-center justify-center shrink-0 transition-colors ${
+              done
+                ? 'bg-emerald-600/20 border-emerald-600/40'
+                : 'border-gray-600 bg-gray-800 hover:border-emerald-500'
+            }`}
+          >
+            <Check size={14} className={done ? 'text-emerald-400' : 'text-gray-600'} />
+          </button>
 
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap mb-1">
-              <Badge variant={entry.completed ? 'green' : 'orange'}>{entry.type}</Badge>
+            {/* Badges row */}
+            <div className="flex items-center gap-2 flex-wrap mb-2">
+              <Badge variant={done ? 'green' : 'orange'}>
+                {entry.entryType === 'CORE_RETURN' ? 'Core Return' : 'Return'}
+              </Badge>
               {entry.ro?.roNumber && (
                 <span className="text-xs font-mono font-semibold text-gray-300">
                   RO {entry.ro.roNumber}
                 </span>
               )}
-              {entry.partNumber && (
-                <span className="text-xs text-gray-500 font-mono">{entry.partNumber}</span>
+              {!entry.ro && (
+                <span className="text-xs text-gray-500 bg-gray-700/50 px-2 py-0.5 rounded-full">
+                  No RO
+                </span>
               )}
             </div>
 
+            {/* Vehicle info */}
             {entry.ro && (
-              <p className="text-xs text-gray-500 mb-1">
+              <p className="text-xs text-gray-500 mb-1.5">
                 {[entry.ro.vehicleYear, entry.ro.vehicleMake, entry.ro.vehicleModel].filter(Boolean).join(' ')}
               </p>
             )}
 
+            {/* Part details grid */}
+            <div className="space-y-1 mb-2">
+              {entry.partNumber && (
+                <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                  <Package size={11} className="text-gray-600 shrink-0" />
+                  <span className="font-mono">{entry.partNumber}</span>
+                </div>
+              )}
+              {entry.partDescription && (
+                <div className="flex items-center gap-1.5 text-xs text-gray-300">
+                  <FileText size={11} className="text-gray-600 shrink-0" />
+                  <span>{entry.partDescription}</span>
+                </div>
+              )}
+              {entry.vendorName && (
+                <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                  <Building2 size={11} className="text-gray-600 shrink-0" />
+                  <span>{entry.vendorName}</span>
+                </div>
+              )}
+              {entry.returnDate && (
+                <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <CalendarDays size={11} className="text-gray-600 shrink-0" />
+                  <span>{new Date(entry.returnDate).toLocaleDateString()}</span>
+                </div>
+              )}
+            </div>
+
             {entry.note && (
-              <p className="text-sm text-gray-300 line-clamp-2">{entry.note}</p>
+              <p className="text-sm text-gray-300 mb-2">{entry.note}</p>
             )}
 
-            <p className="text-xs text-gray-600 mt-2">{formatDate(entry.createdAt)}</p>
+            {/* Invoice photos */}
+            {entry.photos?.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {entry.photos.map((photo) => (
+                  <div key={photo.id} className="relative group">
+                    <a
+                      href={srcApi.photoUrl(photo.storedPath)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <img
+                        src={srcApi.photoUrl(photo.storedPath)}
+                        alt="Invoice"
+                        className="w-16 h-16 object-cover rounded-lg border border-gray-700 hover:border-blue-500 transition-colors"
+                        onError={(e) => {
+                          // Fallback for PDFs — show a document icon placeholder
+                          e.target.style.display = 'none'
+                          e.target.nextSibling.style.display = 'flex'
+                        }}
+                      />
+                      <div
+                        className="hidden w-16 h-16 items-center justify-center rounded-lg border border-gray-700 bg-gray-700/50 text-gray-400"
+                        style={{ display: 'none' }}
+                      >
+                        <FileText size={22} />
+                      </div>
+                    </a>
+                    {!done && (
+                      <button
+                        onClick={() => onDeletePhoto(photo.id)}
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-600 rounded-full hidden group-hover:flex items-center justify-center"
+                      >
+                        <X size={10} className="text-white" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <p className="text-xs text-gray-600">{formatDate(entry.createdAt)}</p>
           </div>
 
           <button
             onClick={() => onDelete(entry.id)}
-            className="p-1.5 text-gray-600 hover:text-red-400 active:text-red-500 transition-colors shrink-0"
+            className="p-1.5 text-gray-600 hover:text-red-400 transition-colors shrink-0"
           >
             <Trash2 size={15} />
           </button>
@@ -88,9 +163,21 @@ function SRCCard({ entry, onComplete, onDelete }) {
   )
 }
 
+// ── Create Modal ──────────────────────────────────────────────────────────────
 function CreateSRCModal({ open, onClose }) {
   const queryClient = useQueryClient()
-  const [form, setForm] = useState({ roId: '', type: 'Return', partNumber: '', note: '' })
+  const fileInputRef = useRef(null)
+  const [form, setForm] = useState({
+    entryType: 'RETURN',
+    roId: '',
+    partNumber: '',
+    partDescription: '',
+    vendorName: '',
+    returnDate: new Date().toISOString().split('T')[0],
+    note: '',
+  })
+  const [stagedFiles, setStagedFiles] = useState([])
+  const [uploading, setUploading] = useState(false)
 
   const { data: ros } = useQuery({
     queryKey: ['ros', { archived: false }],
@@ -99,46 +186,182 @@ function CreateSRCModal({ open, onClose }) {
   })
 
   const mutation = useMutation({
-    mutationFn: ({ roId, data }) => srcApi.create(roId, data),
-    onSuccess: () => {
+    mutationFn: (data) => srcApi.create(data),
+    onSuccess: async (entry) => {
+      // Upload staged photos
+      if (stagedFiles.length > 0) {
+        setUploading(true)
+        try {
+          await srcApi.uploadPhotos(entry.id, stagedFiles)
+        } catch (e) {
+          toast.error('Entry created but photo upload failed')
+        }
+        setUploading(false)
+      }
       queryClient.invalidateQueries({ queryKey: ['src'] })
       toast.success('SRC entry created')
-      setForm({ roId: '', type: 'Return', partNumber: '', note: '' })
-      onClose()
+      handleClose()
     },
     onError: (err) => toast.error(err.message || 'Failed to create'),
   })
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
 
+  const handleFileChange = (e) => {
+    const files = Array.from(e.target.files || [])
+    if (!files.length) return
+    setStagedFiles((prev) => [...prev, ...files])
+  }
+
+  const removeStagedFile = (idx) => setStagedFiles((prev) => prev.filter((_, i) => i !== idx))
+
+  const handleClose = () => {
+    setForm({
+      entryType: 'RETURN',
+      roId: '',
+      partNumber: '',
+      partDescription: '',
+      vendorName: '',
+      returnDate: new Date().toISOString().split('T')[0],
+      note: '',
+    })
+    setStagedFiles([])
+    onClose()
+  }
+
   const handleSubmit = () => {
-    if (!form.roId) {
-      toast.error('Please select a repair order')
-      return
+    const payload = {
+      entryType: form.entryType,
+      partNumber: form.partNumber || undefined,
+      partDescription: form.partDescription || undefined,
+      vendorName: form.vendorName || undefined,
+      returnDate: form.returnDate || undefined,
+      note: form.note || undefined,
+      roId: form.roId || undefined,
     }
-    mutation.mutate({ roId: form.roId, data: { type: form.type, partNumber: form.partNumber, note: form.note } })
+    mutation.mutate(payload)
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="New S.R.C. Entry">
-      <div className="space-y-4">
-        <Select label="Repair Order *" value={form.roId} onChange={set('roId')}>
-          <option value="">— Select RO —</option>
+    <Modal open={open} onClose={handleClose} title="New S.R.C. Entry">
+      <div className="space-y-3.5">
+        {/* Type */}
+        <Select label="Type" value={form.entryType} onChange={set('entryType')}>
+          <option value="RETURN">Return</option>
+          <option value="CORE_RETURN">Core Return</option>
+        </Select>
+
+        {/* Repair Order (optional) */}
+        <Select label="Repair Order (optional)" value={form.roId} onChange={set('roId')}>
+          <option value="">— Not tied to an RO —</option>
           {ros?.map((ro) => (
             <option key={ro.id} value={ro.id}>
-              {ro.roNumber} — {[ro.vehicleYear, ro.vehicleMake, ro.vehicleModel].filter(Boolean).join(' ')}
+              {ro.roNumber}
+              {ro.vehicleMake ? ` — ${[ro.vehicleYear, ro.vehicleMake, ro.vehicleModel].filter(Boolean).join(' ')}` : ''}
             </option>
           ))}
         </Select>
-        <Select label="Type" value={form.type} onChange={set('type')}>
-          {SRC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-        </Select>
-        <Input label="Part Number" value={form.partNumber} onChange={set('partNumber')} placeholder="Optional" />
-        <Textarea label="Note" value={form.note} onChange={set('note')} rows={3} placeholder="Details..." />
-        <div className="flex gap-3 pt-2">
-          <Button variant="secondary" onClick={onClose} className="flex-1">Cancel</Button>
-          <Button variant="primary" loading={mutation.isPending} onClick={handleSubmit} className="flex-1">
-            Create Entry
+
+        {/* Part # + Description */}
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="Part #"
+            value={form.partNumber}
+            onChange={set('partNumber')}
+            placeholder="e.g. 68432-52"
+          />
+          <Input
+            label="Return Date"
+            type="date"
+            value={form.returnDate}
+            onChange={set('returnDate')}
+          />
+        </div>
+
+        <Input
+          label="Part Description"
+          value={form.partDescription}
+          onChange={set('partDescription')}
+          placeholder="e.g. Front bumper cover"
+        />
+
+        <Input
+          label="Vendor"
+          value={form.vendorName}
+          onChange={set('vendorName')}
+          placeholder="e.g. LKQ, Keystone"
+        />
+
+        <Textarea
+          label="Note"
+          value={form.note}
+          onChange={set('note')}
+          rows={2}
+          placeholder="Reason for return, condition, etc."
+        />
+
+        {/* Photo capture */}
+        <div>
+          <label className="block text-xs font-semibold text-gray-400 mb-2">
+            Invoice / Part Photos
+          </label>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,application/pdf"
+            capture="environment"
+            multiple
+            className="hidden"
+            onChange={handleFileChange}
+          />
+
+          {stagedFiles.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {stagedFiles.map((file, idx) => (
+                <div key={idx} className="relative">
+                  {file.type.startsWith('image/') ? (
+                    <img
+                      src={URL.createObjectURL(file)}
+                      alt=""
+                      className="w-16 h-16 object-cover rounded-lg border border-gray-700"
+                    />
+                  ) : (
+                    <div className="w-16 h-16 flex items-center justify-center rounded-lg border border-gray-700 bg-gray-700/50 text-gray-400">
+                      <FileText size={22} />
+                    </div>
+                  )}
+                  <button
+                    onClick={() => removeStagedFile(idx)}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-600 rounded-full flex items-center justify-center"
+                  >
+                    <X size={10} className="text-white" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition-colors py-1"
+          >
+            <Camera size={16} />
+            {stagedFiles.length > 0 ? 'Add more photos' : 'Capture / attach invoice'}
+          </button>
+        </div>
+
+        <div className="flex gap-3 pt-1">
+          <Button variant="secondary" onClick={handleClose} className="flex-1">
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            loading={mutation.isPending || uploading}
+            onClick={handleSubmit}
+            className="flex-1"
+          >
+            {uploading ? 'Uploading photos…' : 'Create Entry'}
           </Button>
         </div>
       </div>
@@ -146,6 +369,7 @@ function CreateSRCModal({ open, onClose }) {
   )
 }
 
+// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function SRCTracker() {
   const queryClient = useQueryClient()
   const [activeFilter, setActiveFilter] = useState('open')
@@ -159,10 +383,19 @@ export default function SRCTracker() {
   })
 
   const completeMutation = useMutation({
-    mutationFn: (id) => srcApi.update(id, { completed: true }),
+    mutationFn: (id) => srcApi.update(id, { status: 'COMPLETED' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['src'] })
       toast.success('Marked complete')
+    },
+    onError: (err) => toast.error(err.message),
+  })
+
+  const deletePhotoMutation = useMutation({
+    mutationFn: (photoId) => srcApi.deletePhoto(photoId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['src'] })
+      toast.success('Photo removed')
     },
     onError: (err) => toast.error(err.message),
   })
@@ -177,23 +410,41 @@ export default function SRCTracker() {
   })
 
   const handleDelete = (id) => {
-    if (window.confirm('Delete this SRC entry?')) {
-      deleteMutation.mutate(id)
-    }
+    if (window.confirm('Delete this SRC entry?')) deleteMutation.mutate(id)
   }
 
-  // Group entries by RO
-  const grouped = {}
-  entries?.forEach((entry) => {
-    const key = entry.ro?.roNumber || 'No RO'
-    if (!grouped[key]) grouped[key] = { ro: entry.ro, entries: [] }
-    grouped[key].entries.push(entry)
+  const handleShare = () => {
+    const url = srcApi.publicPageUrl()
+    navigator.clipboard.writeText(url).then(() => {
+      toast.success('Live link copied to clipboard!')
+    }).catch(() => {
+      toast.error('Could not copy — open: ' + url)
+    })
+  }
+
+  // Group: standalone first, then by RO number
+  const standalone = entries?.filter((e) => !e.ro) || []
+  const byRO = {}
+  entries?.filter((e) => e.ro).forEach((e) => {
+    const key = e.ro.roNumber
+    if (!byRO[key]) byRO[key] = { ro: e.ro, entries: [] }
+    byRO[key].entries.push(e)
   })
 
   return (
     <div className="flex flex-col h-full">
-      {/* Filter tabs */}
+      {/* Header */}
       <div className="bg-gray-950/95 backdrop-blur-sm px-4 pt-3 pb-2 border-b border-gray-800/60 sticky top-0 z-10">
+        <div className="flex items-center justify-between mb-2">
+          <h1 className="text-sm font-bold text-gray-300 uppercase tracking-widest">S.R.C. Tracker</h1>
+          <button
+            onClick={handleShare}
+            className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 px-3 py-1.5 rounded-xl transition-colors"
+          >
+            <Link2 size={13} />
+            Share Live Link
+          </button>
+        </div>
         <div className="flex gap-2">
           {FILTER_TABS.map(({ key, label }) => (
             <button
@@ -228,7 +479,31 @@ export default function SRCTracker() {
           />
         ) : (
           <AnimatePresence>
-            {Object.entries(grouped).map(([roNum, group]) => (
+            {/* Standalone entries (no RO) */}
+            {standalone.length > 0 && (
+              <div className="mb-5">
+                <div className="flex items-center gap-2 mb-2.5">
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                    No RO
+                  </span>
+                  <span className="text-xs text-gray-600">Not linked to a repair order</span>
+                </div>
+                <div className="space-y-2">
+                  {standalone.map((entry) => (
+                    <SRCCard
+                      key={entry.id}
+                      entry={entry}
+                      onComplete={completeMutation.mutate}
+                      onDeletePhoto={deletePhotoMutation.mutate}
+                      onDelete={handleDelete}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* RO-grouped entries */}
+            {Object.entries(byRO).map(([roNum, group]) => (
               <div key={roNum} className="mb-5">
                 <div className="flex items-center gap-2 mb-2.5">
                   <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
@@ -246,6 +521,7 @@ export default function SRCTracker() {
                       key={entry.id}
                       entry={entry}
                       onComplete={completeMutation.mutate}
+                      onDeletePhoto={deletePhotoMutation.mutate}
                       onDelete={handleDelete}
                     />
                   ))}
@@ -260,7 +536,7 @@ export default function SRCTracker() {
       <motion.button
         whileTap={{ scale: 0.93 }}
         onClick={() => setCreateOpen(true)}
-        className="fixed bottom-20 right-4 z-30 w-14 h-14 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center shadow-glow shadow-xl"
+        className="fixed bottom-20 right-4 z-30 w-14 h-14 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center shadow-xl"
       >
         <Plus size={26} strokeWidth={2.5} />
       </motion.button>

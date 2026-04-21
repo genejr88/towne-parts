@@ -104,9 +104,21 @@ export const invoicesApi = {
 // ── SRC (Supplement / Return / Core) ─────────────────────────────────────────
 export const srcApi = {
   list: (params) => unwrap(api.get('/src', { params })),
-  create: (roId, data) => unwrap(api.post(`/src/ro/${roId}`, data)),
+  // Create standalone entry (roId optional in body)
+  create: (data) => unwrap(api.post('/src', data)),
+  // Create RO-linked entry (backward compat)
+  createForRO: (roId, data) => unwrap(api.post(`/src/ro/${roId}`, data)),
   update: (id, data) => unwrap(api.put(`/src/${id}`, data)),
   remove: (id) => unwrap(api.delete(`/src/${id}`)),
+  uploadPhotos: (id, files) => {
+    const form = new FormData()
+    files.forEach((f) => form.append('photos', f))
+    return unwrap(api.post(`/src/${id}/photos`, form, { headers: { 'Content-Type': 'multipart/form-data' } }))
+  },
+  deletePhoto: (photoId) => unwrap(api.delete(`/src/photos/${photoId}`)),
+  photoUrl: (storedPath) => `${API_URL}/uploads/src/${storedPath}`,
+  publicListUrl: () => `${API_URL}/api/src/public`,
+  publicPageUrl: () => `${window.location.origin}/src/public`,
 }
 
 // ── Vendors ───────────────────────────────────────────────────────────────────

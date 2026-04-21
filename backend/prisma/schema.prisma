@@ -135,18 +135,34 @@ model ROInvoice {
 }
 
 model SRCEntry {
-  id          Int       @id @default(autoincrement())
-  roId        Int
-  ro          RO        @relation(fields: [roId], references: [id], onDelete: Cascade)
-  entryType   SRCType
-  status      SRCStatus @default(OPEN)
-  note        String?
-  createdBy   String?
-  completedAt DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id              Int        @id @default(autoincrement())
+  roId            Int?
+  ro              RO?        @relation(fields: [roId], references: [id], onDelete: Cascade)
+  entryType       SRCType
+  status          SRCStatus  @default(OPEN)
+  note            String?
+  partNumber      String?
+  partDescription String?
+  vendorName      String?
+  returnDate      DateTime?
+  createdBy       String?
+  completedAt     DateTime?
+  photos          SRCPhoto[]
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
 
   @@map("src_entries")
+}
+
+model SRCPhoto {
+  id               Int      @id @default(autoincrement())
+  srcEntryId       Int
+  srcEntry         SRCEntry @relation(fields: [srcEntryId], references: [id], onDelete: Cascade)
+  originalFilename String?
+  storedPath       String
+  createdAt        DateTime @default(now())
+
+  @@map("src_photos")
 }
 
 enum SRCType {

@@ -5,6 +5,7 @@ import AppLayout from '@/components/layout/AppLayout'
 import Spinner from '@/components/ui/Spinner'
 
 import Login from '@/pages/Login'
+import PublicReturns from '@/pages/PublicReturns'
 import Dashboard from '@/pages/Dashboard'
 import ROList from '@/pages/ROList'
 import RODetail from '@/pages/RODetail'
@@ -51,6 +52,7 @@ export default function App() {
     <AnimatePresence mode="wait">
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/src/public" element={<PublicReturns />} />
 
         <Route path="/" element={
           <ProtectedRoute><AppLayout><Dashboard /></AppLayout></ProtectedRoute>

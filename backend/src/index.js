@@ -15,7 +15,8 @@ const partsDir = path.join(uploadsBase, 'parts')
 const inventoryDir = path.join(uploadsBase, 'inventory')
 const locationDir = path.join(uploadsBase, 'location')
 const privateDir = path.join(uploadsBase, 'private')
-;[uploadsBase, invoicesDir, partsDir, inventoryDir, locationDir, privateDir].forEach((dir) => {
+const srcDir = path.join(uploadsBase, 'src')
+;[uploadsBase, invoicesDir, partsDir, inventoryDir, locationDir, privateDir, srcDir].forEach((dir) => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
 })
 
