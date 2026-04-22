@@ -2,138 +2,280 @@ import { useEffect, useRef, useState, useCallback, useLayoutEffect } from 'react
 import { motion } from 'framer-motion'
 import { jsPDF } from 'jspdf'
 import {
-  RotateCcw, CheckCircle, X, Loader2, ScanLine, ZapOff,
+  RotateCcw, RotateCw, Maximize2, CheckCircle, X, Loader2, ScanLine, ZapOff,
   FileText, Image as ImageIcon, Palette, SlidersHorizontal, Crop
 } from 'lucide-react'
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  CROP OVERLAY
  *  ─────────────
- *  Renders over the raw captured image. Four corner handles + drag-anywhere-
- *  inside to reposition. Uses pointer events so it works on touch and mouse.
- *  Box-shadow trick creates the dark vignette outside the selection without
- *  needing SVG clipping.
- *  Crop coordinates are normalised (0-1) and converted to pixel coords on
- *  confirm, then drawn into a new canvas that replaces rawCanvasRef.
+ *  High-performance crop UI:
+ *    • Box stored in a ref (NOT React state) — no re-renders during drag
+ *    • DOM styles written directly via selectionRef on each move
+ *    • requestAnimationFrame batches updates to one per frame
+ *    • Pointer capture on the image-area wrapper so drags never get "lost"
+ *      when the pointer slips outside a handle
+ *    • Crop area is sized to the image's actual rendered region (not the
+ *      whole container) — correct behaviour when the image is letter-boxed
+ *      inside a non-matching aspect-ratio viewport
+ *    • 4 corner + 4 edge handles for precise adjustment
+ *    • Rotate L / R and Reset buttons wired to parent
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-function CropOverlay({ imageUrl, onApply, onSkip }) {
-  // Normalised selection box (0-1 relative to displayed image)
-  const [box, setBox] = useState({ x: 0.06, y: 0.06, x2: 0.94, y2: 0.94 })
-  const containerRef = useRef(null)
-  const dragging = useRef(null)   // 'tl'|'tr'|'bl'|'br'|'body'|null
-  const startRef = useRef(null)   // { pos, box } at pointer-down
+function CropOverlay({ imageUrl, onApply, onSkip, onRotate }) {
+  const wrapRef = useRef(null)          // fills viewport, measures for letterbox math
+  const imageAreaRef = useRef(null)     // sized to image's rendered area; receives pointer capture
+  const selectionRef = useRef(null)     // crop rectangle DOM node
+  const imgRef = useRef(null)
+  const boxRef = useRef({ x: 0.04, y: 0.04, x2: 0.96, y2: 0.96 })
+  const dragStateRef = useRef(null)     // { handle, start, startBox }
+  const rafRef = useRef(null)
 
-  const clamp = (v, lo, hi) => v < lo ? lo : v > hi ? hi : v
-  const MIN_SIZE = 0.06
+  const [imgSize, setImgSize] = useState({ w: 0, h: 0 })
+  const [wrapSize, setWrapSize] = useState({ w: 0, h: 0 })
 
-  const getRelPos = (e) => {
-    const rect = containerRef.current.getBoundingClientRect()
-    const src = e.touches ? e.touches[0] : e
+  const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v)
+  const MIN = 0.05
+
+  // ── Compute visible image rect inside the wrap (object-contain math) ──────
+  const area = (() => {
+    const W = wrapSize.w, H = wrapSize.h, iw = imgSize.w, ih = imgSize.h
+    if (!W || !H || !iw || !ih) return { x: 0, y: 0, w: W || 0, h: H || 0 }
+    const imgA = iw / ih
+    const wrapA = W / H
+    let dw, dh
+    if (imgA > wrapA) { dw = W; dh = W / imgA }
+    else              { dh = H; dw = H * imgA }
+    return { x: (W - dw) / 2, y: (H - dh) / 2, w: dw, h: dh }
+  })()
+
+  // ── Direct-to-DOM box writer (no React involvement) ───────────────────────
+  const applyBoxToDOM = () => {
+    const el = selectionRef.current
+    if (!el) return
+    const b = boxRef.current
+    el.style.left   = (b.x  * 100) + '%'
+    el.style.top    = (b.y  * 100) + '%'
+    el.style.width  = ((b.x2 - b.x) * 100) + '%'
+    el.style.height = ((b.y2 - b.y) * 100) + '%'
+  }
+
+  const scheduleUpdate = () => {
+    if (rafRef.current) return
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null
+      applyBoxToDOM()
+    })
+  }
+
+  // Re-apply after every render (cheap; only sets 4 inline styles)
+  useLayoutEffect(() => { applyBoxToDOM() })
+
+  // Measure wrap container & observe resize (orientation changes, etc.)
+  useLayoutEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const measure = () => {
+      const r = el.getBoundingClientRect()
+      setWrapSize({ w: r.width, h: r.height })
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // Reset box when a new source image is loaded (e.g., after rotation)
+  useEffect(() => {
+    boxRef.current = { x: 0.04, y: 0.04, x2: 0.96, y2: 0.96 }
+    applyBoxToDOM()
+  }, [imageUrl])
+
+  useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }, [])
+
+  const onImgLoad = () => {
+    const img = imgRef.current
+    if (!img) return
+    setImgSize({ w: img.naturalWidth, h: img.naturalHeight })
+  }
+
+  // ── Pointer helpers — always relative to imageAreaRef (the real image box) ─
+  const getRel = (e) => {
+    const rect = imageAreaRef.current.getBoundingClientRect()
     return {
-      x: clamp((src.clientX - rect.left) / rect.width,  0, 1),
-      y: clamp((src.clientY - rect.top)  / rect.height, 0, 1),
+      x: clamp((e.clientX - rect.left) / rect.width,  0, 1),
+      y: clamp((e.clientY - rect.top)  / rect.height, 0, 1),
     }
   }
 
-  const onDown = (handle) => (e) => {
+  const onPointerDown = (handle) => (e) => {
+    if (e.button !== undefined && e.button !== 0) return
     e.preventDefault()
     e.stopPropagation()
-    dragging.current = handle
-    startRef.current = { pos: getRelPos(e), box: { ...box } }
-    containerRef.current?.setPointerCapture?.(e.pointerId)
+    dragStateRef.current = {
+      handle,
+      start: getRel(e),
+      startBox: { ...boxRef.current },
+      pointerId: e.pointerId,
+    }
+    try { imageAreaRef.current?.setPointerCapture(e.pointerId) } catch {}
   }
 
-  const onMove = useCallback((e) => {
-    if (!dragging.current || !startRef.current) return
+  const onPointerMove = (e) => {
+    const d = dragStateRef.current
+    if (!d) return
     e.preventDefault()
-    const pos = getRelPos(e)
-    const dx = pos.x - startRef.current.pos.x
-    const dy = pos.y - startRef.current.pos.y
-    const sb  = startRef.current.box
+    const pos = getRel(e)
+    const dx = pos.x - d.start.x
+    const dy = pos.y - d.start.y
+    const sb = d.startBox
+    const b  = boxRef.current
 
-    setBox(() => {
-      const b = { ...sb }
-      if (dragging.current === 'tl') {
-        b.x = clamp(sb.x + dx, 0, sb.x2 - MIN_SIZE)
-        b.y = clamp(sb.y + dy, 0, sb.y2 - MIN_SIZE)
-      } else if (dragging.current === 'tr') {
-        b.x2 = clamp(sb.x2 + dx, sb.x + MIN_SIZE, 1)
-        b.y  = clamp(sb.y  + dy, 0, sb.y2 - MIN_SIZE)
-      } else if (dragging.current === 'bl') {
-        b.x  = clamp(sb.x  + dx, 0, sb.x2 - MIN_SIZE)
-        b.y2 = clamp(sb.y2 + dy, sb.y + MIN_SIZE, 1)
-      } else if (dragging.current === 'br') {
-        b.x2 = clamp(sb.x2 + dx, sb.x + MIN_SIZE, 1)
-        b.y2 = clamp(sb.y2 + dy, sb.y + MIN_SIZE, 1)
-      } else if (dragging.current === 'body') {
+    switch (d.handle) {
+      case 'tl':
+        b.x  = clamp(sb.x  + dx, 0, sb.x2 - MIN)
+        b.y  = clamp(sb.y  + dy, 0, sb.y2 - MIN)
+        b.x2 = sb.x2; b.y2 = sb.y2; break
+      case 'tr':
+        b.x2 = clamp(sb.x2 + dx, sb.x + MIN, 1)
+        b.y  = clamp(sb.y  + dy, 0, sb.y2 - MIN)
+        b.x  = sb.x;  b.y2 = sb.y2; break
+      case 'bl':
+        b.x  = clamp(sb.x  + dx, 0, sb.x2 - MIN)
+        b.y2 = clamp(sb.y2 + dy, sb.y + MIN, 1)
+        b.x2 = sb.x2; b.y  = sb.y; break
+      case 'br':
+        b.x2 = clamp(sb.x2 + dx, sb.x + MIN, 1)
+        b.y2 = clamp(sb.y2 + dy, sb.y + MIN, 1)
+        b.x  = sb.x;  b.y  = sb.y; break
+      case 't':
+        b.y  = clamp(sb.y  + dy, 0, sb.y2 - MIN)
+        b.x  = sb.x; b.x2 = sb.x2; b.y2 = sb.y2; break
+      case 'r':
+        b.x2 = clamp(sb.x2 + dx, sb.x + MIN, 1)
+        b.x  = sb.x; b.y = sb.y; b.y2 = sb.y2; break
+      case 'bt':
+        b.y2 = clamp(sb.y2 + dy, sb.y + MIN, 1)
+        b.x  = sb.x; b.x2 = sb.x2; b.y = sb.y; break
+      case 'l':
+        b.x  = clamp(sb.x  + dx, 0, sb.x2 - MIN)
+        b.x2 = sb.x2; b.y = sb.y; b.y2 = sb.y2; break
+      case 'body': {
         const w = sb.x2 - sb.x
         const h = sb.y2 - sb.y
-        b.x  = clamp(sb.x + dx, 0, 1 - w)
-        b.y  = clamp(sb.y + dy, 0, 1 - h)
-        b.x2 = b.x + w
-        b.y2 = b.y + h
+        const nx = clamp(sb.x + dx, 0, 1 - w)
+        const ny = clamp(sb.y + dy, 0, 1 - h)
+        b.x = nx; b.y = ny; b.x2 = nx + w; b.y2 = ny + h
+        break
       }
-      return b
-    })
-  }, [])
+      default: return
+    }
+    scheduleUpdate()
+  }
 
-  const onUp = useCallback(() => { dragging.current = null }, [])
+  const onPointerUp = (e) => {
+    const d = dragStateRef.current
+    dragStateRef.current = null
+    if (d) {
+      try { imageAreaRef.current?.releasePointerCapture(d.pointerId) } catch {}
+    }
+  }
 
-  // Percentages for CSS positioning
-  const left   = `${box.x  * 100}%`
-  const top    = `${box.y  * 100}%`
-  const width  = `${(box.x2 - box.x) * 100}%`
-  const height = `${(box.y2 - box.y) * 100}%`
-
-  const HANDLE = 'absolute w-[26px] h-[26px] bg-white rounded-sm shadow-lg touch-none z-10'
+  const reset = () => {
+    boxRef.current = { x: 0.04, y: 0.04, x2: 0.96, y2: 0.96 }
+    applyBoxToDOM()
+  }
 
   return (
     <div className="absolute inset-0 flex flex-col">
-      {/* Image + crop canvas */}
-      <div
-        ref={containerRef}
-        className="flex-1 relative overflow-hidden select-none"
-        onPointerMove={onMove}
-        onPointerUp={onUp}
-        onPointerLeave={onUp}
-        style={{ touchAction: 'none' }}
-      >
-        <img src={imageUrl} alt="" className="absolute inset-0 w-full h-full object-contain" draggable={false} />
+      <div ref={wrapRef} className="flex-1 relative overflow-hidden bg-black select-none">
+        {/* The image itself — draws the full letter-boxed view */}
+        <img
+          ref={imgRef}
+          src={imageUrl}
+          alt=""
+          onLoad={onImgLoad}
+          draggable={false}
+          className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+        />
 
-        {/* Selection box */}
+        {/* Interaction layer: sized exactly to the visible image rect */}
         <div
-          className="absolute border border-white/90 cursor-move"
+          ref={imageAreaRef}
+          className="absolute"
           style={{
-            left, top, width, height,
-            boxShadow: '0 0 0 2000px rgba(0,0,0,0.58)',
+            left: area.x, top: area.y, width: area.w, height: area.h,
+            touchAction: 'none',
           }}
-          onPointerDown={onDown('body')}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
         >
-          {/* Rule-of-thirds grid */}
-          <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none">
-            {[...Array(9)].map((_, i) => (
-              <div key={i} className="border border-white/15" />
-            ))}
-          </div>
+          {/* Selection rectangle */}
+          <div
+            ref={selectionRef}
+            className="absolute border border-white/95 cursor-move"
+            style={{
+              boxShadow: '0 0 0 4000px rgba(0,0,0,0.6)',
+              willChange: 'left, top, width, height',
+            }}
+            onPointerDown={onPointerDown('body')}
+          >
+            {/* Rule-of-thirds grid */}
+            <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none">
+              {[...Array(9)].map((_, i) => (
+                <div key={i} className="border border-white/15" />
+              ))}
+            </div>
 
-          {/* Corner handles */}
-          <div className={`${HANDLE} -top-3 -left-3 cursor-nwse-resize border-t-[3px] border-l-[3px] border-white !bg-transparent rounded-tl-md`}
-               style={{width:28,height:28}} onPointerDown={onDown('tl')} />
-          <div className={`${HANDLE} -top-3 -right-3 cursor-nesw-resize border-t-[3px] border-r-[3px] border-white !bg-transparent rounded-tr-md`}
-               style={{width:28,height:28}} onPointerDown={onDown('tr')} />
-          <div className={`${HANDLE} -bottom-3 -left-3 cursor-nesw-resize border-b-[3px] border-l-[3px] border-white !bg-transparent rounded-bl-md`}
-               style={{width:28,height:28}} onPointerDown={onDown('bl')} />
-          <div className={`${HANDLE} -bottom-3 -right-3 cursor-nwse-resize border-b-[3px] border-r-[3px] border-white !bg-transparent rounded-br-md`}
-               style={{width:28,height:28}} onPointerDown={onDown('br')} />
+            {/* Corner handles */}
+            <CornerHandle pos="tl" onPointerDown={onPointerDown('tl')} />
+            <CornerHandle pos="tr" onPointerDown={onPointerDown('tr')} />
+            <CornerHandle pos="bl" onPointerDown={onPointerDown('bl')} />
+            <CornerHandle pos="br" onPointerDown={onPointerDown('br')} />
+
+            {/* Edge handles */}
+            <EdgeHandle pos="t"  onPointerDown={onPointerDown('t')} />
+            <EdgeHandle pos="r"  onPointerDown={onPointerDown('r')} />
+            <EdgeHandle pos="bt" onPointerDown={onPointerDown('bt')} />
+            <EdgeHandle pos="l"  onPointerDown={onPointerDown('l')} />
+          </div>
         </div>
       </div>
 
       {/* Controls */}
       <div className="shrink-0 bg-black/90 px-4 pb-8 pt-3 border-t border-white/5">
-        <p className="text-[11px] text-gray-500 text-center mb-3 tracking-wide">
-          Drag corners to crop · Drag inside to reposition
-        </p>
+        {/* Rotate / Reset row */}
+        <div className="flex items-center justify-center gap-10 mb-3">
+          <button
+            onClick={() => onRotate(-90)}
+            className="flex flex-col items-center gap-1 text-gray-300 active:scale-95 transition-transform"
+          >
+            <div className="w-11 h-11 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center">
+              <RotateCcw size={18} />
+            </div>
+            <span className="text-[10px] font-medium text-gray-500">Rotate L</span>
+          </button>
+          <button
+            onClick={reset}
+            className="flex flex-col items-center gap-1 text-gray-300 active:scale-95 transition-transform"
+          >
+            <div className="w-11 h-11 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center">
+              <Maximize2 size={18} />
+            </div>
+            <span className="text-[10px] font-medium text-gray-500">Reset</span>
+          </button>
+          <button
+            onClick={() => onRotate(90)}
+            className="flex flex-col items-center gap-1 text-gray-300 active:scale-95 transition-transform"
+          >
+            <div className="w-11 h-11 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center">
+              <RotateCw size={18} />
+            </div>
+            <span className="text-[10px] font-medium text-gray-500">Rotate R</span>
+          </button>
+        </div>
+
         <div className="flex items-center gap-3">
           <button
             onClick={onSkip}
@@ -142,7 +284,7 @@ function CropOverlay({ imageUrl, onApply, onSkip }) {
             Skip
           </button>
           <button
-            onClick={() => onApply(box)}
+            onClick={() => onApply({ ...boxRef.current })}
             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-sm font-semibold text-white active:scale-95 transition-transform"
           >
             <Crop size={15} />
@@ -150,6 +292,61 @@ function CropOverlay({ imageUrl, onApply, onSkip }) {
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// Corner handle: transparent 40×40 touch target with white L-shape inside
+function CornerHandle({ pos, onPointerDown }) {
+  const posClass = {
+    tl: '-top-5 -left-5  cursor-nwse-resize',
+    tr: '-top-5 -right-5 cursor-nesw-resize',
+    bl: '-bottom-5 -left-5  cursor-nesw-resize',
+    br: '-bottom-5 -right-5 cursor-nwse-resize',
+  }[pos]
+  const corner = {
+    tl: { top: 10, left: 10, borderTop: '3px solid white', borderLeft: '3px solid white', borderTopLeftRadius: 4 },
+    tr: { top: 10, right: 10, borderTop: '3px solid white', borderRight: '3px solid white', borderTopRightRadius: 4 },
+    bl: { bottom: 10, left: 10, borderBottom: '3px solid white', borderLeft: '3px solid white', borderBottomLeftRadius: 4 },
+    br: { bottom: 10, right: 10, borderBottom: '3px solid white', borderRight: '3px solid white', borderBottomRightRadius: 4 },
+  }[pos]
+  return (
+    <div
+      onPointerDown={onPointerDown}
+      className={`absolute ${posClass} z-10`}
+      style={{ width: 40, height: 40, touchAction: 'none' }}
+    >
+      <div className="absolute" style={{ width: 18, height: 18, ...corner }} />
+    </div>
+  )
+}
+
+// Edge handle: transparent touch target with small white bar centered
+function EdgeHandle({ pos, onPointerDown }) {
+  const wrap = {
+    t:  'left-1/2 -top-5    -translate-x-1/2 cursor-ns-resize',
+    bt: 'left-1/2 -bottom-5 -translate-x-1/2 cursor-ns-resize',
+    l:  'top-1/2 -left-5    -translate-y-1/2 cursor-ew-resize',
+    r:  'top-1/2 -right-5   -translate-y-1/2 cursor-ew-resize',
+  }[pos]
+  const horizontal = pos === 't' || pos === 'bt'
+  return (
+    <div
+      onPointerDown={onPointerDown}
+      className={`absolute ${wrap} z-10 flex items-center justify-center`}
+      style={{
+        width:  horizontal ? 56 : 40,
+        height: horizontal ? 40 : 56,
+        touchAction: 'none',
+      }}
+    >
+      <div
+        className="bg-white rounded-full"
+        style={{
+          width:  horizontal ? 24 : 3,
+          height: horizontal ? 3  : 24,
+        }}
+      />
     </div>
   )
 }
@@ -628,6 +825,42 @@ export default function InvoiceScanner({ onCapture, onClose }) {
     processAndShow()
   }, [processAndShow])
 
+  // ─── Rotate rawCanvas 90° (called from crop overlay) ───────────────────────
+  const handleRotate = useCallback((degrees) => {
+    const raw = rawCanvasRef.current
+    if (!raw) return
+
+    const rad = (degrees * Math.PI) / 180
+    const rotated = document.createElement('canvas')
+
+    // For 90° increments, dimensions swap; for 180° they stay the same
+    const mod = ((degrees % 360) + 360) % 360
+    if (mod === 90 || mod === 270) {
+      rotated.width  = raw.height
+      rotated.height = raw.width
+    } else {
+      rotated.width  = raw.width
+      rotated.height = raw.height
+    }
+
+    const ctx = rotated.getContext('2d')
+    ctx.translate(rotated.width / 2, rotated.height / 2)
+    ctx.rotate(rad)
+    ctx.drawImage(raw, -raw.width / 2, -raw.height / 2)
+
+    rawCanvasRef.current = rotated
+
+    rotated.toBlob(
+      (blob) => {
+        if (!blob) return
+        const url = URL.createObjectURL(blob)
+        setRawPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return url })
+      },
+      'image/jpeg',
+      0.85,
+    )
+  }, [])
+
   const retake = () => {
     rawCanvasRef.current = null
     setPreview(null, null)
@@ -747,6 +980,7 @@ export default function InvoiceScanner({ onCapture, onClose }) {
             imageUrl={rawPreviewUrl}
             onApply={handleCropApply}
             onSkip={handleCropSkip}
+            onRotate={handleRotate}
           />
         )}
 
