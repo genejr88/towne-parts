@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback, useLayoutEffect } from 'react
 import { motion } from 'framer-motion'
 import { jsPDF } from 'jspdf'
 import {
-  RotateCcw, RotateCw, Maximize2, CheckCircle, X, Loader2, ScanLine, ZapOff,
+  RotateCcw, RotateCw, Maximize2, Sparkles, CheckCircle, X, Loader2, ScanLine, ZapOff,
   FileText, Image as ImageIcon, Palette, SlidersHorizontal, Crop
 } from 'lucide-react'
 
@@ -22,7 +22,7 @@ import {
  *    • Rotate L / R and Reset buttons wired to parent
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-function CropOverlay({ imageUrl, onApply, onSkip, onRotate }) {
+function CropOverlay({ imageUrl, onApply, onSkip, onRotate, onDetect }) {
   const wrapRef = useRef(null)          // fills viewport, measures for letterbox math
   const imageAreaRef = useRef(null)     // sized to image's rendered area; receives pointer capture
   const selectionRef = useRef(null)     // crop rectangle DOM node
@@ -85,18 +85,39 @@ function CropOverlay({ imageUrl, onApply, onSkip, onRotate }) {
     return () => ro.disconnect()
   }, [])
 
-  // Reset box when a new source image is loaded (e.g., after rotation)
-  useEffect(() => {
-    boxRef.current = { x: 0.04, y: 0.04, x2: 0.96, y2: 0.96 }
-    applyBoxToDOM()
-  }, [imageUrl])
-
   useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }, [])
+
+  // Animate selection to a new box (used by auto-detect)
+  const animateToBox = (target) => {
+    const el = selectionRef.current
+    boxRef.current = target
+    if (!el) { applyBoxToDOM(); return }
+    el.style.transition = 'left 220ms ease-out, top 220ms ease-out, width 220ms ease-out, height 220ms ease-out'
+    applyBoxToDOM()
+    window.setTimeout(() => { if (el) el.style.transition = '' }, 240)
+  }
+
+  const runAutoDetect = () => {
+    if (!onDetect) return false
+    const detected = onDetect()
+    if (!detected) return false
+    animateToBox(detected)
+    return true
+  }
 
   const onImgLoad = () => {
     const img = imgRef.current
     if (!img) return
     setImgSize({ w: img.naturalWidth, h: img.naturalHeight })
+
+    // Try automatic detection first — fall back to default box if nothing found
+    const detected = onDetect ? onDetect() : null
+    if (detected) {
+      boxRef.current = detected
+    } else {
+      boxRef.current = { x: 0.04, y: 0.04, x2: 0.96, y2: 0.96 }
+    }
+    applyBoxToDOM()
   }
 
   // ── Pointer helpers — always relative to imageAreaRef (the real image box) ─
@@ -245,8 +266,8 @@ function CropOverlay({ imageUrl, onApply, onSkip, onRotate }) {
 
       {/* Controls */}
       <div className="shrink-0 bg-black/90 px-4 pb-8 pt-3 border-t border-white/5">
-        {/* Rotate / Reset row */}
-        <div className="flex items-center justify-center gap-10 mb-3">
+        {/* Rotate / Auto / Reset row */}
+        <div className="flex items-center justify-center gap-7 mb-3">
           <button
             onClick={() => onRotate(-90)}
             className="flex flex-col items-center gap-1 text-gray-300 active:scale-95 transition-transform"
@@ -255,6 +276,15 @@ function CropOverlay({ imageUrl, onApply, onSkip, onRotate }) {
               <RotateCcw size={18} />
             </div>
             <span className="text-[10px] font-medium text-gray-500">Rotate L</span>
+          </button>
+          <button
+            onClick={runAutoDetect}
+            className="flex flex-col items-center gap-1 text-blue-300 active:scale-95 transition-transform"
+          >
+            <div className="w-11 h-11 rounded-full bg-blue-600/20 border border-blue-500/40 flex items-center justify-center">
+              <Sparkles size={18} />
+            </div>
+            <span className="text-[10px] font-medium text-blue-300">Auto</span>
           </button>
           <button
             onClick={reset}
@@ -482,6 +512,95 @@ function otsuThreshold(gray) {
     if (v > maxVar) { maxVar = v; bestT = t }
   }
   return bestT
+}
+
+/* ── Automatic document edge detection ────────────────────────────────────────
+ *  Heuristic designed for the "paper on a darker surface" case:
+ *    1.  Downscale to ~400px for speed (detection runs in <50 ms)
+ *    2.  Convert to grayscale
+ *    3.  Apply flat-field correction so shadows don't bias the threshold
+ *    4.  Otsu-threshold to isolate bright pixels (= paper)
+ *    5.  Build row & column projection profiles of paper-pixel counts
+ *    6.  The first/last rows & cols where the profile exceeds a fraction of
+ *        the image dimension mark the document edges
+ *    7.  Sanity-check that the detection covers ≥ 25 % of the frame — else
+ *        return null so the caller falls back to the default box
+ *
+ *  Returns a normalised box {x,y,x2,y2} in 0-1 coords, or null if nothing
+ *  confidently found.
+ * ────────────────────────────────────────────────────────────────────────── */
+function detectDocument(srcCanvas) {
+  if (!srcCanvas || !srcCanvas.width || !srcCanvas.height) return null
+
+  const MAX_W = 400
+  const ratio = Math.min(1, MAX_W / srcCanvas.width)
+  const w = Math.max(1, Math.round(srcCanvas.width  * ratio))
+  const h = Math.max(1, Math.round(srcCanvas.height * ratio))
+
+  const c = document.createElement('canvas')
+  c.width  = w
+  c.height = h
+  const ctx = c.getContext('2d', { willReadFrequently: true })
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'medium'
+  ctx.drawImage(srcCanvas, 0, 0, w, h)
+  const { data } = ctx.getImageData(0, 0, w, h)
+  const len = w * h
+
+  // Grayscale
+  const gray = new Uint8ClampedArray(len)
+  for (let i = 0; i < len; i++) {
+    const p = i * 4
+    gray[i] = (77 * data[p] + 150 * data[p + 1] + 29 * data[p + 2]) >> 8
+  }
+
+  // Flat-field correct so shadows don't throw off Otsu
+  const illum = estimateIllumination(gray, w, h)
+  const corrected = correctGray(gray, illum, len, 240)
+
+  // Otsu to separate "paper" (bright) from "background"
+  const T = otsuThreshold(corrected)
+
+  // Projection profiles — count bright pixels per row / per column
+  const rowCounts = new Int32Array(h)
+  const colCounts = new Int32Array(w)
+  for (let y = 0; y < h; y++) {
+    const off = y * w
+    let rc = 0
+    for (let x = 0; x < w; x++) {
+      if (corrected[off + x] > T) {
+        rc++
+        colCounts[x]++
+      }
+    }
+    rowCounts[y] = rc
+  }
+
+  // A row "has document" if > 25 % of its pixels are bright; same for cols
+  const rowThresh = Math.max(8, Math.round(w * 0.25))
+  const colThresh = Math.max(8, Math.round(h * 0.25))
+
+  let top = -1, bottom = -1, left = -1, right = -1
+  for (let y = 0; y < h; y++) { if (rowCounts[y] >= rowThresh) { top = y; break } }
+  for (let y = h - 1; y >= 0; y--) { if (rowCounts[y] >= rowThresh) { bottom = y; break } }
+  for (let x = 0; x < w; x++) { if (colCounts[x] >= colThresh) { left = x; break } }
+  for (let x = w - 1; x >= 0; x--) { if (colCounts[x] >= colThresh) { right = x; break } }
+
+  if (top < 0 || bottom <= top || left < 0 || right <= left) return null
+
+  // Reject if the detection is tiny (< 25 % either axis) — probably noise
+  if ((right - left) < w * 0.25 || (bottom - top) < h * 0.25) return null
+
+  // Grow outward a hair so we don't clip the very edge of the paper
+  const padX = Math.max(1, Math.round(w * 0.006))
+  const padY = Math.max(1, Math.round(h * 0.006))
+
+  return {
+    x:  Math.max(0, (left   - padX) / w),
+    y:  Math.max(0, (top    - padY) / h),
+    x2: Math.min(1, (right  + padX) / w),
+    y2: Math.min(1, (bottom + padY) / h),
+  }
 }
 
 // ── Sauvola adaptive binarization ───────────────────────────────────────────
@@ -825,6 +944,18 @@ export default function InvoiceScanner({ onCapture, onClose }) {
     processAndShow()
   }, [processAndShow])
 
+  // ─── Auto-detect document edges in the raw frame ───────────────────────────
+  const handleDetect = useCallback(() => {
+    const raw = rawCanvasRef.current
+    if (!raw) return null
+    try {
+      return detectDocument(raw)
+    } catch (err) {
+      console.warn('[Scanner] detection failed:', err)
+      return null
+    }
+  }, [])
+
   // ─── Rotate rawCanvas 90° (called from crop overlay) ───────────────────────
   const handleRotate = useCallback((degrees) => {
     const raw = rawCanvasRef.current
@@ -981,6 +1112,7 @@ export default function InvoiceScanner({ onCapture, onClose }) {
             onApply={handleCropApply}
             onSkip={handleCropSkip}
             onRotate={handleRotate}
+            onDetect={handleDetect}
           />
         )}
 
