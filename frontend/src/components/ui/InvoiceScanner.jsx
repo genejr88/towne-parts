@@ -1,10 +1,158 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useLayoutEffect } from 'react'
 import { motion } from 'framer-motion'
 import { jsPDF } from 'jspdf'
 import {
   RotateCcw, CheckCircle, X, Loader2, ScanLine, ZapOff,
-  FileText, Image as ImageIcon, Palette, SlidersHorizontal
+  FileText, Image as ImageIcon, Palette, SlidersHorizontal, Crop
 } from 'lucide-react'
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  CROP OVERLAY
+ *  ─────────────
+ *  Renders over the raw captured image. Four corner handles + drag-anywhere-
+ *  inside to reposition. Uses pointer events so it works on touch and mouse.
+ *  Box-shadow trick creates the dark vignette outside the selection without
+ *  needing SVG clipping.
+ *  Crop coordinates are normalised (0-1) and converted to pixel coords on
+ *  confirm, then drawn into a new canvas that replaces rawCanvasRef.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+function CropOverlay({ imageUrl, onApply, onSkip }) {
+  // Normalised selection box (0-1 relative to displayed image)
+  const [box, setBox] = useState({ x: 0.06, y: 0.06, x2: 0.94, y2: 0.94 })
+  const containerRef = useRef(null)
+  const dragging = useRef(null)   // 'tl'|'tr'|'bl'|'br'|'body'|null
+  const startRef = useRef(null)   // { pos, box } at pointer-down
+
+  const clamp = (v, lo, hi) => v < lo ? lo : v > hi ? hi : v
+  const MIN_SIZE = 0.06
+
+  const getRelPos = (e) => {
+    const rect = containerRef.current.getBoundingClientRect()
+    const src = e.touches ? e.touches[0] : e
+    return {
+      x: clamp((src.clientX - rect.left) / rect.width,  0, 1),
+      y: clamp((src.clientY - rect.top)  / rect.height, 0, 1),
+    }
+  }
+
+  const onDown = (handle) => (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragging.current = handle
+    startRef.current = { pos: getRelPos(e), box: { ...box } }
+    containerRef.current?.setPointerCapture?.(e.pointerId)
+  }
+
+  const onMove = useCallback((e) => {
+    if (!dragging.current || !startRef.current) return
+    e.preventDefault()
+    const pos = getRelPos(e)
+    const dx = pos.x - startRef.current.pos.x
+    const dy = pos.y - startRef.current.pos.y
+    const sb  = startRef.current.box
+
+    setBox(() => {
+      const b = { ...sb }
+      if (dragging.current === 'tl') {
+        b.x = clamp(sb.x + dx, 0, sb.x2 - MIN_SIZE)
+        b.y = clamp(sb.y + dy, 0, sb.y2 - MIN_SIZE)
+      } else if (dragging.current === 'tr') {
+        b.x2 = clamp(sb.x2 + dx, sb.x + MIN_SIZE, 1)
+        b.y  = clamp(sb.y  + dy, 0, sb.y2 - MIN_SIZE)
+      } else if (dragging.current === 'bl') {
+        b.x  = clamp(sb.x  + dx, 0, sb.x2 - MIN_SIZE)
+        b.y2 = clamp(sb.y2 + dy, sb.y + MIN_SIZE, 1)
+      } else if (dragging.current === 'br') {
+        b.x2 = clamp(sb.x2 + dx, sb.x + MIN_SIZE, 1)
+        b.y2 = clamp(sb.y2 + dy, sb.y + MIN_SIZE, 1)
+      } else if (dragging.current === 'body') {
+        const w = sb.x2 - sb.x
+        const h = sb.y2 - sb.y
+        b.x  = clamp(sb.x + dx, 0, 1 - w)
+        b.y  = clamp(sb.y + dy, 0, 1 - h)
+        b.x2 = b.x + w
+        b.y2 = b.y + h
+      }
+      return b
+    })
+  }, [])
+
+  const onUp = useCallback(() => { dragging.current = null }, [])
+
+  // Percentages for CSS positioning
+  const left   = `${box.x  * 100}%`
+  const top    = `${box.y  * 100}%`
+  const width  = `${(box.x2 - box.x) * 100}%`
+  const height = `${(box.y2 - box.y) * 100}%`
+
+  const HANDLE = 'absolute w-[26px] h-[26px] bg-white rounded-sm shadow-lg touch-none z-10'
+
+  return (
+    <div className="absolute inset-0 flex flex-col">
+      {/* Image + crop canvas */}
+      <div
+        ref={containerRef}
+        className="flex-1 relative overflow-hidden select-none"
+        onPointerMove={onMove}
+        onPointerUp={onUp}
+        onPointerLeave={onUp}
+        style={{ touchAction: 'none' }}
+      >
+        <img src={imageUrl} alt="" className="absolute inset-0 w-full h-full object-contain" draggable={false} />
+
+        {/* Selection box */}
+        <div
+          className="absolute border border-white/90 cursor-move"
+          style={{
+            left, top, width, height,
+            boxShadow: '0 0 0 2000px rgba(0,0,0,0.58)',
+          }}
+          onPointerDown={onDown('body')}
+        >
+          {/* Rule-of-thirds grid */}
+          <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none">
+            {[...Array(9)].map((_, i) => (
+              <div key={i} className="border border-white/15" />
+            ))}
+          </div>
+
+          {/* Corner handles */}
+          <div className={`${HANDLE} -top-3 -left-3 cursor-nwse-resize border-t-[3px] border-l-[3px] border-white !bg-transparent rounded-tl-md`}
+               style={{width:28,height:28}} onPointerDown={onDown('tl')} />
+          <div className={`${HANDLE} -top-3 -right-3 cursor-nesw-resize border-t-[3px] border-r-[3px] border-white !bg-transparent rounded-tr-md`}
+               style={{width:28,height:28}} onPointerDown={onDown('tr')} />
+          <div className={`${HANDLE} -bottom-3 -left-3 cursor-nesw-resize border-b-[3px] border-l-[3px] border-white !bg-transparent rounded-bl-md`}
+               style={{width:28,height:28}} onPointerDown={onDown('bl')} />
+          <div className={`${HANDLE} -bottom-3 -right-3 cursor-nwse-resize border-b-[3px] border-r-[3px] border-white !bg-transparent rounded-br-md`}
+               style={{width:28,height:28}} onPointerDown={onDown('br')} />
+        </div>
+      </div>
+
+      {/* Controls */}
+      <div className="shrink-0 bg-black/90 px-4 pb-8 pt-3 border-t border-white/5">
+        <p className="text-[11px] text-gray-500 text-center mb-3 tracking-wide">
+          Drag corners to crop · Drag inside to reposition
+        </p>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onSkip}
+            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-gray-800 border border-gray-700 text-sm font-semibold text-gray-300 active:scale-95 transition-transform"
+          >
+            Skip
+          </button>
+          <button
+            onClick={() => onApply(box)}
+            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-sm font-semibold text-white active:scale-95 transition-transform"
+          >
+            <Crop size={15} />
+            Apply Crop
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  IMAGE PROCESSING PIPELINE
@@ -311,8 +459,9 @@ export default function InvoiceScanner({ onCapture, onClose }) {
   const previewBlobRef = useRef(null)
   const processDebounceRef = useRef(null)
 
-  const [phase, setPhase] = useState('starting')
+  const [phase, setPhase] = useState('starting') // starting | live | crop | processing | captured | error
   const [previewUrl, setPreviewUrl] = useState(null)
+  const [rawPreviewUrl, setRawPreviewUrl] = useState(null) // used by CropOverlay
   const [errorMsg, setErrorMsg] = useState('')
 
   // Settings
@@ -426,7 +575,14 @@ export default function InvoiceScanner({ onCapture, onClose }) {
     ctx.drawImage(video, 0, 0, vw, vh)
 
     streamRef.current?.getTracks().forEach((t) => t.stop())
-    processAndShow()
+
+    // Show crop UI first — blob URL of the raw frame as background image
+    raw.toBlob((blob) => {
+      if (!blob) { processAndShow(); return }
+      const url = URL.createObjectURL(blob)
+      setRawPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return url })
+      setPhase('crop')
+    }, 'image/jpeg', 0.85)
   }, [processAndShow])
 
   // ─── Re-process when settings change after capture (debounced) ─────────────
@@ -438,9 +594,44 @@ export default function InvoiceScanner({ onCapture, onClose }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, brightness, contrast, thresholdOffset])
 
+  // ─── Crop callbacks ─────────────────────────────────────────────────────────
+  const handleCropApply = useCallback((box) => {
+    const raw = rawCanvasRef.current
+    if (!raw) { processAndShow(); return }
+
+    // Compute pixel coords from normalised box
+    // The image is displayed with object-contain so the actual visible area
+    // may be letter-boxed. We stored the raw canvas at real pixel size so
+    // we just map 0-1 directly onto that.
+    const px = Math.round(box.x  * raw.width)
+    const py = Math.round(box.y  * raw.height)
+    const pw = Math.round((box.x2 - box.x) * raw.width)
+    const ph = Math.round((box.y2 - box.y) * raw.height)
+
+    if (pw < 10 || ph < 10) { processAndShow(); return }
+
+    const cropped = document.createElement('canvas')
+    cropped.width  = pw
+    cropped.height = ph
+    const ctx = cropped.getContext('2d')
+    ctx.drawImage(raw, px, py, pw, ph, 0, 0, pw, ph)
+    rawCanvasRef.current = cropped
+
+    // Clean up raw preview URL — no longer needed
+    setRawPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null })
+
+    processAndShow()
+  }, [processAndShow])
+
+  const handleCropSkip = useCallback(() => {
+    setRawPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null })
+    processAndShow()
+  }, [processAndShow])
+
   const retake = () => {
     rawCanvasRef.current = null
     setPreview(null, null)
+    setRawPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null })
     setBrightness(0)
     setContrast(0)
     setThresholdOffset(0)
@@ -499,7 +690,7 @@ export default function InvoiceScanner({ onCapture, onClose }) {
         <div className="flex items-center gap-2">
           <ScanLine size={18} className="text-blue-400" />
           <span className="text-sm font-semibold text-gray-100">
-            {phase === 'captured' ? 'Review Scan' : 'Scan Invoice'}
+            {phase === 'captured' ? 'Review Scan' : phase === 'crop' ? 'Crop' : 'Scan Invoice'}
           </span>
           {phase === 'captured' && (
             <span className="text-[11px] px-2 py-0.5 rounded-full font-medium bg-blue-500/15 text-blue-300 border border-blue-500/30">
@@ -550,6 +741,15 @@ export default function InvoiceScanner({ onCapture, onClose }) {
           </div>
         )}
 
+        {/* Crop overlay */}
+        {phase === 'crop' && rawPreviewUrl && (
+          <CropOverlay
+            imageUrl={rawPreviewUrl}
+            onApply={handleCropApply}
+            onSkip={handleCropSkip}
+          />
+        )}
+
         {phase === 'captured' && previewUrl && (
           <img
             key={previewUrl}
@@ -584,7 +784,8 @@ export default function InvoiceScanner({ onCapture, onClose }) {
         )}
       </div>
 
-      {/* Controls */}
+      {/* Controls — hidden during crop (crop overlay has its own buttons) */}
+      {phase !== 'crop' && (
       <div className="shrink-0 bg-black/90 px-4 pb-8 pt-3 border-t border-white/5">
 
         {phase === 'live' && (
@@ -695,6 +896,7 @@ export default function InvoiceScanner({ onCapture, onClose }) {
           </div>
         )}
       </div>
+      )}
     </div>
   )
 }
