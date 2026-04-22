@@ -515,19 +515,27 @@ function otsuThreshold(gray) {
 }
 
 /* ── Automatic document edge detection ────────────────────────────────────────
- *  Heuristic designed for the "paper on a darker surface" case:
- *    1.  Downscale to ~400px for speed (detection runs in <50 ms)
- *    2.  Convert to grayscale
- *    3.  Apply flat-field correction so shadows don't bias the threshold
- *    4.  Otsu-threshold to isolate bright pixels (= paper)
- *    5.  Build row & column projection profiles of paper-pixel counts
- *    6.  The first/last rows & cols where the profile exceeds a fraction of
- *        the image dimension mark the document edges
- *    7.  Sanity-check that the detection covers ≥ 25 % of the frame — else
- *        return null so the caller falls back to the default box
+ *  Three strategies tried in order — first valid result wins:
  *
- *  Returns a normalised box {x,y,x2,y2} in 0-1 coords, or null if nothing
- *  confidently found.
+ *  1. Background-colour sampling  (most robust in practice)
+ *     Sample the 10px border strips of the frame; compute the median and std
+ *     dev of those pixels to characterise the background. Mark every pixel
+ *     that differs from the background by > max(12, 1.5·σ) as "document".
+ *     Build row/col projection profiles and find the bounding box.
+ *
+ *  2. Otsu on flat-field-corrected grayscale  (good contrast, even lighting)
+ *     Same projection approach, but the foreground mask comes from Otsu's
+ *     global optimal threshold after illumination correction.
+ *
+ *  3. Row/column average step-change  (works even on same-brightness paper)
+ *     Compute average brightness per row and per column. The derivative of
+ *     these profiles shows the sharpest brightness transition in the image.
+ *     For a document on a surface, the boundary produces a larger step than
+ *     any line of text inside the document.
+ *
+ *  Sanity checks applied after each strategy:
+ *    • Result must cover 20–92 % of each axis (rejects noise & whole-frame)
+ *  Returns {x,y,x2,y2} normalised 0-1, or null if nothing is confident.
  * ────────────────────────────────────────────────────────────────────────── */
 function detectDocument(srcCanvas) {
   if (!srcCanvas || !srcCanvas.width || !srcCanvas.height) return null
@@ -538,8 +546,7 @@ function detectDocument(srcCanvas) {
   const h = Math.max(1, Math.round(srcCanvas.height * ratio))
 
   const c = document.createElement('canvas')
-  c.width  = w
-  c.height = h
+  c.width = w; c.height = h
   const ctx = c.getContext('2d', { willReadFrequently: true })
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = 'medium'
@@ -547,60 +554,128 @@ function detectDocument(srcCanvas) {
   const { data } = ctx.getImageData(0, 0, w, h)
   const len = w * h
 
-  // Grayscale
+  // ── Grayscale (Rec.601) ─────────────────────────────────────────────────
   const gray = new Uint8ClampedArray(len)
   for (let i = 0; i < len; i++) {
     const p = i * 4
     gray[i] = (77 * data[p] + 150 * data[p + 1] + 29 * data[p + 2]) >> 8
   }
 
-  // Flat-field correct so shadows don't throw off Otsu
-  const illum = estimateIllumination(gray, w, h)
-  const corrected = correctGray(gray, illum, len, 240)
-
-  // Otsu to separate "paper" (bright) from "background"
-  const T = otsuThreshold(corrected)
-
-  // Projection profiles — count bright pixels per row / per column
-  const rowCounts = new Int32Array(h)
-  const colCounts = new Int32Array(w)
-  for (let y = 0; y < h; y++) {
-    const off = y * w
-    let rc = 0
-    for (let x = 0; x < w; x++) {
-      if (corrected[off + x] > T) {
-        rc++
-        colCounts[x]++
+  // ── Shared helper: projection profiles → bounding box ──────────────────
+  //    isDoc(pixelIndex) → true if pixel is considered "inside document"
+  const findBox = (isDoc) => {
+    const rowCounts = new Int32Array(h)
+    const colCounts = new Int32Array(w)
+    for (let y = 0; y < h; y++) {
+      const off = y * w
+      let rc = 0
+      for (let x = 0; x < w; x++) {
+        if (isDoc(off + x)) { rc++; colCounts[x]++ }
       }
+      rowCounts[y] = rc
     }
-    rowCounts[y] = rc
+    // A row/col qualifies if ≥ 12 % of it is "document"
+    const rowT = Math.max(4, Math.round(w * 0.12))
+    const colT = Math.max(4, Math.round(h * 0.12))
+    let top = -1, bot = -1, lft = -1, rgt = -1
+    for (let y = 0; y < h; y++) { if (rowCounts[y] >= rowT) { top = y; break } }
+    for (let y = h - 1; y >= 0; y--) { if (rowCounts[y] >= rowT) { bot = y; break } }
+    for (let x = 0; x < w; x++) { if (colCounts[x] >= colT) { lft = x; break } }
+    for (let x = w - 1; x >= 0; x--) { if (colCounts[x] >= colT) { rgt = x; break } }
+    if (top < 0 || bot <= top || lft < 0 || rgt <= lft) return null
+    const dw = rgt - lft, dh = bot - top
+    // Must cover 20–92 % of each axis
+    if (dw < w * 0.20 || dh < h * 0.20) return null
+    if (dw > w * 0.92 && dh > h * 0.92) return null
+    const px = Math.max(2, Math.round(dw * 0.01))
+    const py = Math.max(2, Math.round(dh * 0.01))
+    return {
+      x:  Math.max(0, (lft - px) / w),
+      y:  Math.max(0, (top - py) / h),
+      x2: Math.min(1, (rgt + px) / w),
+      y2: Math.min(1, (bot + py) / h),
+    }
   }
 
-  // A row "has document" if > 25 % of its pixels are bright; same for cols
-  const rowThresh = Math.max(8, Math.round(w * 0.25))
-  const colThresh = Math.max(8, Math.round(h * 0.25))
-
-  let top = -1, bottom = -1, left = -1, right = -1
-  for (let y = 0; y < h; y++) { if (rowCounts[y] >= rowThresh) { top = y; break } }
-  for (let y = h - 1; y >= 0; y--) { if (rowCounts[y] >= rowThresh) { bottom = y; break } }
-  for (let x = 0; x < w; x++) { if (colCounts[x] >= colThresh) { left = x; break } }
-  for (let x = w - 1; x >= 0; x--) { if (colCounts[x] >= colThresh) { right = x; break } }
-
-  if (top < 0 || bottom <= top || left < 0 || right <= left) return null
-
-  // Reject if the detection is tiny (< 25 % either axis) — probably noise
-  if ((right - left) < w * 0.25 || (bottom - top) < h * 0.25) return null
-
-  // Grow outward a hair so we don't clip the very edge of the paper
-  const padX = Math.max(1, Math.round(w * 0.006))
-  const padY = Math.max(1, Math.round(h * 0.006))
-
-  return {
-    x:  Math.max(0, (left   - padX) / w),
-    y:  Math.max(0, (top    - padY) / h),
-    x2: Math.min(1, (right  + padX) / w),
-    y2: Math.min(1, (bottom + padY) / h),
+  // ── Strategy 1: background-colour sampling ──────────────────────────────
+  const BORD = 10
+  const bgArr = []
+  for (let y = 0; y < Math.min(BORD, h); y++)
+    for (let x = 0; x < w; x++) bgArr.push(gray[y * w + x])
+  for (let y = Math.max(0, h - BORD); y < h; y++)
+    for (let x = 0; x < w; x++) bgArr.push(gray[y * w + x])
+  for (let y = BORD; y < h - BORD; y++) {
+    for (let x = 0; x < Math.min(BORD, w); x++) bgArr.push(gray[y * w + x])
+    for (let x = Math.max(0, w - BORD); x < w; x++) bgArr.push(gray[y * w + x])
   }
+  bgArr.sort((a, b) => a - b)
+  const bgMedian = bgArr[bgArr.length >> 1]
+  const bgMu = bgArr.reduce((s, v) => s + v, 0) / bgArr.length
+  const bgSigma = Math.sqrt(bgArr.reduce((s, v) => s + (v - bgMu) ** 2, 0) / bgArr.length)
+  const diffT = Math.max(12, bgSigma * 1.5)
+
+  const box1 = findBox((i) => Math.abs(gray[i] - bgMedian) > diffT)
+  if (box1) {
+    console.debug('[Scanner] edge: bg-sample →', box1)
+    return box1
+  }
+
+  // ── Strategy 2: Otsu on illumination-corrected grayscale ────────────────
+  const illum = estimateIllumination(gray, w, h)
+  const corr  = correctGray(gray, illum, len, 240)
+  const T     = otsuThreshold(corr)
+
+  const box2 = findBox((i) => corr[i] > T)
+  if (box2) {
+    console.debug('[Scanner] edge: otsu →', box2)
+    return box2
+  }
+
+  // ── Strategy 3: row/column average step-change ──────────────────────────
+  const rowAvg = new Float32Array(h)
+  for (let y = 0; y < h; y++) {
+    let s = 0; const off = y * w
+    for (let x = 0; x < w; x++) s += gray[off + x]
+    rowAvg[y] = s / w
+  }
+  const colAvg = new Float32Array(w)
+  for (let x = 0; x < w; x++) {
+    let s = 0
+    for (let y = 0; y < h; y++) s += gray[y * w + x]
+    colAvg[x] = s / h
+  }
+
+  // First-order derivative of average profiles
+  const rowD = new Float32Array(h)
+  const colD = new Float32Array(w)
+  let maxRD = 0, maxCD = 0
+  for (let y = 1; y < h - 1; y++) { rowD[y] = Math.abs(rowAvg[y+1] - rowAvg[y-1]); if (rowD[y] > maxRD) maxRD = rowD[y] }
+  for (let x = 1; x < w - 1; x++) { colD[x] = Math.abs(colAvg[x+1] - colAvg[x-1]); if (colD[x] > maxCD) maxCD = colD[x] }
+
+  if (maxRD > 4 && maxCD > 4) {
+    const rDT = maxRD * 0.28
+    const cDT = maxCD * 0.28
+    let top = -1, bot = -1, lft = -1, rgt = -1
+    for (let y = 1; y < h - 1; y++) { if (rowD[y] >= rDT) { top = y; break } }
+    for (let y = h - 2; y > 0; y--) { if (rowD[y] >= rDT) { bot = y; break } }
+    for (let x = 1; x < w - 1; x++) { if (colD[x] >= cDT) { lft = x; break } }
+    for (let x = w - 2; x > 0; x--) { if (colD[x] >= cDT) { rgt = x; break } }
+    const dw = rgt - lft, dh = bot - top
+    if (top >= 0 && bot > top && lft >= 0 && rgt > lft &&
+        dw >= w * 0.15 && dh >= h * 0.15 && !(dw > w * 0.92 && dh > h * 0.92)) {
+      const box3 = {
+        x:  Math.max(0, (lft - 2) / w),
+        y:  Math.max(0, (top - 2) / h),
+        x2: Math.min(1, (rgt + 2) / w),
+        y2: Math.min(1, (bot + 2) / h),
+      }
+      console.debug('[Scanner] edge: derivative →', box3)
+      return box3
+    }
+  }
+
+  console.debug('[Scanner] edge: all strategies failed (bgMedian=%d, sigma=%.1f, diffT=%.1f)', bgMedian, bgSigma, diffT)
+  return null
 }
 
 // ── Sauvola adaptive binarization ───────────────────────────────────────────
