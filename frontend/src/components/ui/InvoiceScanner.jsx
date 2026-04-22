@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { jsPDF } from 'jspdf'
-import { RotateCcw, CheckCircle, X, Loader2, ScanLine, ZapOff, FileText, Image } from 'lucide-react'
+import { RotateCcw, CheckCircle, X, Loader2, ScanLine, ZapOff, FileText, Image as ImageIcon } from 'lucide-react'
 
-// ── Image processing ─────────────────────────────────────────────────────────
+// ─── Image processing ────────────────────────────────────────────────────────
 
-/** Convert RGBA pixel data to a grayscale Uint8Array */
+/** RGBA → grayscale Uint8Array using luminance weights (Rec. 601) */
 function toGrayscale(data, len) {
   const gray = new Uint8Array(len)
   for (let i = 0; i < len; i++) {
@@ -15,10 +15,7 @@ function toGrayscale(data, len) {
   return gray
 }
 
-/**
- * Otsu's method — finds the threshold value that best separates dark (text)
- * from light (paper) pixels. Works automatically regardless of exposure.
- */
+/** Otsu's method — automatic binary threshold */
 function otsuThreshold(gray) {
   const hist = new Int32Array(256)
   for (let i = 0; i < gray.length; i++) hist[gray[i]]++
@@ -43,17 +40,22 @@ function otsuThreshold(gray) {
 }
 
 /**
- * Full document scan pipeline:
- *   1. Grayscale
- *   2. Auto-threshold via Otsu (text → 0, paper → 255)
- * Returns a new ImageData with pure B&W pixels.
+ * Full scan pipeline:
+ *   1. Downscale to max 1400px wide
+ *   2. Grayscale
+ *   3. Light contrast stretch (helps dim photos)
+ *   4. Otsu threshold, with sanity-check fallback
+ * Returns a canvas filled with B&W pixels.
  */
 function processDocumentScan(srcCanvas) {
-  // Work canvas — scale to max 1400px wide for performance
+  if (!srcCanvas.width || !srcCanvas.height) {
+    throw new Error('Source canvas has no dimensions')
+  }
+
   const maxW = 1400
   const scale = srcCanvas.width > maxW ? maxW / srcCanvas.width : 1
-  const w = Math.round(srcCanvas.width * scale)
-  const h = Math.round(srcCanvas.height * scale)
+  const w = Math.max(1, Math.round(srcCanvas.width * scale))
+  const h = Math.max(1, Math.round(srcCanvas.height * scale))
 
   const work = document.createElement('canvas')
   work.width = w
@@ -65,48 +67,122 @@ function processDocumentScan(srcCanvas) {
   const data = imageData.data
   const len = w * h
 
+  // Grayscale pass
   const gray = toGrayscale(data, len)
-  const T = otsuThreshold(gray)
 
-  // Apply threshold — text goes black, paper goes white
+  // Find min/max for contrast stretch
+  let gMin = 255, gMax = 0
+  for (let i = 0; i < len; i++) {
+    const v = gray[i]
+    if (v < gMin) gMin = v
+    if (v > gMax) gMax = v
+  }
+
+  // Stretch histogram (only if we have meaningful range)
+  const range = gMax - gMin
+  if (range > 30) {
+    const factor = 255 / range
+    for (let i = 0; i < len; i++) {
+      gray[i] = Math.min(255, Math.max(0, Math.round((gray[i] - gMin) * factor)))
+    }
+  }
+
+  // Find threshold (Otsu)
+  let T = otsuThreshold(gray)
+
+  // Apply threshold and count how many pixels went each way
+  let blackCount = 0
   for (let i = 0; i < len; i++) {
     const val = gray[i] <= T ? 0 : 255
+    if (val === 0) blackCount++
     const p = i * 4
     data[p] = data[p + 1] = data[p + 2] = val
     data[p + 3] = 255
   }
 
+  // Sanity check — if Otsu went pathological (>85% or <2% black pixels),
+  // fall back to a simple fixed threshold at the midpoint of the stretched range
+  const blackPct = blackCount / len
+  if (blackPct > 0.85 || blackPct < 0.02) {
+    console.warn(`[Scanner] Otsu returned ${(blackPct * 100).toFixed(1)}% black — falling back`)
+    const fallbackT = 140 // biased toward white (paper) since docs have more background
+    for (let i = 0; i < len; i++) {
+      const val = gray[i] <= fallbackT ? 0 : 255
+      const p = i * 4
+      data[p] = data[p + 1] = data[p + 2] = val
+    }
+  }
+
   ctx.putImageData(imageData, 0, 0)
+  console.log(`[Scanner] ${w}x${h}, T=${T}, stretch=${range > 30 ? `${gMin}→${gMax}` : 'none'}, ${(blackCount / len * 100).toFixed(1)}% black`)
   return work
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+/** Convert canvas to Blob URL (works around iOS data URL size limits) */
+function canvasToBlobUrl(canvas, type = 'image/png', quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return reject(new Error('toBlob returned null'))
+        resolve({ blob, url: URL.createObjectURL(blob) })
+      },
+      type,
+      quality
+    )
+  })
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
 
 export default function InvoiceScanner({ onCapture, onClose }) {
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
   const streamRef = useRef(null)
+  const previewUrlRef = useRef(null)
+  const previewBlobRef = useRef(null)
 
   const [phase, setPhase] = useState('starting') // starting | live | processing | captured | error
-  const [capturedDataUrl, setCapturedDataUrl] = useState(null)
+  const [previewUrl, setPreviewUrl] = useState(null)
   const [errorMsg, setErrorMsg] = useState('')
-  const [mode, setMode] = useState('document') // 'document' | 'photo'
+  const [mode, setMode] = useState('document')
 
-  // ── Camera ──────────────────────────────────────────────────────────────────
+  // Clean up blob URL when replaced or component unmounts
+  const setPreviewBoth = (url, blob) => {
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
+    previewUrlRef.current = url
+    previewBlobRef.current = blob
+    setPreviewUrl(url)
+  }
+
+  // ─── Camera ────────────────────────────────────────────────────────────────
   const startCamera = useCallback(async () => {
     setPhase('starting')
     setErrorMsg('')
+    setPreviewBoth(null, null)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        video: {
+          facingMode: { ideal: 'environment' },
+          width:  { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
       })
       streamRef.current = stream
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        await videoRef.current.play()
+      const video = videoRef.current
+      if (video) {
+        video.srcObject = stream
+        await video.play()
+        // Wait until video reports real dimensions
+        if (!video.videoWidth || !video.videoHeight) {
+          await new Promise((res) => {
+            const handler = () => { video.removeEventListener('loadedmetadata', handler); res() }
+            video.addEventListener('loadedmetadata', handler)
+          })
+        }
       }
       setPhase('live')
     } catch (err) {
+      console.error('[Scanner] camera error:', err)
       setErrorMsg(
         err.name === 'NotAllowedError'
           ? 'Camera permission denied. Allow camera access and try again.'
@@ -118,40 +194,54 @@ export default function InvoiceScanner({ onCapture, onClose }) {
 
   useEffect(() => {
     startCamera()
-    return () => streamRef.current?.getTracks().forEach((t) => t.stop())
+    return () => {
+      streamRef.current?.getTracks().forEach((t) => t.stop())
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
+    }
   }, [startCamera])
 
-  // ── Capture ──────────────────────────────────────────────────────────────────
+  // ─── Capture ────────────────────────────────────────────────────────────────
   const capture = useCallback(() => {
     const video = videoRef.current
     const canvas = canvasRef.current
     if (!video || !canvas) return
 
+    const vw = video.videoWidth
+    const vh = video.videoHeight
+    if (!vw || !vh) {
+      setErrorMsg('Camera is still loading — try again in a second.')
+      setPhase('error')
+      return
+    }
+
+    // Draw frame FIRST — before stopping the stream
+    canvas.width = vw
+    canvas.height = vh
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(video, 0, 0, vw, vh)
+
+    // Now stop the camera
     streamRef.current?.getTracks().forEach((t) => t.stop())
     setPhase('processing')
 
-    // Delay slightly so the "Processing…" spinner actually renders
-    setTimeout(() => {
+    // Let spinner render before the heavy work
+    setTimeout(async () => {
       try {
-        // Draw the video frame to the hidden canvas
-        canvas.width = video.videoWidth || 1280
-        canvas.height = video.videoHeight || 720
-        const ctx = canvas.getContext('2d')
-        ctx.drawImage(video, 0, 0)
-
-        let dataUrl
+        let outputCanvas
+        let mime
+        let quality
 
         if (mode === 'document') {
-          // Run through the B&W scan pipeline
-          const processed = processDocumentScan(canvas)
-          // PNG = lossless — no JPEG smearing of B&W pixels back to gray
-          dataUrl = processed.toDataURL('image/png')
+          outputCanvas = processDocumentScan(canvas)
+          mime = 'image/png'       // lossless — protects B&W pixels
         } else {
-          // Color photo — just a high quality JPEG
-          dataUrl = canvas.toDataURL('image/jpeg', 0.9)
+          outputCanvas = canvas
+          mime = 'image/jpeg'
+          quality = 0.9
         }
 
-        setCapturedDataUrl(dataUrl)
+        const { blob, url } = await canvasToBlobUrl(outputCanvas, mime, quality)
+        setPreviewBoth(url, blob)
         setPhase('captured')
       } catch (err) {
         console.error('[Scanner] processing error:', err)
@@ -162,40 +252,54 @@ export default function InvoiceScanner({ onCapture, onClose }) {
   }, [mode])
 
   const retake = () => {
-    setCapturedDataUrl(null)
+    setPreviewBoth(null, null)
     startCamera()
   }
 
-  // ── Generate PDF and upload ──────────────────────────────────────────────────
+  // ─── Build PDF ──────────────────────────────────────────────────────────────
   const useScan = async () => {
+    if (!previewBlobRef.current) return
     setPhase('processing')
     try {
-      const img = new Image()
-      img.src = capturedDataUrl
-      await new Promise((res, rej) => { img.onload = res; img.onerror = rej })
+      // Load the blob into an Image to measure dimensions
+      const img = await new Promise((resolve, reject) => {
+        const i = new window.Image()
+        i.onload = () => resolve(i)
+        i.onerror = () => reject(new Error('Could not load captured image'))
+        i.src = previewUrlRef.current
+      })
 
       const isPortrait = img.naturalHeight >= img.naturalWidth
       const pdf = new jsPDF({ orientation: isPortrait ? 'portrait' : 'landscape', unit: 'mm', format: 'a4' })
       const pageW = pdf.internal.pageSize.getWidth()
       const pageH = pdf.internal.pageSize.getHeight()
       const ratio = Math.min(pageW / img.naturalWidth, pageH / img.naturalHeight)
+      const dw = img.naturalWidth * ratio
+      const dh = img.naturalHeight * ratio
 
-      // PNG for document scans, JPEG for photos
       const fmt = mode === 'document' ? 'PNG' : 'JPEG'
-      pdf.addImage(capturedDataUrl, fmt, (pageW - img.naturalWidth * ratio) / 2, (pageH - img.naturalHeight * ratio) / 2, img.naturalWidth * ratio, img.naturalHeight * ratio)
+      // jsPDF accepts data URLs — convert blob to data URL just for embedding
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result)
+        reader.onerror = () => reject(reader.error)
+        reader.readAsDataURL(previewBlobRef.current)
+      })
 
-      const blob = pdf.output('blob')
-      const file = new File([blob], `invoice_scan_${Date.now()}.pdf`, { type: 'application/pdf' })
+      pdf.addImage(dataUrl, fmt, (pageW - dw) / 2, (pageH - dh) / 2, dw, dh)
+
+      const pdfBlob = pdf.output('blob')
+      const file = new File([pdfBlob], `invoice_scan_${Date.now()}.pdf`, { type: 'application/pdf' })
       onCapture(file)
       onClose()
     } catch (err) {
       console.error('[Scanner] PDF error:', err)
-      setErrorMsg('Failed to generate PDF. Please try again.')
+      setErrorMsg(`Failed to generate PDF: ${err.message}`)
       setPhase('captured')
     }
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────────
+  // ─── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col">
       <canvas ref={canvasRef} className="hidden" />
@@ -211,7 +315,7 @@ export default function InvoiceScanner({ onCapture, onClose }) {
             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
               mode === 'document' ? 'bg-blue-500/20 text-blue-300' : 'bg-gray-700 text-gray-400'
             }`}>
-              {mode === 'document' ? 'B&W Document' : 'Color Photo'}
+              {mode === 'document' ? 'B&W Doc' : 'Photo'}
             </span>
           )}
         </div>
@@ -223,25 +327,26 @@ export default function InvoiceScanner({ onCapture, onClose }) {
         </button>
       </div>
 
-      {/* Viewfinder / Preview */}
+      {/* Viewfinder */}
       <div className="flex-1 relative overflow-hidden bg-black">
 
-        {/* Live camera feed */}
         <video
           ref={videoRef}
           playsInline
           muted
+          autoPlay
           className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-200 ${
             phase === 'live' ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
         />
 
-        {/* Framing guides */}
         {phase === 'live' && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="w-[88%] max-w-xs aspect-[8.5/11] relative">
-              {['top-0 left-0 border-t-2 border-l-2', 'top-0 right-0 border-t-2 border-r-2',
-                'bottom-0 left-0 border-b-2 border-l-2', 'bottom-0 right-0 border-b-2 border-r-2']
+              {['top-0 left-0 border-t-2 border-l-2',
+                'top-0 right-0 border-t-2 border-r-2',
+                'bottom-0 left-0 border-b-2 border-l-2',
+                'bottom-0 right-0 border-b-2 border-r-2']
                 .map((cls, i) => (
                   <div key={i} className={`absolute w-7 h-7 border-blue-400 rounded-sm ${cls}`} />
                 ))}
@@ -258,17 +363,20 @@ export default function InvoiceScanner({ onCapture, onClose }) {
           </div>
         )}
 
-        {/* Scanned result preview — B&W should be very obvious */}
-        {phase === 'captured' && capturedDataUrl && (
+        {phase === 'captured' && previewUrl && (
           <img
-            src={capturedDataUrl}
+            src={previewUrl}
             alt="Scanned"
             className="absolute inset-0 w-full h-full object-contain"
             style={{ background: mode === 'document' ? '#fff' : '#000' }}
+            onError={(e) => {
+              console.error('[Scanner] preview img failed to load', e)
+              setErrorMsg('Preview failed to render. Try again.')
+              setPhase('error')
+            }}
           />
         )}
 
-        {/* Spinners */}
         {(phase === 'starting' || phase === 'processing') && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
             <Loader2 size={32} className="animate-spin text-blue-400" />
@@ -278,7 +386,6 @@ export default function InvoiceScanner({ onCapture, onClose }) {
           </div>
         )}
 
-        {/* Error */}
         {phase === 'error' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-8">
             <ZapOff size={36} className="text-red-400" />
@@ -295,7 +402,6 @@ export default function InvoiceScanner({ onCapture, onClose }) {
 
         {phase === 'live' && (
           <div className="flex items-center justify-between">
-            {/* Doc / Photo toggle */}
             <button
               onClick={() => setMode(m => m === 'document' ? 'photo' : 'document')}
               className="flex flex-col items-center gap-1"
@@ -305,14 +411,13 @@ export default function InvoiceScanner({ onCapture, onClose }) {
               }`}>
                 {mode === 'document'
                   ? <FileText size={16} className="text-blue-400" />
-                  : <Image size={16} className="text-gray-400" />}
+                  : <ImageIcon size={16} className="text-gray-400" />}
               </div>
               <span className={`text-[10px] font-medium ${mode === 'document' ? 'text-blue-400' : 'text-gray-500'}`}>
                 {mode === 'document' ? 'Doc' : 'Photo'}
               </span>
             </button>
 
-            {/* Shutter */}
             <button
               onClick={capture}
               className="rounded-full bg-white active:scale-95 transition-transform shadow-lg flex items-center justify-center"
