@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Search, Plus, X, ChevronRight, Car, Package, Archive, RefreshCw, Upload, Camera, ArchiveRestore } from 'lucide-react'
+import { Search, Plus, X, ChevronRight, Car, Package, Archive, RefreshCw, Upload, Camera, ArchiveRestore, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { rosApi, vendorsApi } from '@/lib/api'
 import { formatDate, STAGE_COLORS } from '@/lib/utils'
@@ -93,17 +93,28 @@ function ROCard({ ro, onClick, onUnarchive }) {
   )
 }
 
+const EMPTY_FORM = {
+  roNumber: '', vehicleYear: '', vehicleMake: '', vehicleModel: '',
+  vehicleColor: '', vin: '', vendorId: '',
+}
+
 function CreateROModal({ open, onClose }) {
   const queryClient = useQueryClient()
-  const [form, setForm] = useState({
-    roNumber: '',
-    vehicleYear: '',
-    vehicleMake: '',
-    vehicleModel: '',
-    vin: '',
-    vendorId: '',
-    color: '',
-  })
+  const [form, setForm] = useState(EMPTY_FORM)
+  const [addedCount, setAddedCount] = useState(0)
+  const [lastAdded, setLastAdded] = useState(null)
+  // formKey increments after each save — remounts the form so autoFocus fires again
+  const [formKey, setFormKey] = useState(0)
+
+  // Reset everything when modal opens fresh
+  useEffect(() => {
+    if (open) {
+      setForm(EMPTY_FORM)
+      setAddedCount(0)
+      setLastAdded(null)
+      setFormKey(0)
+    }
+  }, [open])
 
   const { data: vendors } = useQuery({
     queryKey: ['vendors'],
@@ -116,32 +127,52 @@ function CreateROModal({ open, onClose }) {
     onSuccess: (ro) => {
       queryClient.invalidateQueries({ queryKey: ['ros'] })
       toast.success(`RO ${ro.roNumber} created`)
-      onClose()
-      setForm({ roNumber: '', vehicleYear: '', vehicleMake: '', vehicleModel: '', vin: '', vendorId: '', color: '' })
+      setLastAdded(ro.roNumber)
+      setAddedCount((c) => c + 1)
+      // Keep the vendor selection, clear everything else, bump key to re-focus
+      setForm((f) => ({ ...EMPTY_FORM, vendorId: f.vendorId }))
+      setFormKey((k) => k + 1)
     },
-    onError: (err) => {
-      toast.error(err.message || 'Failed to create RO')
-    },
+    onError: (err) => toast.error(err.message || 'Failed to create RO'),
   })
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    if (!form.roNumber.trim()) {
-      toast.error('RO number is required')
-      return
-    }
+    if (!form.roNumber.trim()) { toast.error('RO number is required'); return }
     mutation.mutate({
-      ...form,
-      vehicleYear: form.vehicleYear ? parseInt(form.vehicleYear) : undefined,
-      vendorId: form.vendorId || undefined,
+      roNumber:     form.roNumber.trim(),
+      vehicleYear:  form.vehicleYear  || null,
+      vehicleMake:  form.vehicleMake  || null,
+      vehicleModel: form.vehicleModel || null,
+      vehicleColor: form.vehicleColor || null,
+      vin:          form.vin          || null,
+      vendorId:     form.vendorId     || null,
     })
   }
 
+  const handleClose = () => {
+    setForm(EMPTY_FORM)
+    setAddedCount(0)
+    setLastAdded(null)
+    onClose()
+  }
+
   return (
-    <Modal open={open} onClose={onClose} title="New Repair Order">
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <Modal open={open} onClose={handleClose} title="Add Repair Orders">
+      {/* Running tally */}
+      {addedCount > 0 && (
+        <div className="flex items-center gap-2 bg-emerald-950/40 border border-emerald-700/40 rounded-xl px-3 py-2 mb-4">
+          <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />
+          <p className="text-sm text-emerald-300">
+            <span className="font-bold">{addedCount}</span> {addedCount === 1 ? 'RO' : 'ROs'} added this session
+            {lastAdded && <span className="text-emerald-500/70"> · Last: #{lastAdded}</span>}
+          </p>
+        </div>
+      )}
+
+      <form key={formKey} onSubmit={handleSubmit} className="space-y-3">
         <Input
           label="RO Number *"
           value={form.roNumber}
@@ -149,59 +180,31 @@ function CreateROModal({ open, onClose }) {
           placeholder="e.g. 12345"
           autoFocus
         />
-        <div className="grid grid-cols-2 gap-3">
-          <Input
-            label="Year"
-            type="number"
-            value={form.vehicleYear}
-            onChange={set('vehicleYear')}
-            placeholder="2024"
-            min="1980"
-            max="2030"
-          />
-          <Input
-            label="Color"
-            value={form.color}
-            onChange={set('color')}
-            placeholder="Silver"
-          />
+
+        {/* Year / Make / Model on one row */}
+        <div className="grid grid-cols-3 gap-2">
+          <Input label="Year"  value={form.vehicleYear}  onChange={set('vehicleYear')}  placeholder="2024" />
+          <Input label="Make"  value={form.vehicleMake}  onChange={set('vehicleMake')}  placeholder="Toyota" />
+          <Input label="Model" value={form.vehicleModel} onChange={set('vehicleModel')} placeholder="Camry" />
         </div>
-        <Input
-          label="Make"
-          value={form.vehicleMake}
-          onChange={set('vehicleMake')}
-          placeholder="Toyota"
-        />
-        <Input
-          label="Model"
-          value={form.vehicleModel}
-          onChange={set('vehicleModel')}
-          placeholder="Camry"
-        />
-        <Input
-          label="VIN"
-          value={form.vin}
-          onChange={set('vin')}
-          placeholder="17-char VIN"
-          maxLength={17}
-        />
-        <Select
-          label="Vendor"
-          value={form.vendorId}
-          onChange={set('vendorId')}
-        >
+
+        {/* Color / VIN */}
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Color" value={form.vehicleColor} onChange={set('vehicleColor')} placeholder="Silver" />
+          <Input label="VIN (optional)" value={form.vin} onChange={set('vin')} placeholder="17 chars" maxLength={17} />
+        </div>
+
+        <Select label="Vendor" value={form.vendorId} onChange={set('vendorId')}>
           <option value="">— Select vendor —</option>
-          {vendors?.map((v) => (
-            <option key={v.id} value={v.id}>{v.name}</option>
-          ))}
+          {vendors?.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
         </Select>
 
         <div className="flex gap-3 pt-2">
-          <Button variant="secondary" type="button" onClick={onClose} className="flex-1">
-            Cancel
+          <Button variant="secondary" type="button" onClick={handleClose} className="flex-1">
+            {addedCount > 0 ? 'Done' : 'Cancel'}
           </Button>
           <Button variant="primary" type="submit" loading={mutation.isPending} className="flex-1">
-            Create RO
+            Save &amp; Next →
           </Button>
         </div>
       </form>
