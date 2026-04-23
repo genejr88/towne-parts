@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Edit2, Check, X, Plus, Trash2, Upload, FileText,
   Package, RotateCcw, Archive, ArchiveRestore, ChevronDown, ChevronUp,
-  ExternalLink, Clock, Send, Camera, Loader2, CheckCheck
+  ExternalLink, Clock, Send, Camera, Loader2, CheckCheck,
+  User, Phone, Mail, Shield, FileSearch
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api, { rosApi, partsApi, invoicesApi, srcApi, vendorsApi, telegramApi, inventoryApi } from '@/lib/api'
@@ -39,18 +40,67 @@ function FinishChip({ value, onClick }) {
   )
 }
 
+// ── Section header helper ──────────────────────────────────────────────────────
+function EditSection({ icon: Icon, label }) {
+  return (
+    <div className="flex items-center gap-2 pt-2 pb-1 border-b border-gray-700/50">
+      <Icon size={14} className="text-gray-400" />
+      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{label}</p>
+    </div>
+  )
+}
+
 // ── Edit RO Modal ──────────────────────────────────────────────────────────────
 function EditROModal({ open, onClose, ro }) {
   const queryClient = useQueryClient()
   const [form, setForm] = useState({
-    roNumber: ro.roNumber,
-    vehicleYear: ro.vehicleYear?.toString() || '',
-    vehicleMake: ro.vehicleMake || '',
-    vehicleModel: ro.vehicleModel || '',
-    vin: ro.vin || '',
-    color: ro.color || '',
-    vendorId: ro.vendorId || '',
+    roNumber:         ro.roNumber,
+    vehicleYear:      ro.vehicleYear?.toString() || '',
+    vehicleMake:      ro.vehicleMake || '',
+    vehicleModel:     ro.vehicleModel || '',
+    vehicleColor:     ro.vehicleColor || '',
+    vin:              ro.vin || '',
+    vendorId:         ro.vendorId?.toString() || '',
+    // Customer
+    ownerName:        ro.ownerName || '',
+    ownerPhone:       ro.ownerPhone || '',
+    ownerPhone2:      ro.ownerPhone2 || '',
+    ownerEmail:       ro.ownerEmail || '',
+    // Insurance
+    insuranceCompany: ro.insuranceCompany || '',
+    claimNumber:      ro.claimNumber || '',
+    policyNumber:     ro.policyNumber || '',
+    adjusterName:     ro.adjusterName || '',
+    adjusterPhone:    ro.adjusterPhone || '',
+    deductible:       ro.deductible?.toString() || '',
+    dateOfLoss:       ro.dateOfLoss ? new Date(ro.dateOfLoss).toISOString().slice(0, 10) : '',
   })
+
+  // Reset form when ro prop changes (e.g. modal reopened after save)
+  useEffect(() => {
+    if (open) {
+      setForm({
+        roNumber:         ro.roNumber,
+        vehicleYear:      ro.vehicleYear?.toString() || '',
+        vehicleMake:      ro.vehicleMake || '',
+        vehicleModel:     ro.vehicleModel || '',
+        vehicleColor:     ro.vehicleColor || '',
+        vin:              ro.vin || '',
+        vendorId:         ro.vendorId?.toString() || '',
+        ownerName:        ro.ownerName || '',
+        ownerPhone:       ro.ownerPhone || '',
+        ownerPhone2:      ro.ownerPhone2 || '',
+        ownerEmail:       ro.ownerEmail || '',
+        insuranceCompany: ro.insuranceCompany || '',
+        claimNumber:      ro.claimNumber || '',
+        policyNumber:     ro.policyNumber || '',
+        adjusterName:     ro.adjusterName || '',
+        adjusterPhone:    ro.adjusterPhone || '',
+        deductible:       ro.deductible?.toString() || '',
+        dateOfLoss:       ro.dateOfLoss ? new Date(ro.dateOfLoss).toISOString().slice(0, 10) : '',
+      })
+    }
+  }, [open, ro])
 
   const { data: vendors } = useQuery({
     queryKey: ['vendors'],
@@ -70,28 +120,76 @@ function EditROModal({ open, onClose, ro }) {
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
 
+  const handleSave = () => mutation.mutate({
+    roNumber:         form.roNumber,
+    vehicleYear:      form.vehicleYear || null,
+    vehicleMake:      form.vehicleMake || null,
+    vehicleModel:     form.vehicleModel || null,
+    vehicleColor:     form.vehicleColor || null,
+    vin:              form.vin || null,
+    vendorId:         form.vendorId || null,
+    ownerName:        form.ownerName || null,
+    ownerPhone:       form.ownerPhone || null,
+    ownerPhone2:      form.ownerPhone2 || null,
+    ownerEmail:       form.ownerEmail || null,
+    insuranceCompany: form.insuranceCompany || null,
+    claimNumber:      form.claimNumber || null,
+    policyNumber:     form.policyNumber || null,
+    adjusterName:     form.adjusterName || null,
+    adjusterPhone:    form.adjusterPhone || null,
+    deductible:       form.deductible || null,
+    dateOfLoss:       form.dateOfLoss || null,
+  })
+
   return (
     <Modal open={open} onClose={onClose} title="Edit RO">
-      <div className="space-y-4">
+      <div className="space-y-3 max-h-[75vh] overflow-y-auto pr-1">
+
+        {/* ── Vehicle ── */}
+        <EditSection icon={FileText} label="Vehicle" />
         <Input label="RO Number" value={form.roNumber} onChange={set('roNumber')} />
         <div className="grid grid-cols-2 gap-3">
-          <Input label="Year" type="number" value={form.vehicleYear} onChange={set('vehicleYear')} placeholder="2024" />
-          <Input label="Color" value={form.color} onChange={set('color')} placeholder="Silver" />
+          <Input label="Year" value={form.vehicleYear} onChange={set('vehicleYear')} placeholder="2024" />
+          <Input label="Color" value={form.vehicleColor} onChange={set('vehicleColor')} placeholder="Silver" />
         </div>
-        <Input label="Make" value={form.vehicleMake} onChange={set('vehicleMake')} />
-        <Input label="Model" value={form.vehicleModel} onChange={set('vehicleModel')} />
-        <Input label="VIN" value={form.vin} onChange={set('vin')} maxLength={17} />
-        <Select label="Vendor" value={form.vendorId} onChange={set('vendorId')}>
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Make" value={form.vehicleMake} onChange={set('vehicleMake')} />
+          <Input label="Model" value={form.vehicleModel} onChange={set('vehicleModel')} />
+        </div>
+        <Input label="VIN" value={form.vin} onChange={set('vin')} maxLength={17} placeholder="17-character VIN" />
+        <Select label="Parts Vendor" value={form.vendorId} onChange={set('vendorId')}>
           <option value="">— None —</option>
           {vendors?.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
         </Select>
-        <div className="flex gap-3 pt-2">
+
+        {/* ── Customer / Owner ── */}
+        <EditSection icon={User} label="Customer / Owner" />
+        <Input label="Owner Name" value={form.ownerName} onChange={set('ownerName')} placeholder="Jane Smith" />
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Phone" type="tel" value={form.ownerPhone} onChange={set('ownerPhone')} placeholder="(860) 555-0100" />
+          <Input label="Alt Phone" type="tel" value={form.ownerPhone2} onChange={set('ownerPhone2')} placeholder="(860) 555-0101" />
+        </div>
+        <Input label="Email" type="email" value={form.ownerEmail} onChange={set('ownerEmail')} placeholder="jane@email.com" />
+
+        {/* ── Insurance ── */}
+        <EditSection icon={Shield} label="Insurance" />
+        <Input label="Insurance Company" value={form.insuranceCompany} onChange={set('insuranceCompany')} placeholder="State Farm" />
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Claim Number" value={form.claimNumber} onChange={set('claimNumber')} placeholder="CLM-00123" />
+          <Input label="Policy Number" value={form.policyNumber} onChange={set('policyNumber')} placeholder="POL-456" />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Adjuster Name" value={form.adjusterName} onChange={set('adjusterName')} placeholder="John Adjuster" />
+          <Input label="Adjuster Phone" type="tel" value={form.adjusterPhone} onChange={set('adjusterPhone')} placeholder="(860) 555-0200" />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Deductible ($)" type="number" value={form.deductible} onChange={set('deductible')} placeholder="500" step="0.01" />
+          <Input label="Date of Loss" type="date" value={form.dateOfLoss} onChange={set('dateOfLoss')} />
+        </div>
+
+        <div className="flex gap-3 pt-3 border-t border-gray-700/50">
           <Button variant="secondary" onClick={onClose} className="flex-1">Cancel</Button>
-          <Button variant="primary" loading={mutation.isPending} onClick={() => mutation.mutate({
-            ...form,
-            vehicleYear: form.vehicleYear ? parseInt(form.vehicleYear) : undefined,
-            vendorId: form.vendorId || undefined,
-          })} className="flex-1">Save</Button>
+          <Button variant="primary" loading={mutation.isPending} onClick={handleSave} className="flex-1">Save</Button>
         </div>
       </div>
     </Modal>
@@ -771,15 +869,15 @@ export default function RODetail() {
                 <p className="text-gray-200 font-mono text-xs">{ro.vin}</p>
               </div>
             )}
-            {ro.color && (
+            {ro.vehicleColor && (
               <div>
                 <p className="text-xs text-gray-500 mb-0.5">Color</p>
-                <p className="text-gray-200">{ro.color}</p>
+                <p className="text-gray-200">{ro.vehicleColor}</p>
               </div>
             )}
             {ro.vendor?.name && (
               <div>
-                <p className="text-xs text-gray-500 mb-0.5">Vendor</p>
+                <p className="text-xs text-gray-500 mb-0.5">Parts Vendor</p>
                 <p className="text-gray-200">{ro.vendor.name}</p>
               </div>
             )}
@@ -814,6 +912,104 @@ export default function RODetail() {
             </Button>
           </div>
         </div>
+
+        {/* Customer info card — shown only when any field is populated */}
+        {(ro.ownerName || ro.ownerPhone || ro.ownerPhone2 || ro.ownerEmail) && (
+          <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-4 mb-3">
+            <div className="flex items-center gap-2 mb-3">
+              <User size={13} className="text-blue-400" />
+              <p className="text-xs font-bold text-blue-400 uppercase tracking-widest">Customer</p>
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+              {ro.ownerName && (
+                <div className="col-span-2">
+                  <p className="text-xs text-gray-500 mb-0.5">Name</p>
+                  <p className="text-gray-200 font-medium">{ro.ownerName}</p>
+                </div>
+              )}
+              {ro.ownerPhone && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-0.5">Phone</p>
+                  <a href={`tel:${ro.ownerPhone}`} className="text-blue-400 hover:text-blue-300 transition-colors">
+                    {ro.ownerPhone}
+                  </a>
+                </div>
+              )}
+              {ro.ownerPhone2 && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-0.5">Alt Phone</p>
+                  <a href={`tel:${ro.ownerPhone2}`} className="text-blue-400 hover:text-blue-300 transition-colors">
+                    {ro.ownerPhone2}
+                  </a>
+                </div>
+              )}
+              {ro.ownerEmail && (
+                <div className="col-span-2">
+                  <p className="text-xs text-gray-500 mb-0.5">Email</p>
+                  <a href={`mailto:${ro.ownerEmail}`} className="text-blue-400 hover:text-blue-300 transition-colors break-all">
+                    {ro.ownerEmail}
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Insurance card — shown only when any field is populated */}
+        {(ro.insuranceCompany || ro.claimNumber || ro.policyNumber || ro.adjusterName || ro.adjusterPhone || ro.deductible || ro.dateOfLoss) && (
+          <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-4 mb-3">
+            <div className="flex items-center gap-2 mb-3">
+              <Shield size={13} className="text-emerald-400" />
+              <p className="text-xs font-bold text-emerald-400 uppercase tracking-widest">Insurance</p>
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+              {ro.insuranceCompany && (
+                <div className="col-span-2">
+                  <p className="text-xs text-gray-500 mb-0.5">Company</p>
+                  <p className="text-gray-200 font-medium">{ro.insuranceCompany}</p>
+                </div>
+              )}
+              {ro.claimNumber && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-0.5">Claim #</p>
+                  <p className="text-gray-200 font-mono text-xs">{ro.claimNumber}</p>
+                </div>
+              )}
+              {ro.policyNumber && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-0.5">Policy #</p>
+                  <p className="text-gray-200 font-mono text-xs">{ro.policyNumber}</p>
+                </div>
+              )}
+              {ro.adjusterName && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-0.5">Adjuster</p>
+                  <p className="text-gray-200">{ro.adjusterName}</p>
+                </div>
+              )}
+              {ro.adjusterPhone && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-0.5">Adjuster Phone</p>
+                  <a href={`tel:${ro.adjusterPhone}`} className="text-blue-400 hover:text-blue-300 transition-colors">
+                    {ro.adjusterPhone}
+                  </a>
+                </div>
+              )}
+              {ro.deductible != null && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-0.5">Deductible</p>
+                  <p className="text-gray-200">${Number(ro.deductible).toFixed(2)}</p>
+                </div>
+              )}
+              {ro.dateOfLoss && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-0.5">Date of Loss</p>
+                  <p className="text-gray-200">{new Date(ro.dateOfLoss).toLocaleDateString()}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Parts section */}
         <Section

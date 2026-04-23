@@ -53,6 +53,22 @@ model RO {
   isArchived              Boolean       @default(false)
   archivedAt              DateTime?
   locationPhotoUrl        String?
+
+  // Customer / Owner info
+  ownerName               String?
+  ownerPhone              String?
+  ownerPhone2             String?
+  ownerEmail              String?
+
+  // Insurance info
+  insuranceCompany        String?
+  claimNumber             String?
+  policyNumber            String?
+  adjusterName            String?
+  adjusterPhone           String?
+  deductible              Decimal?      @db.Decimal(10, 2)
+  dateOfLoss              DateTime?
+
   parts                   Part[]
   invoices                ROInvoice[]
   locationPhotos          ROLocationPhoto[]

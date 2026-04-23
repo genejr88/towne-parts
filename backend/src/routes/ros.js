@@ -181,6 +181,19 @@ router.put('/:id', requireAuth, async (req, res) => {
     productionNextStep,
     productionFinalSupplement,
     productionSupplementNote,
+    // Customer / Owner
+    ownerName,
+    ownerPhone,
+    ownerPhone2,
+    ownerEmail,
+    // Insurance
+    insuranceCompany,
+    claimNumber,
+    policyNumber,
+    adjusterName,
+    adjusterPhone,
+    deductible,
+    dateOfLoss,
   } = req.body
 
   try {
@@ -212,6 +225,21 @@ router.put('/:id', requireAuth, async (req, res) => {
     if (productionNextStep !== undefined) updateData.productionNextStep = productionNextStep
     if (productionFinalSupplement !== undefined) updateData.productionFinalSupplement = Boolean(productionFinalSupplement)
     if (productionSupplementNote !== undefined) updateData.productionSupplementNote = productionSupplementNote
+
+    // Customer / Owner
+    if (ownerName       !== undefined) updateData.ownerName       = ownerName       || null
+    if (ownerPhone      !== undefined) updateData.ownerPhone      = ownerPhone      || null
+    if (ownerPhone2     !== undefined) updateData.ownerPhone2     = ownerPhone2     || null
+    if (ownerEmail      !== undefined) updateData.ownerEmail      = ownerEmail      || null
+
+    // Insurance
+    if (insuranceCompany !== undefined) updateData.insuranceCompany = insuranceCompany || null
+    if (claimNumber      !== undefined) updateData.claimNumber      = claimNumber      || null
+    if (policyNumber     !== undefined) updateData.policyNumber     = policyNumber     || null
+    if (adjusterName     !== undefined) updateData.adjusterName     = adjusterName     || null
+    if (adjusterPhone    !== undefined) updateData.adjusterPhone    = adjusterPhone    || null
+    if (deductible       !== undefined) updateData.deductible       = deductible != null && deductible !== '' ? parseFloat(deductible) : null
+    if (dateOfLoss       !== undefined) updateData.dateOfLoss       = dateOfLoss ? new Date(dateOfLoss) : null
 
     const ro = await prisma.rO.update({
       where: { id },
