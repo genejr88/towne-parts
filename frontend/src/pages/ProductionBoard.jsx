@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChevronLeft, ChevronRight, Car, FileText, Check, ClipboardList, X, Clock, Truck,
-  Search, Package, CheckCircle2, XCircle,
+  Search, Package, CheckCircle2, XCircle, User, Shield,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { productionApi, rosApi } from '@/lib/api'
@@ -599,7 +599,7 @@ export default function ProductionBoard() {
                     <PartsBadge status={ro.partsStatus} />
                   </div>
                   <p className="text-sm text-gray-400">
-                    {[ro.vehicleYear, ro.vehicleMake, ro.vehicleModel, ro.color].filter(Boolean).join(' ')}
+                    {[ro.vehicleYear, ro.vehicleMake, ro.vehicleModel, ro.vehicleColor].filter(Boolean).join(' ')}
                   </p>
                   {ro.vendor?.name && (
                     <p className="text-xs text-gray-500 mt-0.5">{ro.vendor.name}</p>
@@ -619,6 +619,50 @@ export default function ProductionBoard() {
                   </div>
                 )}
               </div>
+
+              {/* Customer / Insurance quick info */}
+              {(ro.ownerName || ro.ownerPhone || ro.insuranceCompany || ro.claimNumber || ro.adjusterName || ro.adjusterPhone || ro.deductible) && (
+                <div className="mt-3 pt-3 border-t border-gray-700/40 space-y-1.5">
+                  {(ro.ownerName || ro.ownerPhone) && (
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <User size={11} className="text-blue-400 shrink-0" />
+                      {ro.ownerName && <span className="text-gray-200 font-medium">{ro.ownerName}</span>}
+                      {ro.ownerPhone && (
+                        <a href={`tel:${ro.ownerPhone}`} className="text-blue-400 hover:text-blue-300 transition-colors">
+                          {ro.ownerPhone}
+                        </a>
+                      )}
+                      {ro.ownerPhone2 && (
+                        <a href={`tel:${ro.ownerPhone2}`} className="text-blue-400 hover:text-blue-300 transition-colors">
+                          · {ro.ownerPhone2}
+                        </a>
+                      )}
+                    </div>
+                  )}
+                  {(ro.insuranceCompany || ro.claimNumber) && (
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <Shield size={11} className="text-emerald-400 shrink-0" />
+                      {ro.insuranceCompany && <span className="text-gray-200 font-medium">{ro.insuranceCompany}</span>}
+                      {ro.claimNumber && <span className="text-gray-500 font-mono">#{ro.claimNumber}</span>}
+                    </div>
+                  )}
+                  {(ro.adjusterName || ro.adjusterPhone) && (
+                    <div className="flex items-center gap-1.5 text-xs pl-4">
+                      {ro.adjusterName && <span className="text-gray-400">Adj: <span className="text-gray-300">{ro.adjusterName}</span></span>}
+                      {ro.adjusterPhone && (
+                        <a href={`tel:${ro.adjusterPhone}`} className="text-blue-400 hover:text-blue-300 transition-colors">
+                          {ro.adjusterPhone}
+                        </a>
+                      )}
+                    </div>
+                  )}
+                  {ro.deductible != null && (
+                    <div className="flex items-center gap-1.5 text-xs pl-4">
+                      <span className="text-gray-500">Deductible: <span className="text-gray-300">${Number(ro.deductible).toFixed(2)}</span></span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Parts summary — tap to see full list */}
               {ro.parts && ro.parts.length > 0 && (
