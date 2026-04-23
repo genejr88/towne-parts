@@ -22,6 +22,56 @@ function cardBg(partsStatus, isTotalLoss) {
   return 'from-gray-800 to-gray-900'
 }
 
+// Insurance company → logo filename mapping
+// Drop matching PNG/SVG files into /public/logos/ and they'll appear automatically
+const INSURANCE_LOGOS = {
+  'state farm':      'state-farm.png',
+  'geico':           'geico.png',
+  'progressive':     'progressive.png',
+  'allstate':        'allstate.png',
+  'liberty mutual':  'liberty-mutual.png',
+  'usaa':            'usaa.png',
+  'farmers':         'farmers.png',
+  'travelers':       'travelers.png',
+  'nationwide':      'nationwide.png',
+  'american family': 'american-family.png',
+  'hartford':        'hartford.png',
+  'aaa':             'aaa.png',
+  'mapfre':          'mapfre.png',
+  'arbella':         'arbella.png',
+  'safety':          'safety.png',
+  'commerce':        'commerce.png',
+}
+
+function InsuranceLogo({ name }) {
+  if (!name) return null
+  const key = name.toLowerCase().trim()
+  // Partial match — catches "State Farm Mutual", "GEICO Casualty", etc.
+  const match = Object.keys(INSURANCE_LOGOS).find((k) => key.includes(k))
+  const initials = name.split(' ').map((w) => w[0]).join('').slice(0, 3).toUpperCase()
+
+  if (match) {
+    return (
+      <img
+        src={`/logos/${INSURANCE_LOGOS[match]}`}
+        alt={name}
+        className="w-14 h-14 object-contain rounded-xl bg-white/5 p-1"
+        onError={(e) => {
+          // Fall back to initials badge if file isn't there yet
+          e.target.style.display = 'none'
+          e.target.nextSibling.style.display = 'flex'
+        }}
+      />
+    )
+  }
+
+  return (
+    <div className="w-14 h-14 rounded-xl bg-gray-700/60 border border-gray-600/40 flex items-center justify-center shrink-0">
+      <span className="text-xs font-bold text-gray-300 tracking-wide">{initials}</span>
+    </div>
+  )
+}
+
 function StageButton({ stage, active, onClick }) {
   const colorClass = active
     ? (STAGE_COLORS[stage] || 'bg-blue-600 text-white')
@@ -624,9 +674,11 @@ export default function ProductionBoard() {
             {/* RO card */}
             <div className={`bg-gradient-to-b ${cardBg(ro.partsStatus, state.isTotalLoss)} border ${state.isTotalLoss ? 'border-purple-700/50' : 'border-gray-700/50'} rounded-2xl p-5 mb-4 shadow-lg`}>
               <div className="flex items-start justify-between gap-3 mb-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <h2 className="text-xl font-bold text-gray-100 font-mono">{ro.roNumber}</h2>
+                {/* Left — all RO detail */}
+                <div className="flex-1 min-w-0">
+                  {/* RO number + badges */}
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
+                    <h2 className="text-2xl font-black text-white font-mono tracking-tight">{ro.roNumber}</h2>
                     <PartsBadge status={ro.partsStatus} />
                     {state.isTotalLoss && (
                       <span className="flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-purple-500/20 border border-purple-500/50 text-purple-300">
@@ -634,31 +686,69 @@ export default function ProductionBoard() {
                       </span>
                     )}
                   </div>
-                  <p className="text-sm text-gray-400">
-                    {[ro.vehicleYear, ro.vehicleMake, ro.vehicleModel, ro.vehicleColor].filter(Boolean).join(' ')}
-                  </p>
-                  {ro.vendor?.name && (
-                    <p className="text-xs text-gray-500 mt-0.5">{ro.vendor.name}</p>
-                  )}
-                  {state.assignedTech && (
-                    <p className="text-xs text-blue-400 mt-0.5 flex items-center gap-1">
-                      <Wrench size={10} /> {state.assignedTech}
+
+                  {/* Vehicle — prominent */}
+                  {[ro.vehicleYear, ro.vehicleMake, ro.vehicleModel].some(Boolean) && (
+                    <p className="text-base font-bold text-gray-100 leading-snug mb-0.5">
+                      {[ro.vehicleYear, ro.vehicleMake, ro.vehicleModel].filter(Boolean).join(' ')}
+                      {ro.vehicleColor && <span className="text-gray-400 font-normal"> · {ro.vehicleColor}</span>}
                     </p>
                   )}
-                  {ro.productionUpdatedAt && (
-                    <p className="text-xs text-gray-600 mt-1 flex items-center gap-1">
-                      <Clock size={10} />
-                      Updated {formatTimeAgo(ro.productionUpdatedAt)}
+
+                  {/* VIN */}
+                  {ro.vin && (
+                    <p className="text-xs text-gray-500 font-mono mb-1">{ro.vin}</p>
+                  )}
+
+                  {/* Customer name — stands out */}
+                  {ro.ownerName && (
+                    <p className="text-sm font-semibold text-gray-200 flex items-center gap-1.5 mt-1">
+                      <User size={12} className="text-blue-400 shrink-0" />
+                      {ro.ownerName}
                     </p>
+                  )}
+
+                  {/* Vendor + tech + timestamp */}
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1.5">
+                    {ro.vendor?.name && (
+                      <span className="text-xs text-gray-500">{ro.vendor.name}</span>
+                    )}
+                    {state.assignedTech && (
+                      <span className="text-xs text-blue-400 flex items-center gap-1">
+                        <Wrench size={10} /> {state.assignedTech}
+                      </span>
+                    )}
+                    {ro.productionUpdatedAt && (
+                      <span className="text-xs text-gray-600 flex items-center gap-1">
+                        <Clock size={10} />
+                        {formatTimeAgo(ro.productionUpdatedAt)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right — logo + final supp badge */}
+                <div className="flex flex-col items-end gap-2 shrink-0">
+                  {/* Insurance logo */}
+                  {ro.insuranceCompany && (
+                    <div className="relative">
+                      <InsuranceLogo name={ro.insuranceCompany} />
+                      {/* Fallback initials — hidden by default, shown if img errors */}
+                      <div className="w-14 h-14 rounded-xl bg-gray-700/60 border border-gray-600/40 items-center justify-center shrink-0 hidden">
+                        <span className="text-xs font-bold text-gray-300 tracking-wide">
+                          {ro.insuranceCompany.split(' ').map((w) => w[0]).join('').slice(0, 3).toUpperCase()}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  {state.productionFinalSupplement && (
+                    <div className="bg-amber-500/15 border border-amber-500/30 rounded-xl px-2.5 py-1.5">
+                      <p className="text-xs font-semibold text-amber-400 flex items-center gap-1">
+                        <FileText size={12} /> Final Supp.
+                      </p>
+                    </div>
                   )}
                 </div>
-                {state.productionFinalSupplement && (
-                  <div className="bg-amber-500/15 border border-amber-500/30 rounded-xl px-3 py-1.5 shrink-0">
-                    <p className="text-xs font-semibold text-amber-400 flex items-center gap-1">
-                      <FileText size={12} /> Final Supp.
-                    </p>
-                  </div>
-                )}
               </div>
 
               {/* Customer / Insurance quick info */}

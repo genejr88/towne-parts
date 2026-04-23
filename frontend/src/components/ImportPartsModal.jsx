@@ -49,6 +49,9 @@ export default function ImportPartsModal({ open, onClose }) {
         vehicleModel: data.vehicleModel || '',
         vin: data.vin || '',
         vendorId: '',
+        ownerName: data.ownerName || '',
+        insuranceCompany: data.insuranceCompany || '',
+        claimNumber: data.claimNumber || '',
         parts: data.parts.map((p, i) => ({ _key: i, ...p })),
       })
       setStep('review')
@@ -74,6 +77,9 @@ export default function ImportPartsModal({ open, onClose }) {
         vehicleModel: data.vehicleModel || '',
         vin: data.vin || '',
         vendorId: '',
+        ownerName: data.ownerName || '',
+        insuranceCompany: data.insuranceCompany || '',
+        claimNumber: data.claimNumber || '',
         parts: data.parts.map((p, i) => ({ _key: i, ...p })),
       })
       setStep('review')
@@ -114,12 +120,15 @@ export default function ImportPartsModal({ open, onClose }) {
     setSubmitting(true)
     try {
       const roData = {
-        roNumber: form.roNumber.trim(),
-        vehicleYear: form.vehicleYear || undefined,
-        vehicleMake: form.vehicleMake || undefined,
-        vehicleModel: form.vehicleModel || undefined,
-        vin: form.vin || undefined,
-        vendorId: form.vendorId ? parseInt(form.vendorId) : undefined,
+        roNumber:         form.roNumber.trim(),
+        vehicleYear:      form.vehicleYear      || undefined,
+        vehicleMake:      form.vehicleMake      || undefined,
+        vehicleModel:     form.vehicleModel     || undefined,
+        vin:              form.vin              || undefined,
+        vendorId:         form.vendorId ? parseInt(form.vendorId) : undefined,
+        ownerName:        form.ownerName        || undefined,
+        insuranceCompany: form.insuranceCompany || undefined,
+        claimNumber:      form.claimNumber      || undefined,
       }
 
       let ro
@@ -135,13 +144,16 @@ export default function ImportPartsModal({ open, onClose }) {
           ro = list.find((r) => r.roNumber === form.roNumber.trim()) || list[0]
           if (!ro) throw new Error('RO already exists but could not be located.')
 
-          // Patch missing vehicle info
+          // Patch missing vehicle / customer / insurance info
           const patch = {}
-          if (!ro.vehicleYear  && roData.vehicleYear)  patch.vehicleYear  = roData.vehicleYear
-          if (!ro.vehicleMake  && roData.vehicleMake)  patch.vehicleMake  = roData.vehicleMake
-          if (!ro.vehicleModel && roData.vehicleModel) patch.vehicleModel = roData.vehicleModel
-          if (!ro.vin          && roData.vin)          patch.vin          = roData.vin
-          if (!ro.vendorId     && roData.vendorId)     patch.vendorId     = roData.vendorId
+          if (!ro.vehicleYear      && roData.vehicleYear)      patch.vehicleYear      = roData.vehicleYear
+          if (!ro.vehicleMake      && roData.vehicleMake)      patch.vehicleMake      = roData.vehicleMake
+          if (!ro.vehicleModel     && roData.vehicleModel)     patch.vehicleModel     = roData.vehicleModel
+          if (!ro.vin              && roData.vin)              patch.vin              = roData.vin
+          if (!ro.vendorId         && roData.vendorId)         patch.vendorId         = roData.vendorId
+          if (!ro.ownerName        && roData.ownerName)        patch.ownerName        = roData.ownerName
+          if (!ro.insuranceCompany && roData.insuranceCompany) patch.insuranceCompany = roData.insuranceCompany
+          if (!ro.claimNumber      && roData.claimNumber)      patch.claimNumber      = roData.claimNumber
           if (Object.keys(patch).length > 0) {
             ro = await rosApi.update(ro.id, patch)
           }
@@ -376,6 +388,29 @@ export default function ImportPartsModal({ open, onClose }) {
                 className="font-mono text-sm"
               />
             )}
+            {/* Customer / Insurance */}
+            <div className="border-t border-gray-700/40 pt-3 space-y-3">
+              <Input
+                label="Customer Name"
+                value={form.ownerName}
+                onChange={(e) => updateField('ownerName', e.target.value)}
+                placeholder="Jane Smith"
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="Insurance Co."
+                  value={form.insuranceCompany}
+                  onChange={(e) => updateField('insuranceCompany', e.target.value)}
+                  placeholder="State Farm"
+                />
+                <Input
+                  label="Claim #"
+                  value={form.claimNumber}
+                  onChange={(e) => updateField('claimNumber', e.target.value)}
+                  placeholder="CLM-00123"
+                />
+              </div>
+            </div>
           </div>
 
           {/* Parts list */}
