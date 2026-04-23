@@ -103,6 +103,9 @@ router.post('/', requireAuth, async (req, res) => {
     vehicleColor,
     vin,
     vendorId,
+    ownerName,
+    insuranceCompany,
+    claimNumber,
   } = req.body
 
   if (!roNumber) {
@@ -118,12 +121,15 @@ router.post('/', requireAuth, async (req, res) => {
     const ro = await prisma.rO.create({
       data: {
         roNumber,
-        vehicleYear: vehicleYear || null,
-        vehicleMake: vehicleMake || null,
-        vehicleModel: vehicleModel || null,
-        vehicleColor: vehicleColor || null,
-        vin: vin || null,
-        vendorId: vendorId ? parseInt(vendorId) : null,
+        vehicleYear:      vehicleYear      || null,
+        vehicleMake:      vehicleMake      || null,
+        vehicleModel:     vehicleModel     || null,
+        vehicleColor:     vehicleColor     || null,
+        vin:              vin              || null,
+        vendorId:         vendorId ? parseInt(vendorId) : null,
+        ownerName:        ownerName        || null,
+        insuranceCompany: insuranceCompany || null,
+        claimNumber:      claimNumber      || null,
       },
       include: { vendor: true },
     })

@@ -96,6 +96,7 @@ function ROCard({ ro, onClick, onUnarchive }) {
 const EMPTY_FORM = {
   roNumber: '', vehicleYear: '', vehicleMake: '', vehicleModel: '',
   vehicleColor: '', vin: '', vendorId: '',
+  ownerName: '', insuranceCompany: '', claimNumber: '',
 }
 
 function CreateROModal({ open, onClose }) {
@@ -142,13 +143,16 @@ function CreateROModal({ open, onClose }) {
     e.preventDefault()
     if (!form.roNumber.trim()) { toast.error('RO number is required'); return }
     mutation.mutate({
-      roNumber:     form.roNumber.trim(),
-      vehicleYear:  form.vehicleYear  || null,
-      vehicleMake:  form.vehicleMake  || null,
-      vehicleModel: form.vehicleModel || null,
-      vehicleColor: form.vehicleColor || null,
-      vin:          form.vin          || null,
-      vendorId:     form.vendorId     || null,
+      roNumber:         form.roNumber.trim(),
+      vehicleYear:      form.vehicleYear      || null,
+      vehicleMake:      form.vehicleMake      || null,
+      vehicleModel:     form.vehicleModel     || null,
+      vehicleColor:     form.vehicleColor     || null,
+      vin:              form.vin              || null,
+      vendorId:         form.vendorId         || null,
+      ownerName:        form.ownerName        || null,
+      insuranceCompany: form.insuranceCompany || null,
+      claimNumber:      form.claimNumber      || null,
     })
   }
 
@@ -192,6 +196,15 @@ function CreateROModal({ open, onClose }) {
         <div className="grid grid-cols-2 gap-3">
           <Input label="Color" value={form.vehicleColor} onChange={set('vehicleColor')} placeholder="Silver" />
           <Input label="VIN (optional)" value={form.vin} onChange={set('vin')} placeholder="17 chars" maxLength={17} />
+        </div>
+
+        {/* Customer / Insurance */}
+        <div className="border-t border-gray-700/40 pt-3 space-y-3">
+          <Input label="Customer Name" value={form.ownerName} onChange={set('ownerName')} placeholder="Jane Smith" />
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Insurance Co." value={form.insuranceCompany} onChange={set('insuranceCompany')} placeholder="State Farm" />
+            <Input label="Claim #" value={form.claimNumber} onChange={set('claimNumber')} placeholder="CLM-00123" />
+          </div>
         </div>
 
         <Select label="Vendor" value={form.vendorId} onChange={set('vendorId')}>
