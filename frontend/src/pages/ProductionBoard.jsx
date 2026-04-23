@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChevronLeft, ChevronRight, Car, FileText, Check, ClipboardList, X, Clock, Truck,
-  Search, Package, CheckCircle2, XCircle, User, Shield,
+  Search, Package, CheckCircle2, XCircle, User, Shield, AlertTriangle, Wrench,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { productionApi, rosApi } from '@/lib/api'
@@ -13,8 +13,9 @@ import Spinner from '@/components/ui/Spinner'
 import EmptyState from '@/components/ui/EmptyState'
 import Textarea from '@/components/ui/Textarea'
 
-// Card left-border accent based on parts status
-function cardBg(partsStatus) {
+// Card gradient based on total loss or parts status
+function cardBg(partsStatus, isTotalLoss) {
+  if (isTotalLoss) return 'from-purple-950/80 to-gray-900'
   if (partsStatus === 'MISSING') return 'from-red-950/60 to-gray-900'
   if (partsStatus === 'ACKNOWLEDGED') return 'from-amber-950/40 to-gray-900'
   if (partsStatus === 'ALL_HERE') return 'from-emerald-950/40 to-gray-900'
@@ -153,6 +154,34 @@ function SupplementBubbles({ value, onChange }) {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Technician Bubbles ────────────────────────────────────────────────────────
+const TECHS = ['Stepan', 'Igor', 'Kiril', 'Kosta', 'Eugene', 'Andrii']
+
+function TechBubbles({ value, onChange }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {TECHS.map((tech) => {
+        const active = value === tech
+        return (
+          <button
+            key={tech}
+            type="button"
+            onClick={() => onChange(active ? '' : tech)}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+              active
+                ? 'bg-blue-500/20 border-blue-500/60 text-blue-300'
+                : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-blue-500/40 hover:text-gray-200'
+            }`}
+          >
+            {active && <span className="mr-1">✓</span>}
+            {tech}
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -414,6 +443,8 @@ export default function ProductionBoard() {
       productionStatusNote: local.productionStatusNote ?? ro?.productionStatusNote ?? '',
       productionFinalSupplement: local.productionFinalSupplement ?? ro?.productionFinalSupplement ?? false,
       productionSupplementNote: local.productionSupplementNote ?? ro?.productionSupplementNote ?? '',
+      isTotalLoss: local.isTotalLoss ?? ro?.isTotalLoss ?? false,
+      assignedTech: local.assignedTech ?? ro?.assignedTech ?? '',
     }
   }
 
@@ -591,18 +622,28 @@ export default function ProductionBoard() {
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
           >
             {/* RO card */}
-            <div className={`bg-gradient-to-b ${cardBg(ro.partsStatus)} border border-gray-700/50 rounded-2xl p-5 mb-4 shadow-lg`}>
+            <div className={`bg-gradient-to-b ${cardBg(ro.partsStatus, state.isTotalLoss)} border ${state.isTotalLoss ? 'border-purple-700/50' : 'border-gray-700/50'} rounded-2xl p-5 mb-4 shadow-lg`}>
               <div className="flex items-start justify-between gap-3 mb-4">
                 <div>
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <h2 className="text-xl font-bold text-gray-100 font-mono">{ro.roNumber}</h2>
                     <PartsBadge status={ro.partsStatus} />
+                    {state.isTotalLoss && (
+                      <span className="flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-purple-500/20 border border-purple-500/50 text-purple-300">
+                        <AlertTriangle size={11} /> Total Loss
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm text-gray-400">
                     {[ro.vehicleYear, ro.vehicleMake, ro.vehicleModel, ro.vehicleColor].filter(Boolean).join(' ')}
                   </p>
                   {ro.vendor?.name && (
                     <p className="text-xs text-gray-500 mt-0.5">{ro.vendor.name}</p>
+                  )}
+                  {state.assignedTech && (
+                    <p className="text-xs text-blue-400 mt-0.5 flex items-center gap-1">
+                      <Wrench size={10} /> {state.assignedTech}
+                    </p>
                   )}
                   {ro.productionUpdatedAt && (
                     <p className="text-xs text-gray-600 mt-1 flex items-center gap-1">
@@ -723,6 +764,17 @@ export default function ProductionBoard() {
               />
             </div>
 
+            {/* Technician assignment */}
+            <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-4 mb-3">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <Wrench size={12} /> Assigned Tech
+              </p>
+              <TechBubbles
+                value={state.assignedTech}
+                onChange={(val) => updateField('assignedTech', val)}
+              />
+            </div>
+
             {/* Final supplement toggle */}
             <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-4 mb-3">
               <label className="flex items-center gap-3 cursor-pointer">
@@ -761,6 +813,35 @@ export default function ProductionBoard() {
                   </motion.div>
                 )}
               </AnimatePresence>
+            </div>
+
+            {/* Total Loss toggle */}
+            <div className={`border rounded-2xl p-4 mb-3 transition-colors duration-300 ${
+              state.isTotalLoss
+                ? 'bg-purple-950/40 border-purple-700/50'
+                : 'bg-gray-800/60 border-gray-700/50'
+            }`}>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <div
+                  onClick={() => updateField('isTotalLoss', !state.isTotalLoss)}
+                  className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex items-center ${
+                    state.isTotalLoss ? 'bg-purple-500' : 'bg-gray-700'
+                  }`}
+                >
+                  <motion.div
+                    animate={{ x: state.isTotalLoss ? 24 : 2 }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                    className="w-5 h-5 bg-white rounded-full shadow-md absolute"
+                  />
+                </div>
+                <div>
+                  <p className={`text-sm font-semibold flex items-center gap-1.5 ${state.isTotalLoss ? 'text-purple-300' : 'text-gray-200'}`}>
+                    <AlertTriangle size={14} />
+                    Total Loss
+                  </p>
+                  <p className="text-xs text-gray-500">Flags this vehicle as a total loss</p>
+                </div>
+              </label>
             </div>
           </motion.div>
         </AnimatePresence>

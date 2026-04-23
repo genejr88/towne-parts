@@ -67,6 +67,8 @@ router.post('/:roId', requireAuth, async (req, res) => {
     productionNextStep,
     productionFinalSupplement,
     productionSupplementNote,
+    isTotalLoss,
+    assignedTech,
   } = req.body
 
   try {
@@ -85,6 +87,8 @@ router.post('/:roId', requireAuth, async (req, res) => {
     if (productionNextStep !== undefined) updateData.productionNextStep = productionNextStep
     if (productionFinalSupplement !== undefined) updateData.productionFinalSupplement = Boolean(productionFinalSupplement)
     if (productionSupplementNote !== undefined) updateData.productionSupplementNote = productionSupplementNote
+    if (isTotalLoss !== undefined) updateData.isTotalLoss = Boolean(isTotalLoss)
+    if (assignedTech !== undefined) updateData.assignedTech = assignedTech || null
 
     const ro = await prisma.rO.update({
       where: { id: roId },

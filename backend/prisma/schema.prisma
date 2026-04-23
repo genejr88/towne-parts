@@ -50,6 +50,8 @@ model RO {
   productionFinalSupplement Boolean     @default(false)
   productionSupplementNote String?
   productionUpdatedAt     DateTime?
+  isTotalLoss             Boolean       @default(false)
+  assignedTech            String?
   isArchived              Boolean       @default(false)
   archivedAt              DateTime?
   locationPhotoUrl        String?
