@@ -68,6 +68,7 @@ router.post('/:roId', requireAuth, async (req, res) => {
     productionFinalSupplement,
     productionSupplementNote,
     isTotalLoss,
+    totalLossReleased,
     assignedTech,
   } = req.body
 
@@ -88,6 +89,7 @@ router.post('/:roId', requireAuth, async (req, res) => {
     if (productionFinalSupplement !== undefined) updateData.productionFinalSupplement = Boolean(productionFinalSupplement)
     if (productionSupplementNote !== undefined) updateData.productionSupplementNote = productionSupplementNote
     if (isTotalLoss !== undefined) updateData.isTotalLoss = Boolean(isTotalLoss)
+    if (totalLossReleased !== undefined) updateData.totalLossReleased = Boolean(totalLossReleased)
     if (assignedTech !== undefined) updateData.assignedTech = assignedTech || null
 
     const ro = await prisma.rO.update({

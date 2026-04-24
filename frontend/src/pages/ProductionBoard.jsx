@@ -14,8 +14,9 @@ import EmptyState from '@/components/ui/EmptyState'
 import Textarea from '@/components/ui/Textarea'
 
 // Card gradient based on total loss or parts status
-function cardBg(partsStatus, isTotalLoss) {
-  if (isTotalLoss) return 'from-purple-950/80 to-gray-900'
+function cardBg(partsStatus, isTotalLoss, totalLossReleased) {
+  if (isTotalLoss && totalLossReleased) return 'from-emerald-950 to-gray-900'
+  if (isTotalLoss) return 'from-purple-950 to-purple-900/60'
   if (partsStatus === 'MISSING') return 'from-red-950/60 to-gray-900'
   if (partsStatus === 'ACKNOWLEDGED') return 'from-amber-950/40 to-gray-900'
   if (partsStatus === 'ALL_HERE') return 'from-emerald-950/40 to-gray-900'
@@ -25,15 +26,15 @@ function cardBg(partsStatus, isTotalLoss) {
 // Insurance company → logo filename mapping
 // Drop matching PNG/SVG files into /public/logos/ and they'll appear automatically
 const INSURANCE_LOGOS = {
-  'state farm':      'state-farm.png',
+  'state farm':      'state-farm.jpg',
   'geico':           'geico.png',
-  'progressive':     'progressive.png',
+  'progressive':     'progressive.webp',
   'allstate':        'allstate.png',
   'liberty mutual':  'liberty-mutual.png',
   'usaa':            'usaa.png',
-  'farmers':         'farmers.png',
+  'farmers':         'farmers.jpg',
   'travelers':       'travelers.png',
-  'nationwide':      'nationwide.png',
+  'nationwide':      'nationwide.jpg',
   'american family': 'american-family.png',
   'hartford':        'hartford.png',
   'aaa':             'aaa.png',
@@ -41,33 +42,36 @@ const INSURANCE_LOGOS = {
   'arbella':         'arbella.png',
   'safety':          'safety.png',
   'commerce':        'commerce.png',
+  'amica':           'amica.webp',
+  'hanover':         'hanover.png',
 }
 
 function InsuranceLogo({ name }) {
+  const [imgError, setImgError] = useState(false)
   if (!name) return null
   const key = name.toLowerCase().trim()
-  // Partial match — catches "State Farm Mutual", "GEICO Casualty", etc.
   const match = Object.keys(INSURANCE_LOGOS).find((k) => key.includes(k))
-  const initials = name.split(' ').map((w) => w[0]).join('').slice(0, 3).toUpperCase()
 
-  if (match) {
+  // 2-letter abbreviation: first letters of first two words, or first 2 chars
+  const words = name.trim().split(/\s+/)
+  const abbr = words.length >= 2
+    ? (words[0][0] + words[1][0]).toUpperCase()
+    : name.slice(0, 2).toUpperCase()
+
+  if (match && !imgError) {
     return (
       <img
         src={`/logos/${INSURANCE_LOGOS[match]}`}
         alt={name}
         className="w-14 h-14 object-contain rounded-xl bg-white/5 p-1"
-        onError={(e) => {
-          // Fall back to initials badge if file isn't there yet
-          e.target.style.display = 'none'
-          e.target.nextSibling.style.display = 'flex'
-        }}
+        onError={() => setImgError(true)}
       />
     )
   }
 
   return (
-    <div className="w-14 h-14 rounded-xl bg-gray-700/60 border border-gray-600/40 flex items-center justify-center shrink-0">
-      <span className="text-xs font-bold text-gray-300 tracking-wide">{initials}</span>
+    <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-slate-700 to-slate-800 border border-slate-600/50 flex items-center justify-center shrink-0 shadow-inner">
+      <span className="text-xl font-black text-slate-200 tracking-tight leading-none">{abbr}</span>
     </div>
   )
 }
@@ -494,6 +498,7 @@ export default function ProductionBoard() {
       productionFinalSupplement: local.productionFinalSupplement ?? ro?.productionFinalSupplement ?? false,
       productionSupplementNote: local.productionSupplementNote ?? ro?.productionSupplementNote ?? '',
       isTotalLoss: local.isTotalLoss ?? ro?.isTotalLoss ?? false,
+      totalLossReleased: local.totalLossReleased ?? ro?.totalLossReleased ?? false,
       assignedTech: local.assignedTech ?? ro?.assignedTech ?? '',
     }
   }
@@ -672,7 +677,10 @@ export default function ProductionBoard() {
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
           >
             {/* RO card */}
-            <div className={`bg-gradient-to-b ${cardBg(ro.partsStatus, state.isTotalLoss)} border ${state.isTotalLoss ? 'border-purple-700/50' : 'border-gray-700/50'} rounded-2xl p-5 mb-4 shadow-lg`}>
+            <div className={`bg-gradient-to-b ${cardBg(ro.partsStatus, state.isTotalLoss, state.totalLossReleased)} border ${
+              state.isTotalLoss && state.totalLossReleased ? 'border-emerald-600/60' :
+              state.isTotalLoss ? 'border-purple-500/60' : 'border-gray-700/50'
+            } rounded-2xl p-5 mb-4 shadow-lg`}>
               <div className="flex items-start justify-between gap-3 mb-4">
                 {/* Left — all RO detail */}
                 <div className="flex-1 min-w-0">
@@ -731,15 +739,7 @@ export default function ProductionBoard() {
                 <div className="flex flex-col items-end gap-2 shrink-0">
                   {/* Insurance logo */}
                   {ro.insuranceCompany && (
-                    <div className="relative">
-                      <InsuranceLogo name={ro.insuranceCompany} />
-                      {/* Fallback initials — hidden by default, shown if img errors */}
-                      <div className="w-14 h-14 rounded-xl bg-gray-700/60 border border-gray-600/40 items-center justify-center shrink-0 hidden">
-                        <span className="text-xs font-bold text-gray-300 tracking-wide">
-                          {ro.insuranceCompany.split(' ').map((w) => w[0]).join('').slice(0, 3).toUpperCase()}
-                        </span>
-                      </div>
-                    </div>
+                    <InsuranceLogo name={ro.insuranceCompany} />
                   )}
                   {state.productionFinalSupplement && (
                     <div className="bg-amber-500/15 border border-amber-500/30 rounded-xl px-2.5 py-1.5">
@@ -827,94 +827,106 @@ export default function ProductionBoard() {
               )}
             </div>
 
-            {/* Stage selector */}
-            <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-4 mb-3">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Stage</p>
-              <div className="flex flex-wrap gap-2">
-                {STAGES.map((s) => (
-                  <StageButton
-                    key={s}
-                    stage={s}
-                    active={state.productionStage === s}
-                    onClick={() => updateField('productionStage', s)}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Status note */}
-            <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-4 mb-3">
-              <Textarea
-                label="Status Note"
-                value={state.productionStatusNote}
-                onChange={(e) => updateField('productionStatusNote', e.target.value)}
-                rows={3}
-                placeholder="Add a note about current status..."
-                className="bg-gray-900/60"
-              />
-            </div>
-
-            {/* Technician assignment */}
-            <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-4 mb-3">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                <Wrench size={12} /> Assigned Tech
-              </p>
-              <TechBubbles
-                value={state.assignedTech}
-                onChange={(val) => updateField('assignedTech', val)}
-              />
-            </div>
-
-            {/* Final supplement toggle */}
-            <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-4 mb-3">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <div
-                  onClick={() => updateField('productionFinalSupplement', !state.productionFinalSupplement)}
-                  className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex items-center ${
-                    state.productionFinalSupplement ? 'bg-amber-500' : 'bg-gray-700'
-                  }`}
+            <AnimatePresence>
+              {!state.isTotalLoss && (
+                <motion.div
+                  key="normal-controls"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
                 >
-                  <motion.div
-                    animate={{ x: state.productionFinalSupplement ? 24 : 2 }}
-                    transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                    className="w-5 h-5 bg-white rounded-full shadow-md absolute"
-                  />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-gray-200">Final Supplement</p>
-                  <p className="text-xs text-gray-500">Toggle if this RO has a final supplement pending</p>
-                </div>
-              </label>
+                  {/* Stage selector */}
+                  <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-4 mb-3">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Stage</p>
+                    <div className="flex flex-wrap gap-2">
+                      {STAGES.map((s) => (
+                        <StageButton
+                          key={s}
+                          stage={s}
+                          active={state.productionStage === s}
+                          onClick={() => updateField('productionStage', s)}
+                        />
+                      ))}
+                    </div>
+                  </div>
 
-              <AnimatePresence>
-                {state.productionFinalSupplement && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="mt-3 overflow-hidden"
-                  >
-                    {/* Quick-select bubbles */}
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Quick Notes</p>
-                    <SupplementBubbles
-                      value={state.productionSupplementNote}
-                      onChange={(val) => updateField('productionSupplementNote', val)}
+                  {/* Status note */}
+                  <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-4 mb-3">
+                    <Textarea
+                      label="Status Note"
+                      value={state.productionStatusNote}
+                      onChange={(e) => updateField('productionStatusNote', e.target.value)}
+                      rows={3}
+                      placeholder="Add a note about current status..."
+                      className="bg-gray-900/60"
                     />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+                  </div>
 
-            {/* Total Loss toggle */}
+                  {/* Technician assignment */}
+                  <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-4 mb-3">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                      <Wrench size={12} /> Assigned Tech
+                    </p>
+                    <TechBubbles
+                      value={state.assignedTech}
+                      onChange={(val) => updateField('assignedTech', val)}
+                    />
+                  </div>
+
+                  {/* Final supplement toggle */}
+                  <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-4 mb-3">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <div
+                        onClick={() => updateField('productionFinalSupplement', !state.productionFinalSupplement)}
+                        className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex items-center ${
+                          state.productionFinalSupplement ? 'bg-amber-500' : 'bg-gray-700'
+                        }`}
+                      >
+                        <motion.div
+                          animate={{ x: state.productionFinalSupplement ? 24 : 2 }}
+                          transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                          className="w-5 h-5 bg-white rounded-full shadow-md absolute"
+                        />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-200">Final Supplement</p>
+                        <p className="text-xs text-gray-500">Toggle if this RO has a final supplement pending</p>
+                      </div>
+                    </label>
+
+                    <AnimatePresence>
+                      {state.productionFinalSupplement && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="mt-3 overflow-hidden"
+                        >
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Quick Notes</p>
+                          <SupplementBubbles
+                            value={state.productionSupplementNote}
+                            onChange={(val) => updateField('productionSupplementNote', val)}
+                          />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Total Loss toggle — always visible */}
             <div className={`border rounded-2xl p-4 mb-3 transition-colors duration-300 ${
               state.isTotalLoss
-                ? 'bg-purple-950/40 border-purple-700/50'
+                ? 'bg-purple-950/60 border-purple-500/60'
                 : 'bg-gray-800/60 border-gray-700/50'
             }`}>
               <label className="flex items-center gap-3 cursor-pointer">
                 <div
                   onClick={() => updateField('isTotalLoss', !state.isTotalLoss)}
-                  className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex items-center ${
+                  className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex items-center shrink-0 ${
                     state.isTotalLoss ? 'bg-purple-500' : 'bg-gray-700'
                   }`}
                 >
@@ -932,6 +944,41 @@ export default function ProductionBoard() {
                   <p className="text-xs text-gray-500">Flags this vehicle as a total loss</p>
                 </div>
               </label>
+
+              <AnimatePresence>
+                {state.isTotalLoss && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden mt-4"
+                  >
+                    <p className="text-xs font-semibold text-purple-400 uppercase tracking-wider mb-3">Released to Insurance?</p>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => updateField('totalLossReleased', true)}
+                        className={`flex-1 py-5 rounded-xl font-black text-2xl tracking-tight transition-all duration-200 border-2 ${
+                          state.totalLossReleased
+                            ? 'bg-emerald-500 border-emerald-400 text-white shadow-lg shadow-emerald-900/40'
+                            : 'bg-gray-800/60 border-gray-600/50 text-gray-400 hover:border-emerald-500/50 hover:text-emerald-400'
+                        }`}
+                      >
+                        YES
+                      </button>
+                      <button
+                        onClick={() => updateField('totalLossReleased', false)}
+                        className={`flex-1 py-5 rounded-xl font-black text-2xl tracking-tight transition-all duration-200 border-2 ${
+                          !state.totalLossReleased
+                            ? 'bg-red-600 border-red-500 text-white shadow-lg shadow-red-900/40'
+                            : 'bg-gray-800/60 border-gray-600/50 text-gray-400 hover:border-red-500/50 hover:text-red-400'
+                        }`}
+                      >
+                        NO
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </motion.div>
         </AnimatePresence>

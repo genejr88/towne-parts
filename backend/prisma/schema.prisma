@@ -51,6 +51,7 @@ model RO {
   productionSupplementNote String?
   productionUpdatedAt     DateTime?
   isTotalLoss             Boolean       @default(false)
+  totalLossReleased       Boolean       @default(false)
   assignedTech            String?
   isArchived              Boolean       @default(false)
   archivedAt              DateTime?
