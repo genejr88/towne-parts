@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChevronLeft, ChevronRight, Car, FileText, Check, ClipboardList, X, Clock, Truck,
-  Search, Package, CheckCircle2, XCircle, User, Shield, AlertTriangle, Wrench,
+  Search, Package, CheckCircle2, XCircle, User, Shield, AlertTriangle, Wrench, Pencil,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { productionApi, rosApi } from '@/lib/api'
@@ -73,6 +73,113 @@ function InsuranceLogo({ name }) {
     <div className="h-12 w-32 rounded-xl bg-gradient-to-br from-slate-700 to-slate-800 border border-slate-600/50 flex items-center justify-center shrink-0 shadow-inner">
       <span className="text-xl font-black text-slate-200 tracking-tight leading-none">{abbr}</span>
     </div>
+  )
+}
+
+// ── Customer / Insurance Edit Sheet ──────────────────────────────────────────
+function CustomerEditSheet({ open, onClose, ro, onSaved }) {
+  const queryClient = useQueryClient()
+  const [form, setForm] = useState({})
+
+  useEffect(() => {
+    if (open && ro) {
+      setForm({
+        ownerName:        ro.ownerName        || '',
+        ownerPhone:       ro.ownerPhone       || '',
+        ownerPhone2:      ro.ownerPhone2      || '',
+        insuranceCompany: ro.insuranceCompany || '',
+        claimNumber:      ro.claimNumber      || '',
+        adjusterName:     ro.adjusterName     || '',
+        adjusterPhone:    ro.adjusterPhone    || '',
+        deductible:       ro.deductible != null ? String(ro.deductible) : '',
+      })
+    }
+  }, [open, ro])
+
+  const mutation = useMutation({
+    mutationFn: (data) => rosApi.update(ro.id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['production'] })
+      toast.success('Customer info saved')
+      onClose()
+    },
+    onError: (err) => toast.error(err.message || 'Failed to save'),
+  })
+
+  const set = (field, val) => setForm((prev) => ({ ...prev, [field]: val }))
+
+  const handleSave = () => {
+    const data = { ...form }
+    if (data.deductible !== '') data.deductible = parseFloat(data.deductible) || 0
+    else data.deductible = null
+    mutation.mutate(data)
+  }
+
+  const Field = ({ label, field, type = 'text', placeholder }) => (
+    <div>
+      <label className="block text-xs font-semibold text-gray-400 mb-1">{label}</label>
+      <input
+        type={type}
+        value={form[field] ?? ''}
+        onChange={(e) => set(field, e.target.value)}
+        placeholder={placeholder}
+        className="w-full bg-gray-900/60 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-blue-500/60"
+      />
+    </div>
+  )
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 z-40"
+            onClick={onClose}
+          />
+          <motion.div
+            initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+            transition={{ type: 'spring', stiffness: 300, damping: 35 }}
+            className="fixed bottom-0 left-0 right-0 z-50 bg-gray-900 border-t border-gray-700/60 rounded-t-2xl max-h-[85vh] flex flex-col"
+          >
+            <div className="flex items-center justify-between px-4 py-4 border-b border-gray-800/60 shrink-0">
+              <div className="flex items-center gap-2">
+                <User size={17} className="text-blue-400" />
+                <h2 className="text-base font-bold text-gray-100">Edit Customer — RO #{ro?.roNumber}</h2>
+              </div>
+              <button onClick={onClose} className="text-gray-500 hover:text-gray-300 p-1">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Owner</p>
+              <Field label="Name"   field="ownerName"   placeholder="John Smith" />
+              <Field label="Phone"  field="ownerPhone"  type="tel" placeholder="(555) 000-0000" />
+              <Field label="Phone 2" field="ownerPhone2" type="tel" placeholder="(555) 000-0000" />
+
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider pt-2">Insurance</p>
+              <Field label="Insurance Company" field="insuranceCompany" placeholder="Progressive, State Farm…" />
+              <Field label="Claim #"           field="claimNumber"      placeholder="Claim number" />
+              <Field label="Adjuster Name"     field="adjusterName"     placeholder="Jane Doe" />
+              <Field label="Adjuster Phone"    field="adjusterPhone"    type="tel" placeholder="(555) 000-0000" />
+              <Field label="Deductible ($)"    field="deductible"       type="number" placeholder="500" />
+            </div>
+
+            <div className="shrink-0 p-4 border-t border-gray-800/60">
+              <button
+                onClick={handleSave}
+                disabled={mutation.isPending}
+                className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold text-sm transition-colors flex items-center justify-center gap-2"
+              >
+                {mutation.isPending ? <Spinner size="sm" /> : <Check size={15} />}
+                Save Changes
+              </button>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
   )
 }
 
@@ -415,6 +522,7 @@ export default function ProductionBoard() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [partsOpen, setPartsOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
   const searchRef = useRef(null)
   const saveTimeout = useRef(null)
   const touchStart = useRef(null) // { x, y }
@@ -752,8 +860,18 @@ export default function ProductionBoard() {
               </div>
 
               {/* Customer / Insurance quick info */}
-              {(ro.ownerName || ro.ownerPhone || ro.insuranceCompany || ro.claimNumber || ro.adjusterName || ro.adjusterPhone || ro.deductible) && (
-                <div className="mt-3 pt-3 border-t border-gray-700/40 space-y-1.5">
+              <div className="mt-3 pt-3 border-t border-gray-700/40">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Customer</span>
+                  <button
+                    onClick={() => setEditOpen(true)}
+                    className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                  >
+                    <Pencil size={11} /> Edit
+                  </button>
+                </div>
+                {(ro.ownerName || ro.ownerPhone || ro.insuranceCompany || ro.claimNumber || ro.adjusterName || ro.adjusterPhone || ro.deductible) && (
+                <div className="space-y-1.5">
                   {(ro.ownerName || ro.ownerPhone) && (
                     <div className="flex items-center gap-1.5 text-xs">
                       <User size={11} className="text-blue-400 shrink-0" />
@@ -793,7 +911,8 @@ export default function ProductionBoard() {
                     </div>
                   )}
                 </div>
-              )}
+                )}
+              </div>
 
               {/* Parts summary — tap to see full list */}
               {ro.parts && ro.parts.length > 0 && (
@@ -1055,9 +1174,8 @@ export default function ProductionBoard() {
 
       {/* Daily log sheet */}
       <DailyLogSheet open={logOpen} onClose={() => setLogOpen(false)} />
-
-      {/* Parts sheet */}
       <PartsSheet open={partsOpen} onClose={() => setPartsOpen(false)} parts={ro?.parts || []} roNumber={ro?.roNumber} />
+      <CustomerEditSheet open={editOpen} onClose={() => setEditOpen(false)} ro={ro} />
     </div>
   )
 }
