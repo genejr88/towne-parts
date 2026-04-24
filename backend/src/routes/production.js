@@ -57,6 +57,11 @@ router.get('/', requireAuth, async (req, res) => {
         parts: {
           select: { id: true, isReceived: true, finishStatus: true, description: true, partNumber: true },
         },
+        locationPhotos: {
+          take: 1,
+          orderBy: { createdAt: 'asc' },
+          select: { id: true, storedPath: true },
+        },
         _count: { select: { srcEntries: true } },
       },
       orderBy: [

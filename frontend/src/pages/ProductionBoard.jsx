@@ -80,6 +80,37 @@ function InsuranceLogo({ name }) {
 
 const TOTALS_BASE = 'https://totals.towneapps.com'
 
+const FINISH_CONFIG = {
+  NEEDS_PAINT: { label: 'Needs Paint', color: 'bg-orange-500/20 border-orange-500/50 text-orange-300' },
+  PAINTED:     { label: 'Painted',     color: 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300' },
+  TEXTURED:    { label: 'Textured',    color: 'bg-sky-500/20 border-sky-500/50 text-sky-300' },
+}
+
+function FinishTags({ parts }) {
+  if (!parts?.length) return null
+  const counts = {}
+  for (const p of parts) {
+    if (p.finishStatus && p.finishStatus !== 'NO_FINISH_NEEDED') {
+      counts[p.finishStatus] = (counts[p.finishStatus] || 0) + 1
+    }
+  }
+  const entries = Object.entries(counts)
+  if (!entries.length) return null
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-2">
+      {entries.map(([status, count]) => {
+        const cfg = FINISH_CONFIG[status]
+        if (!cfg) return null
+        return (
+          <span key={status} className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${cfg.color}`}>
+            {cfg.label}{count > 1 ? ` ×${count}` : ''}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Totals Job Badge ──────────────────────────────────────────────────────────
 function TotalsJobBadge({ jobId }) {
   const { data, isLoading } = useQuery({
@@ -1037,8 +1068,16 @@ export default function ProductionBoard() {
                   </div>
                 </div>
 
-                {/* Right — logo + final supp badge */}
+                {/* Right — photo + logo + badges */}
                 <div className="flex flex-col items-end gap-2 shrink-0">
+                  {/* Vehicle photo thumbnail */}
+                  {ro.locationPhotos?.[0] && (
+                    <img
+                      src={rosApi.locationPhotoUrl(ro.locationPhotos[0].storedPath)}
+                      alt="Vehicle"
+                      className="w-24 h-16 object-cover rounded-xl border border-gray-700/60"
+                    />
+                  )}
                   {/* Insurance logo */}
                   {ro.insuranceCompany && (
                     <InsuranceLogo name={ro.insuranceCompany} />
@@ -1110,33 +1149,36 @@ export default function ProductionBoard() {
 
               {/* Parts summary — tap to see full list */}
               {ro.parts && ro.parts.length > 0 && (
-                <button
-                  onClick={() => setPartsOpen(true)}
-                  className="w-full bg-gray-900/60 rounded-xl p-3 text-xs text-left hover:bg-gray-900/80 transition-colors active:bg-gray-900"
-                >
-                  <div className="flex gap-6 text-center">
-                    <div>
-                      <p className="text-gray-500">Total</p>
-                      <p className="text-gray-200 font-bold text-base">{ro.parts.length}</p>
+                <>
+                  <button
+                    onClick={() => setPartsOpen(true)}
+                    className="w-full bg-gray-900/60 rounded-xl p-3 text-xs text-left hover:bg-gray-900/80 transition-colors active:bg-gray-900"
+                  >
+                    <div className="flex gap-6 text-center">
+                      <div>
+                        <p className="text-gray-500">Total</p>
+                        <p className="text-gray-200 font-bold text-base">{ro.parts.length}</p>
+                      </div>
+                      <div>
+                        <p className="text-emerald-500">Received</p>
+                        <p className="text-emerald-400 font-bold text-base">
+                          {ro.parts.filter((p) => p.isReceived).length}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-red-500">Pending</p>
+                        <p className="text-red-400 font-bold text-base">
+                          {ro.parts.filter((p) => !p.isReceived).length}
+                        </p>
+                      </div>
+                      <div className="ml-auto flex items-center text-gray-600 text-xs gap-1">
+                        <Package size={11} />
+                        <span>View</span>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-emerald-500">Received</p>
-                      <p className="text-emerald-400 font-bold text-base">
-                        {ro.parts.filter((p) => p.isReceived).length}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-red-500">Pending</p>
-                      <p className="text-red-400 font-bold text-base">
-                        {ro.parts.filter((p) => !p.isReceived).length}
-                      </p>
-                    </div>
-                    <div className="ml-auto flex items-center text-gray-600 text-xs gap-1">
-                      <Package size={11} />
-                      <span>View</span>
-                    </div>
-                  </div>
-                </button>
+                  </button>
+                  <FinishTags parts={ro.parts} />
+                </>
               )}
             </div>
 
