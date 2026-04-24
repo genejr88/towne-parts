@@ -63,14 +63,14 @@ function InsuranceLogo({ name }) {
       <img
         src={`/logos/${INSURANCE_LOGOS[match]}`}
         alt={name}
-        className="w-14 h-14 object-contain rounded-xl bg-white/5 p-1"
+        className="h-12 w-32 object-contain rounded-xl bg-white/5 p-1.5"
         onError={() => setImgError(true)}
       />
     )
   }
 
   return (
-    <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-slate-700 to-slate-800 border border-slate-600/50 flex items-center justify-center shrink-0 shadow-inner">
+    <div className="h-12 w-32 rounded-xl bg-gradient-to-br from-slate-700 to-slate-800 border border-slate-600/50 flex items-center justify-center shrink-0 shadow-inner">
       <span className="text-xl font-black text-slate-200 tracking-tight leading-none">{abbr}</span>
     </div>
   )
