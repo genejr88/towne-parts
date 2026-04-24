@@ -419,6 +419,82 @@ function AuthImage({ photoId, filename }) {
   )
 }
 
+// ── Photo review + finish tag picker ─────────────────────────────────────────
+function PhotoReviewModal({ review, onConfirm, onRetake, onClose, isPending }) {
+  const [finish, setFinish] = useState(review.finish || 'NO_FINISH_NEEDED')
+
+  const activeColor = {
+    blue:   'bg-blue-600 text-white shadow-md',
+    purple: 'bg-purple-600 text-white shadow-md',
+    orange: 'bg-orange-500 text-white shadow-md',
+    gray:   'bg-gray-600 text-white shadow-md',
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[60] bg-black flex flex-col"
+    >
+      <div className="flex items-center justify-between p-4">
+        <button
+          onClick={onClose}
+          disabled={isPending}
+          className="p-2 rounded-xl bg-gray-900/80 text-gray-300 hover:text-white transition-colors disabled:opacity-40"
+        >
+          <X size={20} />
+        </button>
+        <span className="text-sm font-semibold text-gray-300">Review Photo</span>
+        <div className="w-10" />
+      </div>
+
+      <div className="flex-1 flex items-center justify-center overflow-hidden px-2">
+        <img
+          src={review.url}
+          alt="Part preview"
+          className="max-w-full max-h-full object-contain rounded-xl"
+        />
+      </div>
+
+      <div className="p-4 space-y-3 bg-gray-950/95 border-t border-gray-800/60">
+        <p className="text-xs text-gray-500 font-semibold uppercase tracking-widest text-center">Finish Status</p>
+        <div className="flex gap-1.5 p-1 bg-gray-900/60 rounded-xl border border-white/5">
+          {FINISH_STATUSES.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => setFinish(f.value)}
+              className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${
+                finish === f.value ? activeColor[f.color] : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={onRetake}
+            disabled={isPending}
+            className="flex-1 py-3 rounded-xl text-sm font-semibold bg-gray-800 text-gray-300 hover:bg-gray-700 disabled:opacity-40 transition-colors"
+          >
+            Retake
+          </button>
+          <button
+            onClick={() => onConfirm(finish)}
+            disabled={isPending}
+            className="flex-1 py-3 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+          >
+            {isPending && <Loader2 size={15} className="animate-spin" />}
+            Use This
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
 // ── Part row ──────────────────────────────────────────────────────────────────
 function PartRow({ part, roId, inventoryMatch }) {
   const queryClient = useQueryClient()
@@ -427,6 +503,11 @@ function PartRow({ part, roId, inventoryMatch }) {
   const [stockModalOpen, setStockModalOpen] = useState(false)
   const [editingNote, setEditingNote] = useState(false)
   const [noteValue, setNoteValue] = useState(part.notes || '')
+  const [review, setReview] = useState(null)
+
+  useEffect(() => {
+    return () => { if (review?.url) URL.revokeObjectURL(review.url) }
+  }, [review])
 
   const updateMutation = useMutation({
     mutationFn: (data) => partsApi.update(part.id, data),
@@ -444,15 +525,14 @@ function PartRow({ part, roId, inventoryMatch }) {
   })
 
   const photoMutation = useMutation({
-    mutationFn: async (file) => {
+    mutationFn: async ({ file, finish }) => {
       await partsApi.uploadPhoto(part.id, file)
-      if (!part.isReceived) {
-        await partsApi.update(part.id, { isReceived: true })
-      }
+      await partsApi.update(part.id, { isReceived: true, finishStatus: finish })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ro', roId] })
-      toast.success('Photo saved — part marked received')
+      toast.success('Photo saved')
+      setReview(null)
     },
     onError: (err) => toast.error(err.message),
   })
@@ -479,8 +559,24 @@ function PartRow({ part, roId, inventoryMatch }) {
 
   const handlePhotoFile = (e) => {
     const file = e.target.files?.[0]
-    if (file) photoMutation.mutate(file)
+    if (file) {
+      const url = URL.createObjectURL(file)
+      setReview({ file, url, finish: part.finishStatus || 'NO_FINISH_NEEDED' })
+    }
     e.target.value = ''
+  }
+
+  const handleConfirm = (finish) => photoMutation.mutate({ file: review.file, finish })
+
+  const handleRetake = () => {
+    URL.revokeObjectURL(review.url)
+    setReview(null)
+    fileInputRef.current?.click()
+  }
+
+  const handleClose = () => {
+    URL.revokeObjectURL(review.url)
+    setReview(null)
   }
 
   const toggle = (field) => updateMutation.mutate({ [field]: !part[field] })
@@ -620,6 +716,19 @@ function PartRow({ part, roId, inventoryMatch }) {
           inventoryPart={inventoryMatch}
         />
       )}
+
+      {/* Photo review + finish picker */}
+      <AnimatePresence>
+        {review && (
+          <PhotoReviewModal
+            review={review}
+            onConfirm={handleConfirm}
+            onRetake={handleRetake}
+            onClose={handleClose}
+            isPending={photoMutation.isPending}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }
