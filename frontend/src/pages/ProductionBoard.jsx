@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChevronLeft, ChevronRight, Car, FileText, Check, ClipboardList, X, Clock, Truck,
   Search, Package, CheckCircle2, XCircle, User, Shield, AlertTriangle, Wrench, Pencil,
+  ExternalLink, DollarSign,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { productionApi, rosApi } from '@/lib/api'
@@ -73,6 +74,79 @@ function InsuranceLogo({ name }) {
     <div className="h-12 w-32 rounded-xl bg-gradient-to-br from-slate-700 to-slate-800 border border-slate-600/50 flex items-center justify-center shrink-0 shadow-inner">
       <span className="text-xl font-black text-slate-200 tracking-tight leading-none">{abbr}</span>
     </div>
+  )
+}
+
+const TOTALS_BASE = 'https://totals.towneapps.com'
+
+// ── Totals Job Badge ──────────────────────────────────────────────────────────
+function TotalsJobBadge({ jobId }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['totals-job', jobId],
+    queryFn: async () => {
+      const res = await fetch(`${TOTALS_BASE}/api/jobs/${jobId}/summary`)
+      if (!res.ok) throw new Error('Failed to fetch')
+      const json = await res.json()
+      return json.data
+    },
+    enabled: !!jobId,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  })
+
+  const openJob = () => window.open(`${TOTALS_BASE}/jobs/${jobId}`, '_blank')
+
+  if (isLoading) {
+    return (
+      <div className="mt-4 rounded-xl bg-purple-900/30 border border-purple-700/40 px-4 py-3 flex items-center gap-2 text-sm text-purple-400">
+        <Spinner size="sm" /> Loading invoice…
+      </div>
+    )
+  }
+
+  if (!data) return null
+
+  const fmt = (n) => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+  return (
+    <button
+      onClick={openJob}
+      className="w-full mt-4 rounded-xl border transition-all text-left group"
+      style={{
+        background: data.paid
+          ? 'rgba(16,185,129,0.08)'
+          : data.hasCharges
+          ? 'rgba(139,92,246,0.08)'
+          : 'rgba(75,85,99,0.15)',
+        borderColor: data.paid
+          ? 'rgba(16,185,129,0.35)'
+          : data.hasCharges
+          ? 'rgba(139,92,246,0.35)'
+          : 'rgba(75,85,99,0.4)',
+      }}
+    >
+      <div className="px-4 py-3">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
+            <DollarSign size={11} /> Totals Invoice
+          </span>
+          <ExternalLink size={12} className="text-purple-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+        </div>
+
+        {data.hasCharges ? (
+          <div className="flex items-end justify-between">
+            <span className="text-2xl font-black tracking-tight text-white">{fmt(data.total)}</span>
+            {data.paid ? (
+              <span className="text-xs font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full">PAID</span>
+            ) : (
+              <span className="text-xs font-bold text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">UNPAID</span>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-400 italic">No invoice generated yet — tap to open in Totals</p>
+        )}
+      </div>
+    </button>
   )
 }
 
@@ -1072,7 +1146,9 @@ export default function ProductionBoard() {
                     exit={{ opacity: 0, height: 0 }}
                     className="overflow-hidden mt-4"
                   >
-                    <p className="text-xs font-semibold text-purple-400 uppercase tracking-wider mb-3">Released to Insurance?</p>
+                    <TotalsJobBadge jobId={ro.totalLossJobId} />
+
+                    <p className="text-xs font-semibold text-purple-400 uppercase tracking-wider mb-3 mt-5">Released to Insurance?</p>
                     <div className="flex gap-3">
                       <button
                         onClick={() => updateField('totalLossReleased', true)}

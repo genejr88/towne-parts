@@ -1,6 +1,48 @@
 const express = require('express')
+const axios = require('axios')
 const prisma = require('../lib/prisma')
 const { requireAuth } = require('../middleware/auth')
+
+const TOTALS_URL = process.env.TOTALS_API_URL || 'https://totals.towneapps.com'
+const TOTALS_USER = process.env.TOTALS_USERNAME || 'gene'
+const TOTALS_PASS = process.env.TOTALS_PASSWORD || 'TowneRental1'
+
+async function getTotalsToken() {
+  const res = await axios.post(`${TOTALS_URL}/api/auth/login`, {
+    username: TOTALS_USER,
+    password: TOTALS_PASS,
+  })
+  return res.data.data?.token
+}
+
+async function createTotalsJob(ro) {
+  const token = await getTotalsToken()
+  const today = new Date().toISOString()
+  const nameParts = (ro.ownerName || '').trim().split(/\s+/)
+  const firstName = nameParts[0] || null
+  const lastName = nameParts.slice(1).join(' ') || null
+
+  const res = await axios.post(
+    `${TOTALS_URL}/api/jobs`,
+    {
+      firstName,
+      lastName,
+      dateIn: today,
+      dateOut: today,
+      year: ro.vehicleYear || null,
+      make: ro.vehicleMake || null,
+      model: ro.vehicleModel || null,
+      color: ro.vehicleColor || null,
+      insuranceCompany: ro.insuranceCompany || null,
+      claimNumber: ro.claimNumber || null,
+      roNumber: ro.roNumber || null,
+      chargeStorage: false,
+      charges: [],
+    },
+    { headers: { Authorization: `Bearer ${token}` } }
+  )
+  return res.data.data?.id
+}
 
 const router = express.Router()
 
@@ -91,6 +133,18 @@ router.post('/:roId', requireAuth, async (req, res) => {
     if (isTotalLoss !== undefined) updateData.isTotalLoss = Boolean(isTotalLoss)
     if (totalLossReleased !== undefined) updateData.totalLossReleased = Boolean(totalLossReleased)
     if (assignedTech !== undefined) updateData.assignedTech = assignedTech || null
+
+    // Auto-create totals job when flagged total loss for the first time
+    const becomingTotalLoss = Boolean(isTotalLoss) && !existing.isTotalLoss
+    if (becomingTotalLoss && !existing.totalLossJobId) {
+      try {
+        const jobId = await createTotalsJob(existing)
+        if (jobId) updateData.totalLossJobId = jobId
+      } catch (e) {
+        console.error('Failed to create totals job:', e.message)
+        // Non-fatal — board update still goes through
+      }
+    }
 
     const ro = await prisma.rO.update({
       where: { id: roId },

@@ -52,6 +52,7 @@ model RO {
   productionUpdatedAt     DateTime?
   isTotalLoss             Boolean       @default(false)
   totalLossReleased       Boolean       @default(false)
+  totalLossJobId          String?
   assignedTech            String?
   isArchived              Boolean       @default(false)
   archivedAt              DateTime?
