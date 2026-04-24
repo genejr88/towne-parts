@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -506,6 +507,113 @@ function PartsSheet({ open, onClose, parts, roNumber }) {
   )
 }
 
+// ── Parts Activity Sheet ──────────────────────────────────────────────────────
+function PartsActivitySheet({ open, onClose }) {
+  const navigate = useNavigate()
+
+  const { data: logs, isLoading } = useQuery({
+    queryKey: ['parts-activity'],
+    queryFn: () => productionApi.partsActivity(2),
+    enabled: open,
+    refetchInterval: open ? 20_000 : false,
+  })
+
+  // Group logs by calendar date
+  const grouped = useMemo(() => {
+    if (!logs?.length) return []
+    const map = {}
+    for (const log of logs) {
+      const dateKey = new Date(log.createdAt).toLocaleDateString('en-US', {
+        weekday: 'long', month: 'short', day: 'numeric',
+      })
+      if (!map[dateKey]) map[dateKey] = []
+      map[dateKey].push(log)
+    }
+    return Object.entries(map)
+  }, [logs])
+
+  const handleItemClick = (log) => {
+    onClose()
+    navigate(`/ros/${log.ro?.id}`)
+  }
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 z-40"
+            onClick={onClose}
+          />
+          <motion.div
+            initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+            transition={{ type: 'spring', stiffness: 300, damping: 35 }}
+            className="fixed bottom-0 left-0 right-0 z-50 bg-gray-900 border-t border-gray-700/60 rounded-t-2xl max-h-[80vh] flex flex-col"
+          >
+            <div className="flex items-center justify-between px-4 py-4 border-b border-gray-800/60 shrink-0">
+              <div className="flex items-center gap-2">
+                <Package size={17} className="text-emerald-400" />
+                <h2 className="text-base font-bold text-gray-100">Parts Check-In Activity</h2>
+              </div>
+              <button onClick={onClose} className="text-gray-500 hover:text-gray-300 p-1">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-5">
+              {isLoading && (
+                <div className="flex justify-center py-10"><Spinner size="lg" /></div>
+              )}
+
+              {!isLoading && grouped.length === 0 && (
+                <div className="text-center py-10 text-gray-500">
+                  <Package size={32} className="mx-auto mb-3 opacity-30" />
+                  <p className="text-sm">No parts checked in yet</p>
+                </div>
+              )}
+
+              {grouped.map(([date, entries]) => (
+                <div key={date}>
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">{date}</p>
+                  <div className="space-y-2">
+                    {entries.map((log) => (
+                      <button
+                        key={log.id}
+                        onClick={() => handleItemClick(log)}
+                        className="w-full text-left bg-gray-800/60 border border-gray-700/40 rounded-xl px-3.5 py-3 hover:bg-gray-700/60 active:bg-gray-700 transition-colors"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
+                              <span className="text-sm font-bold text-gray-100 font-mono">{log.ro?.roNumber}</span>
+                              {log.ro && (
+                                <span className="text-xs text-gray-400 truncate">
+                                  {[log.ro.vehicleYear, log.ro.vehicleMake, log.ro.vehicleModel].filter(Boolean).join(' ')}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-400 truncate pl-5">{log.message}</p>
+                          </div>
+                          <span className="text-xs text-gray-600 shrink-0 flex items-center gap-1 mt-0.5">
+                            <Clock size={10} />
+                            {new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  )
+}
+
 // ── Daily Log Sheet ──────────────────────────────────────────────────────────
 function DailyLogSheet({ open, onClose }) {
   const { data: logs, isLoading } = useQuery({
@@ -600,6 +708,7 @@ export default function ProductionBoard() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [partsOpen, setPartsOpen] = useState(false)
+  const [partsActivityOpen, setPartsActivityOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const searchRef = useRef(null)
   const saveTimeout = useRef(null)
@@ -725,10 +834,10 @@ export default function ProductionBoard() {
 
   // Keyboard arrow keys — stable ref so listener is added once (not torn down on every keystroke)
   const navRef = useRef({})
-  navRef.current = { goPrev, goNext, logOpen, partsOpen, searchOpen }
+  navRef.current = { goPrev, goNext, logOpen, partsOpen, partsActivityOpen, searchOpen }
   useEffect(() => {
     const onKey = (e) => {
-      if (navRef.current.logOpen || navRef.current.partsOpen || navRef.current.searchOpen) return
+      if (navRef.current.logOpen || navRef.current.partsOpen || navRef.current.partsActivityOpen || navRef.current.searchOpen) return
       if (e.key === 'ArrowLeft') navRef.current.goPrev()
       if (e.key === 'ArrowRight') navRef.current.goNext()
     }
@@ -835,6 +944,13 @@ export default function ProductionBoard() {
             {saving && <><Spinner size="sm" /><span>Saving…</span></>}
             {!saving && saved && <><Check size={13} className="text-emerald-400" /><span className="text-emerald-400">Saved</span></>}
           </div>
+          <button
+            onClick={() => setPartsActivityOpen(true)}
+            className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 px-2 py-1 rounded-lg bg-emerald-950/40 border border-emerald-900/50 transition-colors"
+          >
+            <Package size={13} />
+            Parts
+          </button>
           <button
             onClick={() => setLogOpen(true)}
             className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 px-2 py-1 rounded-lg bg-blue-950/40 border border-blue-900/50 transition-colors"
@@ -1255,6 +1371,7 @@ export default function ProductionBoard() {
       {/* Daily log sheet */}
       <DailyLogSheet open={logOpen} onClose={() => setLogOpen(false)} />
       <PartsSheet open={partsOpen} onClose={() => setPartsOpen(false)} parts={ro?.parts || []} roNumber={ro?.roNumber} />
+      <PartsActivitySheet open={partsActivityOpen} onClose={() => setPartsActivityOpen(false)} />
       <CustomerEditSheet open={editOpen} onClose={() => setEditOpen(false)} ro={ro} />
     </div>
   )

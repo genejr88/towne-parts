@@ -99,6 +99,43 @@ router.get('/activity', requireAuth, async (req, res) => {
   }
 })
 
+// GET /api/production/parts-activity — parts check-in activity feed, grouped by date
+router.get('/parts-activity', requireAuth, async (req, res) => {
+  try {
+    const days = Math.min(parseInt(req.query.days) || 2, 30)
+    const since = new Date()
+    since.setDate(since.getDate() - (days - 1))
+    since.setHours(0, 0, 0, 0)
+
+    const logs = await prisma.activityLog.findMany({
+      where: {
+        createdAt: { gte: since },
+        eventType: { in: ['PART_STATUS_CHANGED', 'PARTS_BULK_RECEIVED'] },
+        NOT: { message: { contains: 'not received' } },
+      },
+      include: {
+        ro: {
+          select: {
+            id: true,
+            roNumber: true,
+            vehicleYear: true,
+            vehicleMake: true,
+            vehicleModel: true,
+            ownerName: true,
+            partsStatus: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    return res.json({ success: true, data: logs })
+  } catch (err) {
+    console.error('Get parts activity error:', err)
+    return res.status(500).json({ success: false, error: err.message })
+  }
+})
+
 // POST /api/production/:roId — save production stage/notes for an RO
 router.post('/:roId', requireAuth, async (req, res) => {
   const roId = parseInt(req.params.roId)
