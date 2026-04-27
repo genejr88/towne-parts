@@ -1068,16 +1068,8 @@ export default function ProductionBoard() {
                   </div>
                 </div>
 
-                {/* Right — photo + logo + badges */}
+                {/* Right — logo + badges */}
                 <div className="flex flex-col items-end gap-2 shrink-0">
-                  {/* Vehicle photo thumbnail */}
-                  {ro.locationPhotos?.[0] && (
-                    <img
-                      src={rosApi.locationPhotoUrl(ro.locationPhotos[0].storedPath)}
-                      alt="Vehicle"
-                      className="w-24 h-16 object-cover rounded-xl border border-gray-700/60"
-                    />
-                  )}
                   {/* Insurance logo */}
                   {ro.insuranceCompany && (
                     <InsuranceLogo name={ro.insuranceCompany} />
