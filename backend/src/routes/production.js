@@ -63,6 +63,10 @@ router.get('/', requireAuth, async (req, res) => {
           select: { id: true, storedPath: true },
         },
         _count: { select: { srcEntries: true } },
+        supplements: {
+          select: { id: true, number: true, status: true },
+          orderBy: { number: 'asc' },
+        },
       },
       orderBy: [
         { productionUpdatedAt: { sort: 'desc', nulls: 'last' } },

@@ -173,6 +173,14 @@ export const inventoryApi = {
   photoUrl: (storedPath) => `${API_URL}/uploads/inventory/${storedPath}`,
 }
 
+// ── Supplements ───────────────────────────────────────────────────────────────
+export const supplementsApi = {
+  list: (roId) => unwrap(api.get(`/supplements/ro/${roId}`)),
+  create: (roId, data) => unwrap(api.post(`/supplements/ro/${roId}`, data)),
+  update: (id, data) => unwrap(api.put(`/supplements/${id}`, data)),
+  remove: (id) => unwrap(api.delete(`/supplements/${id}`)),
+}
+
 // ── BMW Payment Tracker ───────────────────────────────────────────────────────
 export const bmwApi = {
   list: (pin, month, year) =>

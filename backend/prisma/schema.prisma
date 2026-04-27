@@ -81,6 +81,7 @@ model RO {
   locationPhotos          ROLocationPhoto[]
   srcEntries              SRCEntry[]
   activityLog             ActivityLog[]
+  supplements             Supplement[]
   createdAt               DateTime      @default(now())
   updatedAt               DateTime      @updatedAt
 
@@ -219,6 +220,26 @@ model PrivateFile {
   createdAt        DateTime @default(now())
 
   @@map("private_files")
+}
+
+model Supplement {
+  id               Int              @id @default(autoincrement())
+  roId             Int
+  ro               RO               @relation(fields: [roId], references: [id], onDelete: Cascade)
+  number           Int
+  status           SupplementStatus @default(REQUESTED)
+  insuranceCompany String?
+  notes            String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@unique([roId, number])
+  @@map("supplements")
+}
+
+enum SupplementStatus {
+  REQUESTED
+  FILED
 }
 
 model BMWPayment {
