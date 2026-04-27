@@ -66,59 +66,17 @@ function StatusPulse({ status }) {
   )
 }
 
-// Insurance company → logo filename mapping
-// Drop matching PNG/SVG files into /public/logos/ and they'll appear automatically
-const INSURANCE_LOGOS = {
-  'state farm':      'state-farm.jpg',
-  'geico':           'geico.png',
-  'progressive':     'progressive.png',
-  'allstate':        'allstate.png',
-  'liberty mutual':  'liberty-mutual.png',
-  'usaa':            'usaa.png',
-  'farmers':         'farmers.jpg',
-  'travelers':       'travelers.png',
-  'nationwide':      'nationwide.jpg',
-  'american family': 'american-family.png',
-  'hartford':        'hartford.png',
-  'aaa':             'aaa.png',
-  'mapfre':          'mapfre.png',
-  'arbella':         'arbella.png',
-  'safety':          'safety.png',
-  'commerce':        'commerce.png',
-  'amica':           'amica.webp',
-  'hanover':         'hanover.png',
-}
-
-function InsuranceLogo({ name }) {
-  const [imgError, setImgError] = useState(false)
+// Typography-based insurance label — clean, no logos until we revisit
+function InsuranceText({ name }) {
   if (!name) return null
-  const key = name.toLowerCase().trim()
-  const match = Object.keys(INSURANCE_LOGOS).find((k) => key.includes(k))
-
-  // Fallback: initials from first two words, or first 2 chars
-  const words = name.trim().split(/\s+/)
-  const abbr = words.length >= 2
-    ? (words[0][0] + words[1][0]).toUpperCase()
-    : name.slice(0, 2).toUpperCase()
-
-  // White pill container normalises every logo — no squishing, no dark backgrounds
-  if (match && !imgError) {
-    return (
-      <div className="h-7 w-20 bg-white rounded-md flex items-center justify-center p-1.5 shrink-0 shadow-sm">
-        <img
-          src={`/logos/${INSURANCE_LOGOS[match]}`}
-          alt={name}
-          className="max-h-full max-w-full object-contain"
-          onError={() => setImgError(true)}
-        />
-      </div>
-    )
-  }
-
-  // Fallback badge for unknown insurers
   return (
-    <div className="h-7 px-2 rounded-md bg-slate-700/80 border border-slate-600/40 flex items-center justify-center shrink-0">
-      <span className="text-xs font-bold text-slate-300 tracking-wide leading-none">{abbr}</span>
+    <div className="text-right shrink-0 max-w-[150px] border-l-2 border-gray-700/60 pl-2.5 py-0.5">
+      <p className="text-[8px] font-black uppercase tracking-[0.22em] text-gray-600 leading-none">
+        Insured by
+      </p>
+      <p className="text-[13px] font-black uppercase tracking-[0.04em] text-gray-100 leading-tight mt-1 truncate">
+        {name}
+      </p>
     </div>
   )
 }
@@ -338,23 +296,6 @@ function CustomerEditSheet({ open, onClose, ro }) {
   )
 }
 
-function StageButton({ stage, active, onClick }) {
-  const colorClass = active
-    ? (STAGE_COLORS[stage] || 'bg-blue-600 text-white')
-    : 'bg-gray-800/70 text-gray-500 hover:text-gray-200 hover:bg-gray-700/60'
-
-  return (
-    <button
-      onClick={onClick}
-      className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150 border ${
-        active ? `${colorClass} border-transparent ring-2 ring-white/20` : `${colorClass} border-gray-700/50`
-      }`}
-    >
-      {stage}
-    </button>
-  )
-}
-
 // ── Supplement Quick-Note Bubbles ─────────────────────────────────────────────
 const SUPP_PRESETS = ['PPD', 'Alignment', 'Scans', 'Calibrations', 'Scans & Calibrations', 'New Part']
 
@@ -495,6 +436,33 @@ function TechBubbles({ value, onChange }) {
           >
             {active && <span className="mr-1">✓</span>}
             {tech}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Stage Bubbles (used inline in the action bar accordion) ──────────────────
+function StageBubbles({ value, onChange }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {STAGES.map((stage) => {
+        const active = value === stage
+        const colorClass = STAGE_COLORS[stage] || 'bg-blue-600 text-white'
+        return (
+          <button
+            key={stage}
+            type="button"
+            onClick={() => onChange(stage)}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+              active
+                ? `${colorClass} border-transparent ring-2 ring-white/20`
+                : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-blue-500/40 hover:text-gray-200'
+            }`}
+          >
+            {active && <span className="mr-1">✓</span>}
+            {stage}
           </button>
         )
       })}
@@ -787,6 +755,7 @@ export default function ProductionBoard() {
   const [partsActivityOpen, setPartsActivityOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [techPickerOpen, setTechPickerOpen] = useState(false)
+  const [stagePickerOpen, setStagePickerOpen] = useState(false)
   const searchRef = useRef(null)
   const saveTimeout = useRef(null)
   const touchStart = useRef(null) // { x, y }
@@ -906,8 +875,8 @@ export default function ProductionBoard() {
     setIndex(newIndex)
   }
 
-  const goPrev = () => { if (index > 0) { setTechPickerOpen(false); saveAndNavigate(index - 1) } }
-  const goNext = () => { if (index < activeROs.length - 1) { setTechPickerOpen(false); saveAndNavigate(index + 1) } }
+  const goPrev = () => { if (index > 0) { setTechPickerOpen(false); setStagePickerOpen(false); saveAndNavigate(index - 1) } }
+  const goNext = () => { if (index < activeROs.length - 1) { setTechPickerOpen(false); setStagePickerOpen(false); saveAndNavigate(index + 1) } }
 
   // Keyboard arrow keys — stable ref so listener is added once (not torn down on every keystroke)
   const navRef = useRef({})
@@ -1072,10 +1041,10 @@ export default function ProductionBoard() {
               {/* Subtle radial glow accent in top-right (nearly invisible but adds depth) */}
               <div className="absolute top-0 right-0 w-40 h-40 bg-white/[0.02] rounded-full blur-3xl pointer-events-none" />
 
-              <div className="relative px-4 pt-3.5 pb-3">
+              <div className="relative px-4 pt-3 pb-3">
 
-                {/* ── HERO ROW: RO# block + insurance logo ── */}
-                <div className="flex items-start justify-between gap-3 mb-3">
+                {/* ── HERO ROW: RO#/status block + typography insurance ── */}
+                <div className="flex items-start justify-between gap-3 mb-2.5">
                   <div className="min-w-0 flex-1">
                     {/* Microcopy label row — RO + flags */}
                     <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
@@ -1092,23 +1061,21 @@ export default function ProductionBoard() {
                       )}
                     </div>
 
-                    {/* Big mono RO number */}
-                    <h2 className="text-2xl font-black text-white font-mono tracking-tight leading-none">
-                      {ro.roNumber}
-                    </h2>
-
-                    {/* Inline status dot + uppercase label */}
-                    <div className="mt-2">
+                    {/* RO# + status pulse on the SAME baseline — saves a row */}
+                    <div className="flex items-baseline gap-3 flex-wrap">
+                      <h2 className="text-2xl font-black text-white font-mono tracking-tight leading-none">
+                        {ro.roNumber}
+                      </h2>
                       <StatusPulse status={effectivePartsStatus(ro)} />
                     </div>
                   </div>
 
-                  {/* Insurance logo, tucked top-right */}
-                  {ro.insuranceCompany && <InsuranceLogo name={ro.insuranceCompany} />}
+                  {/* Typography-only insurance label, tucked top-right */}
+                  {ro.insuranceCompany && <InsuranceText name={ro.insuranceCompany} />}
                 </div>
 
-                {/* ── VEHICLE LINE ── */}
-                <div className="mb-3">
+                {/* ── VEHICLE LINE (with VIN inline-tail) ── */}
+                <div className="mb-2.5">
                   <p className="text-[15px] font-bold text-gray-50 leading-tight truncate">
                     {[ro.vehicleYear, ro.vehicleMake, ro.vehicleModel].filter(Boolean).join(' ') || '—'}
                     {ro.vehicleColor && <span className="text-gray-400 font-medium"> · {ro.vehicleColor}</span>}
@@ -1120,46 +1087,69 @@ export default function ProductionBoard() {
                   )}
                 </div>
 
-                {/* ── 2-COLUMN IDENTITY GRID ── */}
+                {/* ── DENSE IDENTITY GRID — icon-prefixed, no label rows ── */}
                 {(ro.ownerName || ro.ownerPhone || ro.insuranceCompany || ro.claimNumber) && (
-                  <div className="grid grid-cols-2 gap-3 pb-3 border-b border-gray-700/40">
+                  <div className="grid grid-cols-2 gap-3 pb-2.5 border-b border-gray-700/40">
                     {/* CUSTOMER */}
-                    <div className="min-w-0">
-                      <p className="text-[9px] font-black uppercase tracking-[0.15em] text-gray-500 mb-1 flex items-center gap-1">
-                        <User size={9} /> Customer
-                      </p>
-                      <p className="text-xs font-semibold text-gray-100 truncate leading-tight">
-                        {ro.ownerName || <span className="text-gray-600">—</span>}
-                      </p>
-                      {ro.ownerPhone && (
-                        <a
-                          href={`tel:${ro.ownerPhone}`}
-                          className="text-[11px] text-blue-400 font-mono hover:text-blue-300 transition-colors truncate block mt-0.5"
-                        >
-                          {ro.ownerPhone}
-                        </a>
-                      )}
+                    <div className="min-w-0 flex items-start gap-1.5">
+                      <User size={11} className="text-gray-600 mt-0.5 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold text-gray-100 truncate leading-tight">
+                          {ro.ownerName || <span className="text-gray-600">—</span>}
+                        </p>
+                        {ro.ownerPhone && (
+                          <a
+                            href={`tel:${ro.ownerPhone}`}
+                            className="text-[11px] text-blue-400 font-mono hover:text-blue-300 transition-colors truncate block leading-tight"
+                          >
+                            {ro.ownerPhone}
+                          </a>
+                        )}
+                      </div>
                     </div>
 
                     {/* INSURANCE */}
-                    <div className="min-w-0">
-                      <p className="text-[9px] font-black uppercase tracking-[0.15em] text-gray-500 mb-1 flex items-center gap-1">
-                        <Shield size={9} /> Insurance
-                      </p>
-                      <p className="text-xs font-semibold text-gray-100 truncate leading-tight">
-                        {ro.insuranceCompany || <span className="text-gray-600">—</span>}
-                      </p>
-                      {ro.claimNumber && (
-                        <p className="text-[11px] text-gray-500 font-mono truncate mt-0.5">#{ro.claimNumber}</p>
-                      )}
+                    <div className="min-w-0 flex items-start gap-1.5">
+                      <Shield size={11} className="text-gray-600 mt-0.5 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold text-gray-100 truncate leading-tight">
+                          {ro.insuranceCompany || <span className="text-gray-600">—</span>}
+                        </p>
+                        {ro.claimNumber && (
+                          <p className="text-[11px] text-gray-500 font-mono truncate leading-tight">#{ro.claimNumber}</p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
 
-                {/* ── ACTION BAR: tech pill · timestamp · edit ── */}
-                <div className="flex items-center gap-2 pt-3">
+                {/* ── ACTION BAR: stage pill · tech pill · timestamp · edit ── */}
+                <div className="flex items-center gap-2 pt-2.5 flex-wrap">
+                  {/* Stage chip (NEW — replaces standalone Stage card) */}
+                  {!state.isTotalLoss && (() => {
+                    const stage = state.productionStage || 'Unassigned'
+                    const stageColor = STAGE_COLORS[stage] || 'bg-gray-700/50 text-gray-400'
+                    return (
+                      <button
+                        onClick={() => {
+                          setStagePickerOpen((v) => !v)
+                          setTechPickerOpen(false)
+                        }}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition-all ${stageColor} border-transparent ring-1 ring-white/10 hover:ring-white/25`}
+                      >
+                        <ClipboardList size={10} />
+                        {stage}
+                        <ChevronDown size={10} className={`transition-transform duration-200 ${stagePickerOpen ? 'rotate-180' : ''}`} />
+                      </button>
+                    )
+                  })()}
+
+                  {/* Tech chip */}
                   <button
-                    onClick={() => setTechPickerOpen(!techPickerOpen)}
+                    onClick={() => {
+                      setTechPickerOpen((v) => !v)
+                      setStagePickerOpen(false)
+                    }}
                     className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition-all ${
                       state.assignedTech
                         ? 'bg-blue-500/20 border-blue-500/50 text-blue-200 shadow-sm shadow-blue-500/20'
@@ -1185,6 +1175,26 @@ export default function ProductionBoard() {
                     <Pencil size={10} /> Edit
                   </button>
                 </div>
+
+                {/* Stage picker — inline accordion */}
+                <AnimatePresence>
+                  {stagePickerOpen && !state.isTotalLoss && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.18 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="pt-3 pb-0.5">
+                        <StageBubbles
+                          value={state.productionStage}
+                          onChange={(val) => { updateField('productionStage', val); setStagePickerOpen(false) }}
+                        />
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 {/* Tech picker — inline accordion */}
                 <AnimatePresence>
@@ -1266,23 +1276,8 @@ export default function ProductionBoard() {
                   transition={{ duration: 0.2 }}
                   className="overflow-hidden"
                 >
-                  {/* Stage selector */}
-                  <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-4 mb-3">
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Stage</p>
-                    <div className="flex flex-wrap gap-2">
-                      {STAGES.map((s) => (
-                        <StageButton
-                          key={s}
-                          stage={s}
-                          active={state.productionStage === s}
-                          onClick={() => updateField('productionStage', s)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
                   {/* Status note */}
-                  <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-4 mb-3">
+                  <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-3 mb-2">
                     <Textarea
                       label="Status Note"
                       value={state.productionStatusNote}
@@ -1294,7 +1289,7 @@ export default function ProductionBoard() {
                   </div>
 
                   {/* Final supplement toggle */}
-                  <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-4 mb-3">
+                  <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-3 mb-2">
                     <label className="flex items-center gap-3 cursor-pointer">
                       <div
                         onClick={() => updateField('productionFinalSupplement', !state.productionFinalSupplement)}
@@ -1336,7 +1331,7 @@ export default function ProductionBoard() {
             </AnimatePresence>
 
             {/* Total Loss toggle — always visible */}
-            <div className={`border rounded-2xl p-4 mb-3 transition-colors duration-300 ${
+            <div className={`border rounded-2xl p-3 mb-2 transition-colors duration-300 ${
               state.isTotalLoss
                 ? 'bg-purple-950/60 border-purple-500/60'
                 : 'bg-gray-800/60 border-gray-700/50'
