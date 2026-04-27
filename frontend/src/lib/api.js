@@ -175,6 +175,7 @@ export const inventoryApi = {
 
 // ── Supplements ───────────────────────────────────────────────────────────────
 export const supplementsApi = {
+  listAll: (status) => unwrap(api.get('/supplements', { params: status ? { status } : {} })),
   list: (roId) => unwrap(api.get(`/supplements/ro/${roId}`)),
   create: (roId, data) => unwrap(api.post(`/supplements/ro/${roId}`, data)),
   update: (id, data) => unwrap(api.put(`/supplements/${id}`, data)),

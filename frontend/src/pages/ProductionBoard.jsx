@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChevronLeft, ChevronRight, ChevronDown, Car, FileText, Check, ClipboardList, X, Clock, Truck,
   Search, Package, CheckCircle2, XCircle, User, Shield, AlertTriangle, Wrench, Pencil,
-  ExternalLink, DollarSign, FilePlus, FileCheck, FileX, Plus,
+  ExternalLink, DollarSign, FilePlus,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { productionApi, rosApi, supplementsApi } from '@/lib/api'
@@ -658,244 +658,6 @@ function PartsActivitySheet({ open, onClose }) {
   )
 }
 
-// ── Supplement Sheet ──────────────────────────────────────────────────────────
-function SupplementSheet({ open, onClose, ro }) {
-  const queryClient = useQueryClient()
-  const [addOpen, setAddOpen] = useState(false)
-  const [newNote, setNewNote] = useState('')
-  const [newInsurance, setNewInsurance] = useState('')
-
-  // Pre-fill insurance from RO when opening add form
-  useEffect(() => {
-    if (addOpen) setNewInsurance(ro?.insuranceCompany || '')
-  }, [addOpen, ro?.insuranceCompany])
-
-  const { data: supplements = [], isLoading } = useQuery({
-    queryKey: ['supplements', ro?.id],
-    queryFn: () => supplementsApi.list(ro.id),
-    enabled: !!ro?.id && open,
-  })
-
-  const createMutation = useMutation({
-    mutationFn: (data) => supplementsApi.create(ro.id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['supplements', ro.id] })
-      setAddOpen(false)
-      setNewNote('')
-      setNewInsurance(ro?.insuranceCompany || '')
-      toast.success('Supplement request added')
-    },
-    onError: (err) => toast.error(err.message || 'Failed to add'),
-  })
-
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => supplementsApi.update(id, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['supplements', ro.id] }),
-    onError: (err) => toast.error(err.message || 'Failed to update'),
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: (id) => supplementsApi.remove(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['supplements', ro.id] }),
-    onError: (err) => toast.error(err.message || 'Failed to delete'),
-  })
-
-  const handleCreate = () => {
-    createMutation.mutate({
-      insuranceCompany: newInsurance.trim() || ro?.insuranceCompany || null,
-      notes: newNote.trim() || null,
-    })
-  }
-
-  return (
-    <AnimatePresence>
-      {open && (
-        <>
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 z-40"
-            onClick={onClose}
-          />
-          <motion.div
-            initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-            transition={{ type: 'spring', stiffness: 300, damping: 35 }}
-            className="fixed bottom-0 left-0 right-0 z-50 bg-gray-900 border-t border-gray-700/60 rounded-t-2xl max-h-[80vh] flex flex-col"
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-4 border-b border-gray-800/60 shrink-0">
-              <div className="flex items-center gap-2">
-                <FilePlus size={17} className="text-amber-400" />
-                <div>
-                  <h2 className="text-base font-bold text-gray-100">Supplements — RO #{ro?.roNumber}</h2>
-                  {ro?.insuranceCompany && (
-                    <p className="text-xs text-gray-500">{ro.insuranceCompany}</p>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setAddOpen(v => !v)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-bold hover:bg-amber-500/30 transition-colors"
-                >
-                  <Plus size={13} />
-                  Add
-                </button>
-                <button onClick={onClose} className="text-gray-500 hover:text-gray-300 p-1">
-                  <X size={20} />
-                </button>
-              </div>
-            </div>
-
-            {/* Add form */}
-            <AnimatePresence>
-              {addOpen && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="overflow-hidden shrink-0"
-                >
-                  <div className="px-4 py-3 border-b border-amber-900/40 bg-amber-950/20 space-y-2.5">
-                    <p className="text-[10px] font-black uppercase tracking-wider text-amber-500">
-                      Supplement {supplements.length + 1}
-                    </p>
-                    <input
-                      value={newInsurance}
-                      onChange={e => setNewInsurance(e.target.value)}
-                      placeholder="Insurance company"
-                      className="w-full bg-gray-900/60 border border-gray-700 rounded-xl px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-amber-500/50"
-                    />
-                    <input
-                      value={newNote}
-                      onChange={e => setNewNote(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && handleCreate()}
-                      placeholder="Notes (optional)"
-                      className="w-full bg-gray-900/60 border border-gray-700 rounded-xl px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-amber-500/50"
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setAddOpen(false)}
-                        className="flex-1 py-2 rounded-xl bg-gray-800 text-gray-400 text-sm font-medium hover:bg-gray-700 transition-colors"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={handleCreate}
-                        disabled={createMutation.isPending}
-                        className="flex-1 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-gray-900 text-sm font-bold transition-colors"
-                      >
-                        {createMutation.isPending ? 'Adding…' : 'Add Request'}
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* List */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {isLoading && (
-                <div className="flex justify-center py-10"><Spinner size="lg" /></div>
-              )}
-
-              {!isLoading && supplements.length === 0 && (
-                <div className="text-center py-10 text-gray-500">
-                  <FilePlus size={32} className="mx-auto mb-3 opacity-30" />
-                  <p className="text-sm">No supplements yet.</p>
-                  <p className="text-xs text-gray-600 mt-1">Tap "Add" to request a supplement.</p>
-                </div>
-              )}
-
-              {supplements.map((s) => (
-                <SupplementCard
-                  key={s.id}
-                  supplement={s}
-                  onStatusChange={(status) => updateMutation.mutate({ id: s.id, data: { status } })}
-                  onDelete={() => deleteMutation.mutate(s.id)}
-                  isUpdating={updateMutation.isPending || deleteMutation.isPending}
-                />
-              ))}
-            </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
-  )
-}
-
-function SupplementCard({ supplement, onStatusChange, onDelete, isUpdating }) {
-  const [confirmDel, setConfirmDel] = useState(false)
-  const isFiled = supplement.status === 'FILED'
-
-  return (
-    <div className={`border rounded-2xl p-3.5 transition-colors ${
-      isFiled
-        ? 'bg-emerald-950/20 border-emerald-700/30'
-        : 'bg-amber-950/20 border-amber-700/30'
-    }`}>
-      {/* Header row */}
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-black text-gray-100">Supplement {supplement.number}</span>
-            <span className={`inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${
-              isFiled
-                ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
-                : 'bg-amber-500/15 border-amber-500/30 text-amber-300'
-            }`}>
-              {isFiled ? <FileCheck size={8} /> : <FilePlus size={8} />}
-              {isFiled ? 'Filed' : 'Requested'}
-            </span>
-          </div>
-          {supplement.insuranceCompany && (
-            <p className="text-xs text-gray-500 mt-0.5">{supplement.insuranceCompany}</p>
-          )}
-          {supplement.notes && (
-            <p className="text-xs text-gray-400 mt-1 italic">{supplement.notes}</p>
-          )}
-          <p className="text-[10px] text-gray-700 mt-1.5">
-            {new Date(supplement.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-          </p>
-        </div>
-
-        {/* Delete */}
-        <div className="shrink-0">
-          {confirmDel ? (
-            <div className="flex gap-1">
-              <button onClick={onDelete} disabled={isUpdating}
-                className="px-2.5 py-1 text-xs font-bold bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors">
-                Del
-              </button>
-              <button onClick={() => setConfirmDel(false)}
-                className="p-1.5 text-gray-500 hover:text-gray-300 rounded-lg transition-colors">
-                <X size={12} />
-              </button>
-            </div>
-          ) : (
-            <button onClick={() => setConfirmDel(true)}
-              className="p-1.5 text-gray-700 hover:text-red-400 rounded-lg transition-colors">
-              <FileX size={14} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Status toggle */}
-      <button
-        onClick={() => onStatusChange(isFiled ? 'REQUESTED' : 'FILED')}
-        disabled={isUpdating}
-        className={`w-full py-2 rounded-xl text-xs font-bold transition-colors border ${
-          isFiled
-            ? 'border-emerald-700/40 text-emerald-400 hover:bg-amber-500/5 hover:text-amber-300 hover:border-amber-500/30'
-            : 'border-amber-700/40 text-amber-400 hover:bg-emerald-500/5 hover:text-emerald-400 hover:border-emerald-500/30'
-        }`}
-      >
-        {isFiled ? '✓ Filed — Mark as Requested' : 'Mark as Filed'}
-      </button>
-    </div>
-  )
-}
-
 // ── Daily Log Sheet ──────────────────────────────────────────────────────────
 function DailyLogSheet({ open, onClose }) {
   const { data: logs, isLoading } = useQuery({
@@ -994,7 +756,6 @@ export default function ProductionBoard() {
   const [editOpen, setEditOpen] = useState(false)
   const [techPickerOpen, setTechPickerOpen] = useState(false)
   const [stagePickerOpen, setStagePickerOpen] = useState(false)
-  const [suppOpen, setSuppOpen] = useState(false)
   const searchRef = useRef(null)
   const saveTimeout = useRef(null)
   const touchStart = useRef(null) // { x, y }
@@ -1018,6 +779,17 @@ export default function ProductionBoard() {
       setSaving(false)
       toast.error(err.message || 'Failed to save')
     },
+  })
+
+  const requestSuppMutation = useMutation({
+    mutationFn: (roId) => supplementsApi.create(roId, {
+      insuranceCompany: currentRO?.insuranceCompany || null,
+    }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['production'] })
+      toast.success(`Supplement ${data.number} requested`)
+    },
+    onError: (err) => toast.error(err.message || 'Failed to request supplement'),
   })
 
   const deliverMutation = useMutation({
@@ -1413,22 +1185,6 @@ export default function ProductionBoard() {
                   >
                     <Pencil size={10} /> Edit
                   </button>
-
-                  {/* Supplement Request button */}
-                  {!state.isTotalLoss && (
-                    <button
-                      onClick={() => setSuppOpen(true)}
-                      className="flex items-center gap-1 text-[11px] font-semibold text-gray-500 hover:text-amber-300 transition-colors"
-                    >
-                      <FilePlus size={10} />
-                      Supps
-                      {ro.supplements?.length > 0 && (
-                        <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/30 text-[9px] font-black text-amber-400 leading-none">
-                          {ro.supplements.length}
-                        </span>
-                      )}
-                    </button>
-                  )}
                 </div>
 
                 {/* Stage picker — inline accordion */}
@@ -1545,24 +1301,41 @@ export default function ProductionBoard() {
 
                   {/* Final supplement toggle */}
                   <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-3 mb-2">
-                    <label className="flex items-center gap-3 cursor-pointer">
-                      <div
-                        onClick={() => updateField('productionFinalSupplement', !state.productionFinalSupplement)}
-                        className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex items-center ${
-                          state.productionFinalSupplement ? 'bg-amber-500' : 'bg-gray-700'
-                        }`}
+                    <div className="flex items-center justify-between gap-3 mb-0">
+                      <label className="flex items-center gap-3 cursor-pointer flex-1">
+                        <div
+                          onClick={() => updateField('productionFinalSupplement', !state.productionFinalSupplement)}
+                          className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex items-center shrink-0 ${
+                            state.productionFinalSupplement ? 'bg-amber-500' : 'bg-gray-700'
+                          }`}
+                        >
+                          <motion.div
+                            animate={{ x: state.productionFinalSupplement ? 24 : 2 }}
+                            transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                            className="w-5 h-5 bg-white rounded-full shadow-md absolute"
+                          />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-gray-200">Final Supplement</p>
+                          <p className="text-xs text-gray-500">Toggle if this RO has a final supplement pending</p>
+                        </div>
+                      </label>
+
+                      {/* One-tap supplement request */}
+                      <button
+                        onClick={() => requestSuppMutation.mutate(ro.id)}
+                        disabled={requestSuppMutation.isPending}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-bold hover:bg-amber-500/25 disabled:opacity-50 transition-colors shrink-0"
                       >
-                        <motion.div
-                          animate={{ x: state.productionFinalSupplement ? 24 : 2 }}
-                          transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                          className="w-5 h-5 bg-white rounded-full shadow-md absolute"
-                        />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-gray-200">Final Supplement</p>
-                        <p className="text-xs text-gray-500">Toggle if this RO has a final supplement pending</p>
-                      </div>
-                    </label>
+                        <FilePlus size={12} />
+                        Request
+                        {ro.supplements?.length > 0 && (
+                          <span className="px-1.5 py-0.5 rounded-full bg-amber-500/30 text-[9px] font-black text-amber-200 leading-none">
+                            {ro.supplements.length}
+                          </span>
+                        )}
+                      </button>
+                    </div>
 
                     <AnimatePresence>
                       {state.productionFinalSupplement && (
@@ -1728,7 +1501,6 @@ export default function ProductionBoard() {
       <PartsSheet open={partsOpen} onClose={() => setPartsOpen(false)} parts={ro?.parts || []} roNumber={ro?.roNumber} />
       <PartsActivitySheet open={partsActivityOpen} onClose={() => setPartsActivityOpen(false)} />
       <CustomerEditSheet open={editOpen} onClose={() => setEditOpen(false)} ro={ro} />
-      <SupplementSheet open={suppOpen} onClose={() => setSuppOpen(false)} ro={ro} />
     </div>
   )
 }

@@ -16,6 +16,7 @@ import Inventory from '@/pages/Inventory'
 import SecureVault from '@/pages/SecureVault'
 import RecentActivity from '@/pages/RecentActivity'
 import Help from '@/pages/Help'
+import Supplements from '@/pages/Supplements'
 
 function ProtectedRoute({ children, adminOnly = false }) {
   const { user, loading } = useAuth()
@@ -82,6 +83,9 @@ export default function App() {
         } />
         <Route path="/recent" element={
           <ProtectedRoute><AppLayout><RecentActivity /></AppLayout></ProtectedRoute>
+        } />
+        <Route path="/supplements" element={
+          <ProtectedRoute><AppLayout><Supplements /></AppLayout></ProtectedRoute>
         } />
         <Route path="/help" element={
           <ProtectedRoute><AppLayout><Help /></AppLayout></ProtectedRoute>

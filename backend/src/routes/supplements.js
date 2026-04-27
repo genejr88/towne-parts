@@ -5,6 +5,35 @@ const { requireAuth } = require('../middleware/auth')
 
 router.use(requireAuth)
 
+// ── GET /api/supplements  (all, newest first) ─────────────────────────────────
+router.get('/', async (req, res) => {
+  try {
+    const { status } = req.query
+    const where = status ? { status } : {}
+    const supplements = await prisma.supplement.findMany({
+      where,
+      include: {
+        ro: {
+          select: {
+            id: true,
+            roNumber: true,
+            insuranceCompany: true,
+            ownerName: true,
+            vehicleYear: true,
+            vehicleMake: true,
+            vehicleModel: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+    res.json({ success: true, data: supplements })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
 // ── GET /api/supplements/ro/:roId ─────────────────────────────────────────────
 router.get('/ro/:roId', async (req, res) => {
   try {
