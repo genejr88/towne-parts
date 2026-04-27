@@ -30,7 +30,7 @@ function cardBg(partsStatus, isTotalLoss, totalLossReleased) {
 const INSURANCE_LOGOS = {
   'state farm':      'state-farm.jpg',
   'geico':           'geico.png',
-  'progressive':     'progressive.webp',
+  'progressive':     'progressive.png',
   'allstate':        'allstate.png',
   'liberty mutual':  'liberty-mutual.png',
   'usaa':            'usaa.png',
