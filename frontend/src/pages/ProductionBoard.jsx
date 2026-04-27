@@ -41,6 +41,17 @@ const STATUS_CONFIG = {
   ALL_HERE:     { label: 'All Parts In',      dot: 'bg-emerald-400 shadow-emerald-400/60', text: 'text-emerald-300' },
 }
 
+// Compute the *real* parts status from the parts array — defends against stale
+// DB values (the partsStatus column can drift if it's set directly via PUT /api/ros).
+function effectivePartsStatus(ro) {
+  if (!ro?.parts || ro.parts.length === 0) return ro?.partsStatus || 'MISSING'
+  const allReceived = ro.parts.every((p) => p.isReceived)
+  if (allReceived) return 'ALL_HERE'
+  // If parts are still pending, preserve ACKNOWLEDGED (a manual UI state) — otherwise MISSING
+  if (ro.partsStatus === 'ACKNOWLEDGED') return 'ACKNOWLEDGED'
+  return 'MISSING'
+}
+
 function StatusPulse({ status }) {
   const cfg = STATUS_CONFIG[status]
   if (!cfg) return null
@@ -951,7 +962,12 @@ export default function ProductionBoard() {
   const state = getState(ro)
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    // pb accounts for the global fixed BottomNav (~64px) + iOS home indicator
+    // so the Mark Delivered button isn't hidden underneath it
+    <div
+      className="flex flex-col h-full overflow-hidden"
+      style={{ paddingBottom: 'calc(64px + env(safe-area-inset-bottom))' }}
+    >
       {/* Top bar: counter + search + save status + log button */}
       <div className="flex items-center justify-between px-4 py-2 bg-gray-950 border-b border-gray-800/60 shrink-0 sm:px-6 gap-2">
         <span className="text-sm font-medium text-gray-400 shrink-0">
@@ -1048,10 +1064,10 @@ export default function ProductionBoard() {
             <div className={`relative rounded-2xl overflow-hidden border ${
               state.isTotalLoss && state.totalLossReleased ? 'border-emerald-600/60' :
               state.isTotalLoss ? 'border-purple-500/60' : 'border-gray-700/50'
-            } bg-gradient-to-b ${cardBg(ro.partsStatus, state.isTotalLoss, state.totalLossReleased)} shadow-2xl shadow-black/40 mb-4`}>
+            } bg-gradient-to-b ${cardBg(effectivePartsStatus(ro), state.isTotalLoss, state.totalLossReleased)} shadow-2xl shadow-black/40 mb-4`}>
 
               {/* Top status accent stripe — sets the visual identity instantly */}
-              <div className={`h-1 bg-gradient-to-r ${statusStripe(ro.partsStatus, state.isTotalLoss, state.totalLossReleased)}`} />
+              <div className={`h-1 bg-gradient-to-r ${statusStripe(effectivePartsStatus(ro), state.isTotalLoss, state.totalLossReleased)}`} />
 
               {/* Subtle radial glow accent in top-right (nearly invisible but adds depth) */}
               <div className="absolute top-0 right-0 w-40 h-40 bg-white/[0.02] rounded-full blur-3xl pointer-events-none" />
@@ -1083,7 +1099,7 @@ export default function ProductionBoard() {
 
                     {/* Inline status dot + uppercase label */}
                     <div className="mt-2">
-                      <StatusPulse status={ro.partsStatus} />
+                      <StatusPulse status={effectivePartsStatus(ro)} />
                     </div>
                   </div>
 
