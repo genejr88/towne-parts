@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { PackageX, PackageCheck, Package, Layers, RotateCcw, TrendingUp, FileWarning, ChevronRight } from 'lucide-react'
+import { PackageX, PackageCheck, Package, Layers, RotateCcw, TrendingUp, FileWarning, ChevronRight, History } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { rosApi, srcApi } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
@@ -144,6 +144,24 @@ export default function Dashboard() {
           />
         </div>
       )}
+
+      {/* Recent Parts Activity quick link */}
+      <motion.button
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3, duration: 0.3 }}
+        onClick={() => navigate('/recent')}
+        className="w-full mt-4 flex items-center gap-3 bg-gradient-to-br from-emerald-600/15 to-emerald-500/5 border border-emerald-500/25 rounded-2xl px-4 py-3.5 active:scale-[0.98] transition-transform group"
+      >
+        <div className="p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/20">
+          <History size={18} className="text-emerald-400" />
+        </div>
+        <div className="flex-1 text-left min-w-0">
+          <p className="text-sm font-bold text-gray-100">Recent Parts Activity</p>
+          <p className="text-xs text-gray-500 mt-0.5 truncate">Live feed of every part check-in across the shop</p>
+        </div>
+        <ChevronRight size={16} className="text-emerald-400/70 group-active:translate-x-0.5 transition-transform shrink-0" />
+      </motion.button>
 
       {/* ROs Missing Parts List */}
       {missingPartsList && missingPartsList.length > 0 && (

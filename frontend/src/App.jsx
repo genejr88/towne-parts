@@ -14,6 +14,7 @@ import SRCTracker from '@/pages/SRCTracker'
 import Admin from '@/pages/Admin'
 import Inventory from '@/pages/Inventory'
 import SecureVault from '@/pages/SecureVault'
+import RecentActivity from '@/pages/RecentActivity'
 
 function ProtectedRoute({ children, adminOnly = false }) {
   const { user, loading } = useAuth()
@@ -77,6 +78,9 @@ export default function App() {
         } />
         <Route path="/vault" element={
           <ProtectedRoute><AppLayout><SecureVault /></AppLayout></ProtectedRoute>
+        } />
+        <Route path="/recent" element={
+          <ProtectedRoute><AppLayout><RecentActivity /></AppLayout></ProtectedRoute>
         } />
 
         <Route path="*" element={<Navigate to="/ros" replace />} />
