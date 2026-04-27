@@ -30,7 +30,7 @@ export default function Header() {
     setTimeout(() => pinInputRef.current?.focus(), 100)
   }, [])
 
-  // Logo: 5 taps in 3 seconds
+  // Logo: single tap → home, 5 rapid taps → vault PIN modal
   const handleLogoTap = () => {
     tapCountRef.current += 1
     if (tapTimerRef.current) clearTimeout(tapTimerRef.current)
@@ -39,6 +39,8 @@ export default function Header() {
       tapCountRef.current = 0
       clearTimeout(tapTimerRef.current)
       openPinModal()
+    } else {
+      navigate('/')
     }
   }
 
@@ -82,9 +84,9 @@ export default function Header() {
     <>
       <header className="sticky top-0 z-40 border-b border-gray-700/50 bg-gray-950/90 backdrop-blur-xl">
         <div className="flex items-center justify-between px-4 h-14">
-          {/* Logo — tap 5× to trigger secret gate */}
+          {/* Logo — tap to go home, tap 5× rapidly to trigger secret gate */}
           <div
-            className="flex items-center gap-2.5 select-none"
+            className="flex items-center gap-2.5 select-none cursor-pointer active:opacity-70 transition-opacity"
             onClick={handleLogoTap}
           >
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-600 to-blue-400 flex items-center justify-center shadow-glow-sm">
