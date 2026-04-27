@@ -221,6 +221,28 @@ model PrivateFile {
   @@map("private_files")
 }
 
+model BMWPayment {
+  id         Int              @id @default(autoincrement())
+  month      Int
+  year       Int
+  date       DateTime?
+  lastName   String?
+  bmwNumber  String?
+  roNumber   String?
+  amount     Decimal?         @db.Decimal(10, 2)
+  status     BMWPaymentStatus @default(NOT_RECEIVED)
+  notes      String?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  @@map("bmw_payments")
+}
+
+enum BMWPaymentStatus {
+  NOT_RECEIVED
+  RECEIVED
+}
+
 model InventoryPart {
   id          String               @id @default(cuid())
   partNumber  String?

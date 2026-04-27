@@ -173,6 +173,22 @@ export const inventoryApi = {
   photoUrl: (storedPath) => `${API_URL}/uploads/inventory/${storedPath}`,
 }
 
+// ── BMW Payment Tracker ───────────────────────────────────────────────────────
+export const bmwApi = {
+  list: (pin, month, year) =>
+    unwrap(api.get('/bmw', { headers: { 'x-private-pin': pin }, params: { month, year } })),
+  summary: (pin) =>
+    unwrap(api.get('/bmw/summary', { headers: { 'x-private-pin': pin } })),
+  create: (pin, data) =>
+    unwrap(api.post('/bmw', data, { headers: { 'x-private-pin': pin } })),
+  update: (pin, id, data) =>
+    unwrap(api.put(`/bmw/${id}`, data, { headers: { 'x-private-pin': pin } })),
+  remove: (pin, id) =>
+    unwrap(api.delete(`/bmw/${id}`, { headers: { 'x-private-pin': pin } })),
+  bulk: (pin, payments) =>
+    unwrap(api.post('/bmw/bulk', { payments }, { headers: { 'x-private-pin': pin } })),
+}
+
 // ── Private (BMW RO Tracking) ─────────────────────────────────────────────────
 export const privateApi = {
   verify: (pin) => unwrap(api.post('/private/verify', { pin })),

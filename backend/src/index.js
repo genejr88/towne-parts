@@ -35,6 +35,7 @@ const adminRoutes  = require('./routes/admin')
 const telegramRoutes = require('./routes/telegram')
 const inventoryRoutes = require('./routes/inventory')
 const privateRoutes = require('./routes/private')
+const bmwRoutes = require('./routes/bmw')
 
 app.use('/api/auth', authRoutes)
 app.use('/api/ros', rosRoutes)
@@ -49,6 +50,7 @@ app.use('/api/admin',  adminRoutes)
 app.use('/api/telegram', telegramRoutes)
 app.use('/api/inventory', inventoryRoutes)
 app.use('/api/private', privateRoutes)
+app.use('/api/bmw', bmwRoutes)
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }))
 
