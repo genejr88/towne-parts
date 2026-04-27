@@ -1335,7 +1335,7 @@ export default function ProductionBoard() {
       </div>
 
       {/* Prev / Next / Delivered navigation */}
-      <div className="shrink-0 bg-gray-950 border-t border-gray-800/60 px-4 py-3 pb-safe sm:px-6">
+      <div className="shrink-0 bg-gray-950 border-t border-gray-800/60 px-4 pt-3 pb-safe sm:px-6">
         <div className="mx-auto w-full max-w-2xl space-y-2">
           {/* Prev + Next */}
           <div className="flex gap-3">
