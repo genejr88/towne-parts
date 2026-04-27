@@ -63,7 +63,7 @@ function InsuranceLogo({ name }) {
   // White pill container normalises every logo — no squishing, no dark backgrounds
   if (match && !imgError) {
     return (
-      <div className="h-10 w-28 bg-white rounded-lg flex items-center justify-center p-2 shrink-0 shadow-sm">
+      <div className="h-7 w-20 bg-white rounded-md flex items-center justify-center p-1.5 shrink-0 shadow-sm">
         <img
           src={`/logos/${INSURANCE_LOGOS[match]}`}
           alt={name}
@@ -76,8 +76,8 @@ function InsuranceLogo({ name }) {
 
   // Fallback badge for unknown insurers
   return (
-    <div className="h-10 px-3 rounded-lg bg-slate-700/80 border border-slate-600/40 flex items-center justify-center shrink-0">
-      <span className="text-sm font-bold text-slate-200 tracking-wide leading-none">{abbr}</span>
+    <div className="h-7 px-2 rounded-md bg-slate-700/80 border border-slate-600/40 flex items-center justify-center shrink-0">
+      <span className="text-xs font-bold text-slate-300 tracking-wide leading-none">{abbr}</span>
     </div>
   )
 }
@@ -1018,57 +1018,82 @@ export default function ProductionBoard() {
             <div className={`bg-gradient-to-b ${cardBg(ro.partsStatus, state.isTotalLoss, state.totalLossReleased)} border ${
               state.isTotalLoss && state.totalLossReleased ? 'border-emerald-600/60' :
               state.isTotalLoss ? 'border-purple-500/60' : 'border-gray-700/50'
-            } rounded-2xl p-4 mb-4 shadow-lg`}>
+            } rounded-2xl p-3.5 mb-4 shadow-lg`}>
 
-              {/* ── Top: RO# / vehicle / tech badge | logo ── */}
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  {/* RO number + status badges */}
-                  <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <h2 className="text-2xl font-black text-white font-mono tracking-tight">{ro.roNumber}</h2>
-                    <PartsBadge status={ro.partsStatus} />
-                    {state.isTotalLoss && (
-                      <span className="flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-purple-500/20 border border-purple-500/50 text-purple-300">
-                        <AlertTriangle size={11} /> Total Loss
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Vehicle */}
-                  {[ro.vehicleYear, ro.vehicleMake, ro.vehicleModel].some(Boolean) && (
-                    <p className="text-base font-bold text-gray-100 leading-snug">
-                      {[ro.vehicleYear, ro.vehicleMake, ro.vehicleModel].filter(Boolean).join(' ')}
-                      {ro.vehicleColor && <span className="text-gray-400 font-normal"> · {ro.vehicleColor}</span>}
-                    </p>
+              {/* ── Row 1: RO# + badges | logo ── */}
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <div className="flex items-center gap-2 flex-wrap min-w-0">
+                  <h2 className="text-xl font-black text-white font-mono tracking-tight leading-none">{ro.roNumber}</h2>
+                  <PartsBadge status={ro.partsStatus} />
+                  {state.isTotalLoss && (
+                    <span className="flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-purple-500/20 border border-purple-500/50 text-purple-300">
+                      <AlertTriangle size={9} /> TL
+                    </span>
                   )}
-                  {ro.vin && <p className="text-[10px] text-gray-600 font-mono mt-0.5">{ro.vin}</p>}
-
-                  {/* Tech pill — tappable, drops inline picker */}
-                  <button
-                    onClick={() => setTechPickerOpen(!techPickerOpen)}
-                    className={`mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
-                      state.assignedTech
-                        ? 'bg-blue-500/15 border-blue-500/40 text-blue-300'
-                        : 'bg-gray-800 border-gray-700 text-gray-500'
-                    }`}
-                  >
-                    <Wrench size={10} />
-                    {state.assignedTech || 'Assign Tech'}
-                    <ChevronDown size={10} className={`transition-transform duration-200 ${techPickerOpen ? 'rotate-180' : ''}`} />
-                  </button>
-                </div>
-
-                {/* Right: logo + final supp badge */}
-                <div className="flex flex-col items-end gap-2 shrink-0">
-                  {ro.insuranceCompany && <InsuranceLogo name={ro.insuranceCompany} />}
                   {state.productionFinalSupplement && (
-                    <div className="bg-amber-500/15 border border-amber-500/30 rounded-xl px-2.5 py-1.5">
-                      <p className="text-xs font-semibold text-amber-400 flex items-center gap-1">
-                        <FileText size={12} /> Final Supp.
-                      </p>
-                    </div>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center gap-0.5">
+                      <FileText size={9} /> Final Supp
+                    </span>
                   )}
                 </div>
+                {ro.insuranceCompany && <InsuranceLogo name={ro.insuranceCompany} />}
+              </div>
+
+              {/* ── Row 2: Vehicle · Color · VIN ── */}
+              <p className="text-sm font-bold text-gray-100 leading-snug truncate">
+                {[ro.vehicleYear, ro.vehicleMake, ro.vehicleModel].filter(Boolean).join(' ')}
+                {ro.vehicleColor && <span className="text-gray-500 font-normal"> · {ro.vehicleColor}</span>}
+                {ro.vin && <span className="text-[10px] text-gray-600 font-mono font-normal"> · {ro.vin}</span>}
+              </p>
+
+              {/* ── Row 3: Owner · Phone · Insurer · Claim ── */}
+              {(ro.ownerName || ro.insuranceCompany) && (
+                <p className="text-xs text-gray-400 mt-1 truncate flex items-center gap-1 flex-wrap">
+                  {ro.ownerName && <>
+                    <User size={9} className="text-blue-400 shrink-0" />
+                    <span className="text-gray-300 font-medium">{ro.ownerName}</span>
+                  </>}
+                  {ro.ownerPhone && <>
+                    <span className="text-gray-700">·</span>
+                    <a href={`tel:${ro.ownerPhone}`} className="text-blue-400">{ro.ownerPhone}</a>
+                  </>}
+                  {ro.insuranceCompany && <>
+                    <span className="text-gray-700">·</span>
+                    <Shield size={9} className="text-emerald-400 shrink-0" />
+                    <span className="text-gray-400">{ro.insuranceCompany}</span>
+                  </>}
+                  {ro.claimNumber && <>
+                    <span className="text-gray-700">·</span>
+                    <span className="text-gray-600 font-mono">#{ro.claimNumber}</span>
+                  </>}
+                </p>
+              )}
+
+              {/* ── Row 4: Tech pill · timestamp · edit ── */}
+              <div className="flex items-center gap-2 mt-2">
+                <button
+                  onClick={() => setTechPickerOpen(!techPickerOpen)}
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold border transition-all ${
+                    state.assignedTech
+                      ? 'bg-blue-500/15 border-blue-500/40 text-blue-300'
+                      : 'bg-gray-800 border-gray-700 text-gray-500'
+                  }`}
+                >
+                  <Wrench size={9} />
+                  {state.assignedTech || 'Tech'}
+                  <ChevronDown size={9} className={`transition-transform duration-200 ${techPickerOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {ro.productionUpdatedAt && (
+                  <span className="text-[10px] text-gray-600 flex items-center gap-0.5">
+                    <Clock size={9} />{formatTimeAgo(ro.productionUpdatedAt)}
+                  </span>
+                )}
+                <button
+                  onClick={() => setEditOpen(true)}
+                  className="ml-auto flex items-center gap-0.5 text-[11px] text-blue-400 hover:text-blue-300 transition-colors"
+                >
+                  <Pencil size={9} /> Edit
+                </button>
               </div>
 
               {/* Tech picker — inline accordion */}
@@ -1081,7 +1106,7 @@ export default function ProductionBoard() {
                     transition={{ duration: 0.18 }}
                     className="overflow-hidden"
                   >
-                    <div className="pt-3 pb-1">
+                    <div className="pt-2.5 pb-0.5">
                       <TechBubbles
                         value={state.assignedTech}
                         onChange={(val) => { updateField('assignedTech', val); setTechPickerOpen(false) }}
@@ -1091,96 +1116,25 @@ export default function ProductionBoard() {
                 )}
               </AnimatePresence>
 
-              {/* ── Info grid: owner (left) + insurance (right) ── */}
-              <div className="mt-3 pt-3 border-t border-gray-700/40 grid grid-cols-2 gap-x-4">
-                {/* Left: customer */}
-                <div className="space-y-1 min-w-0">
-                  {ro.ownerName && (
-                    <p className="text-xs flex items-center gap-1.5">
-                      <User size={10} className="text-blue-400 shrink-0" />
-                      <span className="text-gray-200 font-semibold truncate">{ro.ownerName}</span>
-                    </p>
-                  )}
-                  {ro.ownerPhone && (
-                    <a href={`tel:${ro.ownerPhone}`} className="text-xs text-blue-400 hover:text-blue-300 block truncate pl-3.5 transition-colors">
-                      {ro.ownerPhone}
-                    </a>
-                  )}
-                  {ro.ownerPhone2 && (
-                    <a href={`tel:${ro.ownerPhone2}`} className="text-xs text-blue-400 hover:text-blue-300 block truncate pl-3.5 transition-colors">
-                      {ro.ownerPhone2}
-                    </a>
-                  )}
-                  {ro.productionUpdatedAt && (
-                    <p className="text-[10px] text-gray-600 flex items-center gap-1 pt-0.5">
-                      <Clock size={9} /> {formatTimeAgo(ro.productionUpdatedAt)}
-                    </p>
-                  )}
-                </div>
-
-                {/* Right: insurance */}
-                <div className="space-y-1 min-w-0">
-                  {ro.insuranceCompany && (
-                    <p className="text-xs flex items-center gap-1.5">
-                      <Shield size={10} className="text-emerald-400 shrink-0" />
-                      <span className="text-gray-200 font-semibold truncate">{ro.insuranceCompany}</span>
-                    </p>
-                  )}
-                  {ro.claimNumber && (
-                    <p className="text-xs text-gray-500 font-mono truncate pl-3.5">#{ro.claimNumber}</p>
-                  )}
-                  {ro.adjusterName && (
-                    <p className="text-[10px] text-gray-500 truncate pl-3.5">Adj: {ro.adjusterName}</p>
-                  )}
-                  {ro.deductible != null && (
-                    <p className="text-[10px] text-gray-500 pl-3.5">Ded: ${Number(ro.deductible).toFixed(2)}</p>
-                  )}
-                </div>
-
-                {/* Edit link */}
-                <div className="col-span-2 flex justify-end mt-1.5">
-                  <button
-                    onClick={() => setEditOpen(true)}
-                    className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                  >
-                    <Pencil size={11} /> Edit
-                  </button>
-                </div>
-              </div>
-
-              {/* ── Parts summary ── */}
-              {ro.parts && ro.parts.length > 0 && (
-                <>
+              {/* ── Parts row ── */}
+              {ro.parts && ro.parts.length > 0 && (() => {
+                const received = ro.parts.filter((p) => p.isReceived).length
+                const pending = ro.parts.length - received
+                return (
                   <button
                     onClick={() => setPartsOpen(true)}
-                    className="w-full bg-gray-900/60 rounded-xl p-3 text-xs text-left hover:bg-gray-900/80 transition-colors active:bg-gray-900 mt-3"
+                    className="w-full mt-2.5 pt-2.5 border-t border-gray-700/40 flex items-center gap-3 text-left"
                   >
-                    <div className="flex gap-6 text-center">
-                      <div>
-                        <p className="text-gray-500">Total</p>
-                        <p className="text-gray-200 font-bold text-base">{ro.parts.length}</p>
-                      </div>
-                      <div>
-                        <p className="text-emerald-500">Received</p>
-                        <p className="text-emerald-400 font-bold text-base">
-                          {ro.parts.filter((p) => p.isReceived).length}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-red-500">Pending</p>
-                        <p className="text-red-400 font-bold text-base">
-                          {ro.parts.filter((p) => !p.isReceived).length}
-                        </p>
-                      </div>
-                      <div className="ml-auto flex items-center text-gray-600 text-xs gap-1">
-                        <Package size={11} />
-                        <span>View</span>
-                      </div>
+                    <span className="text-xs text-gray-500">{ro.parts.length} parts</span>
+                    <span className="text-xs font-bold text-emerald-400">{received} ✓</span>
+                    {pending > 0 && <span className="text-xs font-bold text-red-400">{pending} pending</span>}
+                    <div className="ml-auto flex items-center gap-1.5 flex-wrap justify-end">
+                      <FinishTags parts={ro.parts} />
+                      <Package size={10} className="text-gray-600 shrink-0" />
                     </div>
                   </button>
-                  <FinishTags parts={ro.parts} />
-                </>
-              )}
+                )
+              })()}
             </div>
 
             <AnimatePresence>
