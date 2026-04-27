@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  ChevronLeft, ChevronRight, Car, FileText, Check, ClipboardList, X, Clock, Truck,
+  ChevronLeft, ChevronRight, ChevronDown, Car, FileText, Check, ClipboardList, X, Clock, Truck,
   Search, Package, CheckCircle2, XCircle, User, Shield, AlertTriangle, Wrench, Pencil,
   ExternalLink, DollarSign,
 } from 'lucide-react'
@@ -745,6 +745,7 @@ export default function ProductionBoard() {
   const [partsOpen, setPartsOpen] = useState(false)
   const [partsActivityOpen, setPartsActivityOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
+  const [techPickerOpen, setTechPickerOpen] = useState(false)
   const searchRef = useRef(null)
   const saveTimeout = useRef(null)
   const touchStart = useRef(null) // { x, y }
@@ -864,8 +865,8 @@ export default function ProductionBoard() {
     setIndex(newIndex)
   }
 
-  const goPrev = () => { if (index > 0) saveAndNavigate(index - 1) }
-  const goNext = () => { if (index < activeROs.length - 1) saveAndNavigate(index + 1) }
+  const goPrev = () => { if (index > 0) { setTechPickerOpen(false); saveAndNavigate(index - 1) } }
+  const goNext = () => { if (index < activeROs.length - 1) { setTechPickerOpen(false); saveAndNavigate(index + 1) } }
 
   // Keyboard arrow keys — stable ref so listener is added once (not torn down on every keystroke)
   const navRef = useRef({})
@@ -1017,12 +1018,13 @@ export default function ProductionBoard() {
             <div className={`bg-gradient-to-b ${cardBg(ro.partsStatus, state.isTotalLoss, state.totalLossReleased)} border ${
               state.isTotalLoss && state.totalLossReleased ? 'border-emerald-600/60' :
               state.isTotalLoss ? 'border-purple-500/60' : 'border-gray-700/50'
-            } rounded-2xl p-5 mb-4 shadow-lg`}>
-              <div className="flex items-start justify-between gap-3 mb-4">
-                {/* Left — all RO detail */}
+            } rounded-2xl p-4 mb-4 shadow-lg`}>
+
+              {/* ── Top: RO# / vehicle / tech badge | logo ── */}
+              <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
-                  {/* RO number + badges */}
-                  <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  {/* RO number + status badges */}
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <h2 className="text-2xl font-black text-white font-mono tracking-tight">{ro.roNumber}</h2>
                     <PartsBadge status={ro.partsStatus} />
                     {state.isTotalLoss && (
@@ -1032,52 +1034,33 @@ export default function ProductionBoard() {
                     )}
                   </div>
 
-                  {/* Vehicle — prominent */}
+                  {/* Vehicle */}
                   {[ro.vehicleYear, ro.vehicleMake, ro.vehicleModel].some(Boolean) && (
-                    <p className="text-base font-bold text-gray-100 leading-snug mb-0.5">
+                    <p className="text-base font-bold text-gray-100 leading-snug">
                       {[ro.vehicleYear, ro.vehicleMake, ro.vehicleModel].filter(Boolean).join(' ')}
                       {ro.vehicleColor && <span className="text-gray-400 font-normal"> · {ro.vehicleColor}</span>}
                     </p>
                   )}
+                  {ro.vin && <p className="text-[10px] text-gray-600 font-mono mt-0.5">{ro.vin}</p>}
 
-                  {/* VIN */}
-                  {ro.vin && (
-                    <p className="text-xs text-gray-500 font-mono mb-1">{ro.vin}</p>
-                  )}
-
-                  {/* Customer name — stands out */}
-                  {ro.ownerName && (
-                    <p className="text-sm font-semibold text-gray-200 flex items-center gap-1.5 mt-1">
-                      <User size={12} className="text-blue-400 shrink-0" />
-                      {ro.ownerName}
-                    </p>
-                  )}
-
-                  {/* Vendor + tech + timestamp */}
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1.5">
-                    {ro.vendor?.name && (
-                      <span className="text-xs text-gray-500">{ro.vendor.name}</span>
-                    )}
-                    {state.assignedTech && (
-                      <span className="text-xs text-blue-400 flex items-center gap-1">
-                        <Wrench size={10} /> {state.assignedTech}
-                      </span>
-                    )}
-                    {ro.productionUpdatedAt && (
-                      <span className="text-xs text-gray-600 flex items-center gap-1">
-                        <Clock size={10} />
-                        {formatTimeAgo(ro.productionUpdatedAt)}
-                      </span>
-                    )}
-                  </div>
+                  {/* Tech pill — tappable, drops inline picker */}
+                  <button
+                    onClick={() => setTechPickerOpen(!techPickerOpen)}
+                    className={`mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
+                      state.assignedTech
+                        ? 'bg-blue-500/15 border-blue-500/40 text-blue-300'
+                        : 'bg-gray-800 border-gray-700 text-gray-500'
+                    }`}
+                  >
+                    <Wrench size={10} />
+                    {state.assignedTech || 'Assign Tech'}
+                    <ChevronDown size={10} className={`transition-transform duration-200 ${techPickerOpen ? 'rotate-180' : ''}`} />
+                  </button>
                 </div>
 
-                {/* Right — logo + badges */}
+                {/* Right: logo + final supp badge */}
                 <div className="flex flex-col items-end gap-2 shrink-0">
-                  {/* Insurance logo */}
-                  {ro.insuranceCompany && (
-                    <InsuranceLogo name={ro.insuranceCompany} />
-                  )}
+                  {ro.insuranceCompany && <InsuranceLogo name={ro.insuranceCompany} />}
                   {state.productionFinalSupplement && (
                     <div className="bg-amber-500/15 border border-amber-500/30 rounded-xl px-2.5 py-1.5">
                       <p className="text-xs font-semibold text-amber-400 flex items-center gap-1">
@@ -1088,10 +1071,74 @@ export default function ProductionBoard() {
                 </div>
               </div>
 
-              {/* Customer / Insurance quick info */}
-              <div className="mt-3 pt-3 border-t border-gray-700/40">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Customer</span>
+              {/* Tech picker — inline accordion */}
+              <AnimatePresence>
+                {techPickerOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.18 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="pt-3 pb-1">
+                      <TechBubbles
+                        value={state.assignedTech}
+                        onChange={(val) => { updateField('assignedTech', val); setTechPickerOpen(false) }}
+                      />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* ── Info grid: owner (left) + insurance (right) ── */}
+              <div className="mt-3 pt-3 border-t border-gray-700/40 grid grid-cols-2 gap-x-4">
+                {/* Left: customer */}
+                <div className="space-y-1 min-w-0">
+                  {ro.ownerName && (
+                    <p className="text-xs flex items-center gap-1.5">
+                      <User size={10} className="text-blue-400 shrink-0" />
+                      <span className="text-gray-200 font-semibold truncate">{ro.ownerName}</span>
+                    </p>
+                  )}
+                  {ro.ownerPhone && (
+                    <a href={`tel:${ro.ownerPhone}`} className="text-xs text-blue-400 hover:text-blue-300 block truncate pl-3.5 transition-colors">
+                      {ro.ownerPhone}
+                    </a>
+                  )}
+                  {ro.ownerPhone2 && (
+                    <a href={`tel:${ro.ownerPhone2}`} className="text-xs text-blue-400 hover:text-blue-300 block truncate pl-3.5 transition-colors">
+                      {ro.ownerPhone2}
+                    </a>
+                  )}
+                  {ro.productionUpdatedAt && (
+                    <p className="text-[10px] text-gray-600 flex items-center gap-1 pt-0.5">
+                      <Clock size={9} /> {formatTimeAgo(ro.productionUpdatedAt)}
+                    </p>
+                  )}
+                </div>
+
+                {/* Right: insurance */}
+                <div className="space-y-1 min-w-0">
+                  {ro.insuranceCompany && (
+                    <p className="text-xs flex items-center gap-1.5">
+                      <Shield size={10} className="text-emerald-400 shrink-0" />
+                      <span className="text-gray-200 font-semibold truncate">{ro.insuranceCompany}</span>
+                    </p>
+                  )}
+                  {ro.claimNumber && (
+                    <p className="text-xs text-gray-500 font-mono truncate pl-3.5">#{ro.claimNumber}</p>
+                  )}
+                  {ro.adjusterName && (
+                    <p className="text-[10px] text-gray-500 truncate pl-3.5">Adj: {ro.adjusterName}</p>
+                  )}
+                  {ro.deductible != null && (
+                    <p className="text-[10px] text-gray-500 pl-3.5">Ded: ${Number(ro.deductible).toFixed(2)}</p>
+                  )}
+                </div>
+
+                {/* Edit link */}
+                <div className="col-span-2 flex justify-end mt-1.5">
                   <button
                     onClick={() => setEditOpen(true)}
                     className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors"
@@ -1099,56 +1146,14 @@ export default function ProductionBoard() {
                     <Pencil size={11} /> Edit
                   </button>
                 </div>
-                {(ro.ownerName || ro.ownerPhone || ro.insuranceCompany || ro.claimNumber || ro.adjusterName || ro.adjusterPhone || ro.deductible) && (
-                <div className="space-y-1.5">
-                  {(ro.ownerName || ro.ownerPhone) && (
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <User size={11} className="text-blue-400 shrink-0" />
-                      {ro.ownerName && <span className="text-gray-200 font-medium">{ro.ownerName}</span>}
-                      {ro.ownerPhone && (
-                        <a href={`tel:${ro.ownerPhone}`} className="text-blue-400 hover:text-blue-300 transition-colors">
-                          {ro.ownerPhone}
-                        </a>
-                      )}
-                      {ro.ownerPhone2 && (
-                        <a href={`tel:${ro.ownerPhone2}`} className="text-blue-400 hover:text-blue-300 transition-colors">
-                          · {ro.ownerPhone2}
-                        </a>
-                      )}
-                    </div>
-                  )}
-                  {(ro.insuranceCompany || ro.claimNumber) && (
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <Shield size={11} className="text-emerald-400 shrink-0" />
-                      {ro.insuranceCompany && <span className="text-gray-200 font-medium">{ro.insuranceCompany}</span>}
-                      {ro.claimNumber && <span className="text-gray-500 font-mono">#{ro.claimNumber}</span>}
-                    </div>
-                  )}
-                  {(ro.adjusterName || ro.adjusterPhone) && (
-                    <div className="flex items-center gap-1.5 text-xs pl-4">
-                      {ro.adjusterName && <span className="text-gray-400">Adj: <span className="text-gray-300">{ro.adjusterName}</span></span>}
-                      {ro.adjusterPhone && (
-                        <a href={`tel:${ro.adjusterPhone}`} className="text-blue-400 hover:text-blue-300 transition-colors">
-                          {ro.adjusterPhone}
-                        </a>
-                      )}
-                    </div>
-                  )}
-                  {ro.deductible != null && (
-                    <div className="flex items-center gap-1.5 text-xs pl-4">
-                      <span className="text-gray-500">Deductible: <span className="text-gray-300">${Number(ro.deductible).toFixed(2)}</span></span>
-                    </div>
-                  )}
-                </div>
-                )}
               </div>
 
-              {/* Parts summary — tap to see full list */}
+              {/* ── Parts summary ── */}
               {ro.parts && ro.parts.length > 0 && (
                 <>
                   <button
                     onClick={() => setPartsOpen(true)}
-                    className="w-full bg-gray-900/60 rounded-xl p-3 text-xs text-left hover:bg-gray-900/80 transition-colors active:bg-gray-900"
+                    className="w-full bg-gray-900/60 rounded-xl p-3 text-xs text-left hover:bg-gray-900/80 transition-colors active:bg-gray-900 mt-3"
                   >
                     <div className="flex gap-6 text-center">
                       <div>
@@ -1212,17 +1217,6 @@ export default function ProductionBoard() {
                       rows={3}
                       placeholder="Add a note about current status..."
                       className="bg-gray-900/60"
-                    />
-                  </div>
-
-                  {/* Technician assignment */}
-                  <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-4 mb-3">
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                      <Wrench size={12} /> Assigned Tech
-                    </p>
-                    <TechBubbles
-                      value={state.assignedTech}
-                      onChange={(val) => updateField('assignedTech', val)}
                     />
                   </div>
 
