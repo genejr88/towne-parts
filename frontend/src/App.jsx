@@ -15,6 +15,7 @@ import Admin from '@/pages/Admin'
 import Inventory from '@/pages/Inventory'
 import SecureVault from '@/pages/SecureVault'
 import RecentActivity from '@/pages/RecentActivity'
+import Help from '@/pages/Help'
 
 function ProtectedRoute({ children, adminOnly = false }) {
   const { user, loading } = useAuth()
@@ -81,6 +82,9 @@ export default function App() {
         } />
         <Route path="/recent" element={
           <ProtectedRoute><AppLayout><RecentActivity /></AppLayout></ProtectedRoute>
+        } />
+        <Route path="/help" element={
+          <ProtectedRoute><AppLayout><Help /></AppLayout></ProtectedRoute>
         } />
 
         <Route path="*" element={<Navigate to="/ros" replace />} />

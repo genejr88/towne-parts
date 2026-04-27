@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ChevronDown, LogOut, Lock, Eye, EyeOff } from 'lucide-react'
+import { ChevronDown, LogOut, Lock, Eye, EyeOff, HelpCircle } from 'lucide-react'
 import TurboIcon from '@/components/ui/TurboIcon'
 import { useAuth } from '@/lib/auth'
 import { privateApi } from '@/lib/api'
@@ -127,6 +127,15 @@ export default function Header() {
                     <p className="text-sm font-semibold text-gray-100">{user?.name || user?.username}</p>
                     <p className="text-xs text-gray-400 capitalize">{user?.role?.toLowerCase() || 'staff'}</p>
                   </div>
+                  <Link
+                    to="/help"
+                    onClick={() => setUserMenuOpen(false)}
+                    className="flex items-center gap-2.5 px-3 py-2.5 text-sm text-gray-300 hover:text-blue-400 hover:bg-blue-500/5 transition-colors"
+                  >
+                    <HelpCircle size={15} />
+                    Help & Guide
+                  </Link>
+                  <div className="mx-3 my-1 border-t border-gray-700/50" />
                   <button
                     onClick={handleLogout}
                     className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-gray-300 hover:text-red-400 hover:bg-red-500/5 transition-colors"
