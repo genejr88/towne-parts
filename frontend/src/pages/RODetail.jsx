@@ -543,6 +543,12 @@ function PartRow({ part, roId, inventoryMatch }) {
     onError: (err) => toast.error(err.message),
   })
 
+  const telegramMutation = useMutation({
+    mutationFn: () => telegramApi.sendPart(part.id),
+    onSuccess: () => toast.success('Telegram sent to Billy ✅'),
+    onError: (err) => toast.error(err.message || 'Failed to send Telegram'),
+  })
+
   const saveNote = () => {
     const trimmed = noteValue.trim()
     if (trimmed !== (part.notes || '').trim()) {
@@ -677,7 +683,7 @@ function PartRow({ part, roId, inventoryMatch }) {
           </div>
         </div>
 
-        {/* Camera + Delete */}
+        {/* Camera + Telegram + Delete */}
         <div className="flex flex-col gap-1 shrink-0">
           <button
             onClick={() => fileInputRef.current?.click()}
@@ -686,6 +692,18 @@ function PartRow({ part, roId, inventoryMatch }) {
             title="Add photo — marks part as received"
           >
             {photoMutation.isPending ? <Loader2 size={15} className="animate-spin" /> : <Camera size={15} />}
+          </button>
+          <button
+            onClick={() => {
+              if (window.confirm(`Notify Billy that "${part.description || part.partNumber || 'this part'}" is here?`)) {
+                telegramMutation.mutate()
+              }
+            }}
+            disabled={telegramMutation.isPending}
+            className="p-1.5 text-gray-500 hover:text-emerald-400 active:text-emerald-500 transition-colors disabled:opacity-40"
+            title="Notify Billy on Telegram that this part is here"
+          >
+            {telegramMutation.isPending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
           </button>
           <button
             onClick={() => {

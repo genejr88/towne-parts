@@ -139,7 +139,8 @@ export const usersApi = {
 
 // ── Telegram ──────────────────────────────────────────────────────────────────
 export const telegramApi = {
-  sendAPH: (roId) => unwrap(api.post(`/telegram/aph/${roId}`)),
+  sendAPH:  (roId)   => unwrap(api.post(`/telegram/aph/${roId}`)),
+  sendPart: (partId) => unwrap(api.post(`/telegram/part/${partId}`)),
 }
 
 // ── Import (CCC ONE estimate parser) ─────────────────────────────────────────
