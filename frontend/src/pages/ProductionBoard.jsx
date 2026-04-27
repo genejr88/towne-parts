@@ -10,7 +10,6 @@ import {
 import toast from 'react-hot-toast'
 import { productionApi, rosApi } from '@/lib/api'
 import { STAGES, STAGE_COLORS, formatTimeAgo } from '@/lib/utils'
-import PartsBadge from '@/components/ui/PartsBadge'
 import Spinner from '@/components/ui/Spinner'
 import EmptyState from '@/components/ui/EmptyState'
 import Textarea from '@/components/ui/Textarea'
@@ -23,6 +22,37 @@ function cardBg(partsStatus, isTotalLoss, totalLossReleased) {
   if (partsStatus === 'ACKNOWLEDGED') return 'from-amber-950/40 to-gray-900'
   if (partsStatus === 'ALL_HERE') return 'from-emerald-950/40 to-gray-900'
   return 'from-gray-800 to-gray-900'
+}
+
+// Top accent stripe gradient — primary visual identity for the card
+function statusStripe(partsStatus, isTotalLoss, totalLossReleased) {
+  if (isTotalLoss && totalLossReleased) return 'from-emerald-500 via-emerald-400 to-emerald-500'
+  if (isTotalLoss)                      return 'from-purple-500 via-fuchsia-500 to-purple-500'
+  if (partsStatus === 'MISSING')        return 'from-red-500 via-rose-500 to-red-500'
+  if (partsStatus === 'ACKNOWLEDGED')   return 'from-amber-500 via-yellow-500 to-amber-500'
+  if (partsStatus === 'ALL_HERE')       return 'from-emerald-500 via-teal-400 to-emerald-500'
+  return 'from-gray-600 via-gray-500 to-gray-600'
+}
+
+// Inline status dot+label config
+const STATUS_CONFIG = {
+  MISSING:      { label: 'Parts Missing',     dot: 'bg-red-400 shadow-red-400/60',         text: 'text-red-300' },
+  ACKNOWLEDGED: { label: 'Acknowledged',      dot: 'bg-amber-400 shadow-amber-400/60',     text: 'text-amber-300' },
+  ALL_HERE:     { label: 'All Parts In',      dot: 'bg-emerald-400 shadow-emerald-400/60', text: 'text-emerald-300' },
+}
+
+function StatusPulse({ status }) {
+  const cfg = STATUS_CONFIG[status]
+  if (!cfg) return null
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="relative flex h-2 w-2">
+        <span className={`absolute inset-0 rounded-full ${cfg.dot} opacity-60 animate-ping`} />
+        <span className={`relative rounded-full h-2 w-2 ${cfg.dot} shadow-[0_0_8px_currentColor]`} />
+      </span>
+      <span className={`text-[10px] font-bold uppercase tracking-[0.12em] ${cfg.text}`}>{cfg.label}</span>
+    </div>
+  )
 }
 
 // Insurance company → logo filename mapping
@@ -1014,124 +1044,197 @@ export default function ProductionBoard() {
             exit={{ opacity: 0, x: -direction * 60 }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
           >
-            {/* RO card */}
-            <div className={`bg-gradient-to-b ${cardBg(ro.partsStatus, state.isTotalLoss, state.totalLossReleased)} border ${
+            {/* ── RO Card 3.0 — Hero design ────────────────────────────── */}
+            <div className={`relative rounded-2xl overflow-hidden border ${
               state.isTotalLoss && state.totalLossReleased ? 'border-emerald-600/60' :
               state.isTotalLoss ? 'border-purple-500/60' : 'border-gray-700/50'
-            } rounded-2xl p-3.5 mb-4 shadow-lg`}>
+            } bg-gradient-to-b ${cardBg(ro.partsStatus, state.isTotalLoss, state.totalLossReleased)} shadow-2xl shadow-black/40 mb-4`}>
 
-              {/* ── Row 1: RO# + badges | logo ── */}
-              <div className="flex items-center justify-between gap-2 mb-1.5">
-                <div className="flex items-center gap-2 flex-wrap min-w-0">
-                  <h2 className="text-xl font-black text-white font-mono tracking-tight leading-none">{ro.roNumber}</h2>
-                  <PartsBadge status={ro.partsStatus} />
-                  {state.isTotalLoss && (
-                    <span className="flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-purple-500/20 border border-purple-500/50 text-purple-300">
-                      <AlertTriangle size={9} /> TL
-                    </span>
-                  )}
-                  {state.productionFinalSupplement && (
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center gap-0.5">
-                      <FileText size={9} /> Final Supp
-                    </span>
+              {/* Top status accent stripe — sets the visual identity instantly */}
+              <div className={`h-1 bg-gradient-to-r ${statusStripe(ro.partsStatus, state.isTotalLoss, state.totalLossReleased)}`} />
+
+              {/* Subtle radial glow accent in top-right (nearly invisible but adds depth) */}
+              <div className="absolute top-0 right-0 w-40 h-40 bg-white/[0.02] rounded-full blur-3xl pointer-events-none" />
+
+              <div className="relative px-4 pt-3.5 pb-3">
+
+                {/* ── HERO ROW: RO# block + insurance logo ── */}
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="min-w-0 flex-1">
+                    {/* Microcopy label row — RO + flags */}
+                    <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                      <span className="text-[9px] font-black uppercase tracking-[0.18em] text-gray-500">RO</span>
+                      {state.isTotalLoss && (
+                        <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-purple-500/20 border border-purple-500/50 text-purple-300">
+                          <AlertTriangle size={8} /> Total Loss{state.totalLossReleased ? ' · Released' : ''}
+                        </span>
+                      )}
+                      {state.productionFinalSupplement && (
+                        <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-300 flex items-center gap-1">
+                          <FileText size={8} /> Final Supp
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Big mono RO number */}
+                    <h2 className="text-2xl font-black text-white font-mono tracking-tight leading-none">
+                      {ro.roNumber}
+                    </h2>
+
+                    {/* Inline status dot + uppercase label */}
+                    <div className="mt-2">
+                      <StatusPulse status={ro.partsStatus} />
+                    </div>
+                  </div>
+
+                  {/* Insurance logo, tucked top-right */}
+                  {ro.insuranceCompany && <InsuranceLogo name={ro.insuranceCompany} />}
+                </div>
+
+                {/* ── VEHICLE LINE ── */}
+                <div className="mb-3">
+                  <p className="text-[15px] font-bold text-gray-50 leading-tight truncate">
+                    {[ro.vehicleYear, ro.vehicleMake, ro.vehicleModel].filter(Boolean).join(' ') || '—'}
+                    {ro.vehicleColor && <span className="text-gray-400 font-medium"> · {ro.vehicleColor}</span>}
+                  </p>
+                  {ro.vin && (
+                    <p className="text-[10px] font-mono text-gray-600 mt-0.5 truncate tracking-wide">
+                      <span className="text-gray-700 font-bold">VIN</span> {ro.vin}
+                    </p>
                   )}
                 </div>
-                {ro.insuranceCompany && <InsuranceLogo name={ro.insuranceCompany} />}
-              </div>
 
-              {/* ── Row 2: Vehicle · Color · VIN ── */}
-              <p className="text-sm font-bold text-gray-100 leading-snug truncate">
-                {[ro.vehicleYear, ro.vehicleMake, ro.vehicleModel].filter(Boolean).join(' ')}
-                {ro.vehicleColor && <span className="text-gray-500 font-normal"> · {ro.vehicleColor}</span>}
-                {ro.vin && <span className="text-[10px] text-gray-600 font-mono font-normal"> · {ro.vin}</span>}
-              </p>
-
-              {/* ── Row 3: Owner · Phone · Insurer · Claim ── */}
-              {(ro.ownerName || ro.insuranceCompany) && (
-                <p className="text-xs text-gray-400 mt-1 truncate flex items-center gap-1 flex-wrap">
-                  {ro.ownerName && <>
-                    <User size={9} className="text-blue-400 shrink-0" />
-                    <span className="text-gray-300 font-medium">{ro.ownerName}</span>
-                  </>}
-                  {ro.ownerPhone && <>
-                    <span className="text-gray-700">·</span>
-                    <a href={`tel:${ro.ownerPhone}`} className="text-blue-400">{ro.ownerPhone}</a>
-                  </>}
-                  {ro.insuranceCompany && <>
-                    <span className="text-gray-700">·</span>
-                    <Shield size={9} className="text-emerald-400 shrink-0" />
-                    <span className="text-gray-400">{ro.insuranceCompany}</span>
-                  </>}
-                  {ro.claimNumber && <>
-                    <span className="text-gray-700">·</span>
-                    <span className="text-gray-600 font-mono">#{ro.claimNumber}</span>
-                  </>}
-                </p>
-              )}
-
-              {/* ── Row 4: Tech pill · timestamp · edit ── */}
-              <div className="flex items-center gap-2 mt-2">
-                <button
-                  onClick={() => setTechPickerOpen(!techPickerOpen)}
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold border transition-all ${
-                    state.assignedTech
-                      ? 'bg-blue-500/15 border-blue-500/40 text-blue-300'
-                      : 'bg-gray-800 border-gray-700 text-gray-500'
-                  }`}
-                >
-                  <Wrench size={9} />
-                  {state.assignedTech || 'Tech'}
-                  <ChevronDown size={9} className={`transition-transform duration-200 ${techPickerOpen ? 'rotate-180' : ''}`} />
-                </button>
-                {ro.productionUpdatedAt && (
-                  <span className="text-[10px] text-gray-600 flex items-center gap-0.5">
-                    <Clock size={9} />{formatTimeAgo(ro.productionUpdatedAt)}
-                  </span>
-                )}
-                <button
-                  onClick={() => setEditOpen(true)}
-                  className="ml-auto flex items-center gap-0.5 text-[11px] text-blue-400 hover:text-blue-300 transition-colors"
-                >
-                  <Pencil size={9} /> Edit
-                </button>
-              </div>
-
-              {/* Tech picker — inline accordion */}
-              <AnimatePresence>
-                {techPickerOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.18 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="pt-2.5 pb-0.5">
-                      <TechBubbles
-                        value={state.assignedTech}
-                        onChange={(val) => { updateField('assignedTech', val); setTechPickerOpen(false) }}
-                      />
+                {/* ── 2-COLUMN IDENTITY GRID ── */}
+                {(ro.ownerName || ro.ownerPhone || ro.insuranceCompany || ro.claimNumber) && (
+                  <div className="grid grid-cols-2 gap-3 pb-3 border-b border-gray-700/40">
+                    {/* CUSTOMER */}
+                    <div className="min-w-0">
+                      <p className="text-[9px] font-black uppercase tracking-[0.15em] text-gray-500 mb-1 flex items-center gap-1">
+                        <User size={9} /> Customer
+                      </p>
+                      <p className="text-xs font-semibold text-gray-100 truncate leading-tight">
+                        {ro.ownerName || <span className="text-gray-600">—</span>}
+                      </p>
+                      {ro.ownerPhone && (
+                        <a
+                          href={`tel:${ro.ownerPhone}`}
+                          className="text-[11px] text-blue-400 font-mono hover:text-blue-300 transition-colors truncate block mt-0.5"
+                        >
+                          {ro.ownerPhone}
+                        </a>
+                      )}
                     </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
 
-              {/* ── Parts row ── */}
+                    {/* INSURANCE */}
+                    <div className="min-w-0">
+                      <p className="text-[9px] font-black uppercase tracking-[0.15em] text-gray-500 mb-1 flex items-center gap-1">
+                        <Shield size={9} /> Insurance
+                      </p>
+                      <p className="text-xs font-semibold text-gray-100 truncate leading-tight">
+                        {ro.insuranceCompany || <span className="text-gray-600">—</span>}
+                      </p>
+                      {ro.claimNumber && (
+                        <p className="text-[11px] text-gray-500 font-mono truncate mt-0.5">#{ro.claimNumber}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── ACTION BAR: tech pill · timestamp · edit ── */}
+                <div className="flex items-center gap-2 pt-3">
+                  <button
+                    onClick={() => setTechPickerOpen(!techPickerOpen)}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition-all ${
+                      state.assignedTech
+                        ? 'bg-blue-500/20 border-blue-500/50 text-blue-200 shadow-sm shadow-blue-500/20'
+                        : 'bg-gray-800/60 border-gray-700 border-dashed text-gray-500 hover:text-gray-300 hover:border-blue-500/40'
+                    }`}
+                  >
+                    <Wrench size={10} />
+                    {state.assignedTech || 'Assign Tech'}
+                    <ChevronDown size={10} className={`transition-transform duration-200 ${techPickerOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {ro.productionUpdatedAt && (
+                    <span className="text-[10px] text-gray-600 flex items-center gap-1">
+                      <Clock size={9} />
+                      {formatTimeAgo(ro.productionUpdatedAt)}
+                    </span>
+                  )}
+
+                  <button
+                    onClick={() => setEditOpen(true)}
+                    className="ml-auto flex items-center gap-1 text-[11px] font-semibold text-gray-500 hover:text-blue-300 transition-colors"
+                  >
+                    <Pencil size={10} /> Edit
+                  </button>
+                </div>
+
+                {/* Tech picker — inline accordion */}
+                <AnimatePresence>
+                  {techPickerOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.18 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="pt-3 pb-0.5">
+                        <TechBubbles
+                          value={state.assignedTech}
+                          onChange={(val) => { updateField('assignedTech', val); setTechPickerOpen(false) }}
+                        />
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* ── PARTS PROGRESS HERO BLOCK — full-width footer ── */}
               {ro.parts && ro.parts.length > 0 && (() => {
                 const received = ro.parts.filter((p) => p.isReceived).length
-                const pending = ro.parts.length - received
+                const total = ro.parts.length
+                const pct = total > 0 ? Math.round((received / total) * 100) : 0
+                const barColor =
+                  pct === 100 ? 'from-emerald-500 to-teal-400' :
+                  pct >= 50  ? 'from-amber-500 to-yellow-400' :
+                  pct > 0    ? 'from-orange-500 to-red-400' :
+                              'from-red-500 to-rose-400'
+                const pctColor =
+                  pct === 100 ? 'text-emerald-300' :
+                  pct >= 50  ? 'text-amber-300' :
+                              'text-red-300'
                 return (
                   <button
                     onClick={() => setPartsOpen(true)}
-                    className="w-full mt-2.5 pt-2.5 border-t border-gray-700/40 flex items-center gap-3 text-left"
+                    className="w-full text-left bg-black/30 border-t border-gray-700/40 px-4 py-3 hover:bg-black/40 active:bg-black/50 transition-colors group"
                   >
-                    <span className="text-xs text-gray-500">{ro.parts.length} parts</span>
-                    <span className="text-xs font-bold text-emerald-400">{received} ✓</span>
-                    {pending > 0 && <span className="text-xs font-bold text-red-400">{pending} pending</span>}
-                    <div className="ml-auto flex items-center gap-1.5 flex-wrap justify-end">
-                      <FinishTags parts={ro.parts} />
-                      <Package size={10} className="text-gray-600 shrink-0" />
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-1.5">
+                        <Package size={11} className="text-gray-400" />
+                        <span className="text-[9px] font-black uppercase tracking-[0.18em] text-gray-400">Parts</span>
+                      </div>
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-2xl font-black text-white tabular-nums leading-none tracking-tight">{received}</span>
+                        <span className="text-sm font-semibold text-gray-500 leading-none tabular-nums">/ {total}</span>
+                        <span className={`ml-1.5 text-[10px] font-black tabular-nums tracking-wider ${pctColor}`}>{pct}%</span>
+                      </div>
                     </div>
+
+                    {/* Animated progress bar */}
+                    <div className="h-1.5 bg-gray-800/80 rounded-full overflow-hidden ring-1 ring-inset ring-black/40">
+                      <motion.div
+                        key={`${ro.id}-${pct}`}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${pct}%` }}
+                        transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+                        className={`h-full rounded-full bg-gradient-to-r ${barColor} shadow-[0_0_8px_currentColor]`}
+                      />
+                    </div>
+
+                    {/* Finish tags below the bar */}
+                    <FinishTags parts={ro.parts} />
                   </button>
                 )
               })()}
