@@ -54,26 +54,30 @@ function InsuranceLogo({ name }) {
   const key = name.toLowerCase().trim()
   const match = Object.keys(INSURANCE_LOGOS).find((k) => key.includes(k))
 
-  // 2-letter abbreviation: first letters of first two words, or first 2 chars
+  // Fallback: initials from first two words, or first 2 chars
   const words = name.trim().split(/\s+/)
   const abbr = words.length >= 2
     ? (words[0][0] + words[1][0]).toUpperCase()
     : name.slice(0, 2).toUpperCase()
 
+  // White pill container normalises every logo — no squishing, no dark backgrounds
   if (match && !imgError) {
     return (
-      <img
-        src={`/logos/${INSURANCE_LOGOS[match]}`}
-        alt={name}
-        className="h-12 w-32 object-contain rounded-xl bg-white/5 p-1.5"
-        onError={() => setImgError(true)}
-      />
+      <div className="h-10 w-28 bg-white rounded-lg flex items-center justify-center p-2 shrink-0 shadow-sm">
+        <img
+          src={`/logos/${INSURANCE_LOGOS[match]}`}
+          alt={name}
+          className="max-h-full max-w-full object-contain"
+          onError={() => setImgError(true)}
+        />
+      </div>
     )
   }
 
+  // Fallback badge for unknown insurers
   return (
-    <div className="h-12 w-32 rounded-xl bg-gradient-to-br from-slate-700 to-slate-800 border border-slate-600/50 flex items-center justify-center shrink-0 shadow-inner">
-      <span className="text-xl font-black text-slate-200 tracking-tight leading-none">{abbr}</span>
+    <div className="h-10 px-3 rounded-lg bg-slate-700/80 border border-slate-600/40 flex items-center justify-center shrink-0">
+      <span className="text-sm font-bold text-slate-200 tracking-wide leading-none">{abbr}</span>
     </div>
   )
 }
