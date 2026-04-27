@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Lock, Plus, Pencil, Trash2, Check, X, ChevronLeft, ChevronRight,
   Upload, Camera, FileText, Image, BarChart3, ArrowLeftRight,
-  DollarSign, TrendingUp, Clock, CheckCircle2,
+  DollarSign, Clock, CheckCircle2, Printer,
 } from 'lucide-react'
 import { bmwApi, privateApi } from '@/lib/api'
 import Spinner from '@/components/ui/Spinner'
@@ -42,6 +42,149 @@ function generateMonthList() {
     if (month > 12) { month = 1; year++ }
   }
   return list
+}
+
+// ── Print helpers ─────────────────────────────────────────────────────────────
+const PRINT_BASE_STYLE = `
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111; background: #fff; padding: 24px; font-size: 12px; }
+  h1 { font-size: 18px; font-weight: 900; letter-spacing: -0.02em; margin-bottom: 2px; }
+  h2 { font-size: 14px; font-weight: 700; margin-bottom: 12px; color: #444; }
+  .meta { font-size: 10px; color: #888; margin-bottom: 20px; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 22px; }
+  .stat { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 12px; }
+  .stat-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #888; margin-bottom: 3px; }
+  .stat-value { font-size: 16px; font-weight: 900; }
+  .stat-sub { font-size: 9px; color: #aaa; margin-top: 2px; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  thead tr { background: #f3f4f6; }
+  th { padding: 7px 10px; text-align: left; font-weight: 700; font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; color: #555; border-bottom: 2px solid #e5e7eb; }
+  td { padding: 7px 10px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  .badge-received { display:inline-block; background:#d1fae5; color:#065f46; font-size:9px; font-weight:700; padding:2px 6px; border-radius:999px; }
+  .badge-pending  { display:inline-block; background:#fef3c7; color:#92400e; font-size:9px; font-weight:700; padding:2px 6px; border-radius:999px; }
+  .amount { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .footer { margin-top: 24px; font-size: 10px; color: #aaa; border-top: 1px solid #e5e7eb; padding-top: 12px; }
+  .totals-row td { font-weight: 900; background: #f9fafb; border-top: 2px solid #e5e7eb; }
+  .up { color: #059669; font-weight: 700; }
+  .down { color: #dc2626; font-weight: 700; }
+  @media print { body { padding: 0; } }
+`
+
+function openPrintWindow(title, bodyHtml) {
+  const win = window.open('', '_blank', 'width=900,height=700')
+  if (!win) return
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title><style>${PRINT_BASE_STYLE}</style></head><body>${bodyHtml}</body></html>`)
+  win.document.close()
+  win.focus()
+  setTimeout(() => win.print(), 400)
+}
+
+function printMonthly(payments, monthLabel, invoiced, received, outstanding) {
+  const rows = payments.map(p => {
+    const date = p.date ? new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'
+    const status = p.status === 'RECEIVED'
+      ? '<span class="badge-received">Received</span>'
+      : '<span class="badge-pending">Pending</span>'
+    return `<tr>
+      <td>${date}</td>
+      <td>${p.lastName || '—'}</td>
+      <td style="font-family:monospace;font-size:10px">${p.bmwNumber || '—'}</td>
+      <td style="font-family:monospace">${p.roNumber || '—'}</td>
+      <td class="amount">${p.amount != null ? '$' + parseFloat(p.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</td>
+      <td>${status}</td>
+    </tr>`
+  }).join('')
+
+  const pct = invoiced > 0 ? Math.round((received / invoiced) * 100) : 0
+  const f = (n) => '$' + parseFloat(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+  openPrintWindow(`BMW Payments — ${monthLabel}`, `
+    <h1>BMW Payment Tracker</h1>
+    <div class="meta">Month: ${monthLabel} &nbsp;·&nbsp; Printed: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</div>
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Invoiced</div><div class="stat-value">${f(invoiced)}</div><div class="stat-sub">${payments.length} BMW's Closed</div></div>
+      <div class="stat"><div class="stat-label">Received</div><div class="stat-value" style="color:#059669">${f(received)}</div><div class="stat-sub">${pct}%</div></div>
+      <div class="stat"><div class="stat-label">Outstanding</div><div class="stat-value" style="color:${outstanding > 0 ? '#d97706' : '#111'}">${f(outstanding)}</div><div class="stat-sub">pending</div></div>
+      <div class="stat"><div class="stat-label">Entries</div><div class="stat-value">${payments.length}</div></div>
+    </div>
+    ${payments.length === 0 ? '<p style="color:#aaa;text-align:center;padding:40px 0">No entries for this month.</p>' : `
+    <table>
+      <thead><tr><th>Date</th><th>Last Name</th><th>M# / BMW</th><th>RO#</th><th>Amount</th><th>Status</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`}
+    <div class="footer">Towne Body Shop · BMW Payment Tracker · Confidential</div>
+  `)
+}
+
+function printCompare(summary, aKey, bKey) {
+  const sorted = [...summary].sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month)
+  const f = (n) => '$' + parseFloat(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const label = (s) => `${MONTH_NAMES[s.month - 1]} ${s.year}`
+  const monthKey = (s) => `${s.year}-${String(s.month).padStart(2, '0')}`
+
+  const totals = sorted.reduce((acc, s) => ({
+    invoiced: acc.invoiced + parseFloat(s.invoiced),
+    received: acc.received + parseFloat(s.received),
+    outstanding: acc.outstanding + parseFloat(s.outstanding),
+    count: acc.count + s.count,
+  }), { invoiced: 0, received: 0, outstanding: 0, count: 0 })
+
+  const rows = sorted.map(s => `<tr>
+    <td>${label(s)}</td>
+    <td class="amount">${f(s.invoiced)}</td>
+    <td class="amount" style="color:#059669">${f(s.received)}</td>
+    <td class="amount" style="color:${s.outstanding > 0 ? '#d97706' : '#111'}">${f(s.outstanding)}</td>
+    <td>${s.count}</td>
+  </tr>`).join('')
+
+  // Comparison block
+  let compareHtml = ''
+  if (aKey && bKey) {
+    const a = sorted.find(s => monthKey(s) === aKey)
+    const b = sorted.find(s => monthKey(s) === bKey)
+    if (a && b) {
+      const fields = [
+        { label: 'Invoiced',    field: 'invoiced',    fmt: true },
+        { label: 'Received',    field: 'received',    fmt: true },
+        { label: 'Outstanding', field: 'outstanding', fmt: true },
+        { label: 'Entries',     field: 'count',       fmt: false },
+      ]
+      const crows = fields.map(({ label: fl, field, fmt }) => {
+        const av = parseFloat(a[field]), bv = parseFloat(b[field])
+        const d = bv - av
+        const cls = d === 0 ? '' : d > 0 ? 'up' : 'down'
+        const dStr = d === 0 ? '—' : `${d > 0 ? '+' : ''}${fmt ? f(d) : d}`
+        return `<tr><td>${fl}</td><td class="amount">${fmt ? f(av) : av}</td><td class="amount">${fmt ? f(bv) : bv}</td><td class="${cls}">${dStr}</td></tr>`
+      }).join('')
+      compareHtml = `
+        <h2 style="margin-top:28px">Comparison: ${label(a)} vs ${label(b)}</h2>
+        <table>
+          <thead><tr><th>Metric</th><th>${label(a)}</th><th>${label(b)}</th><th>Change</th></tr></thead>
+          <tbody>${crows}</tbody>
+        </table>`
+    }
+  }
+
+  openPrintWindow('BMW Payments — All Months', `
+    <h1>BMW Payment Tracker — All Months</h1>
+    <div class="meta">Printed: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</div>
+    <table>
+      <thead><tr><th>Month</th><th>Invoiced</th><th>Received</th><th>Outstanding</th><th>Entries</th></tr></thead>
+      <tbody>
+        ${rows}
+        <tr class="totals-row">
+          <td>Total</td>
+          <td class="amount">${f(totals.invoiced)}</td>
+          <td class="amount" style="color:#059669">${f(totals.received)}</td>
+          <td class="amount" style="color:#d97706">${f(totals.outstanding)}</td>
+          <td>${totals.count}</td>
+        </tr>
+      </tbody>
+    </table>
+    ${compareHtml}
+    <div class="footer">Towne Body Shop · BMW Payment Tracker · Confidential</div>
+  `)
 }
 
 // ── Small stat card ────────────────────────────────────────────────────────────
@@ -192,9 +335,7 @@ function Field({ label, value, onChange, type = 'text', placeholder, step }) {
 }
 
 // ── Compare Panel ──────────────────────────────────────────────────────────────
-function ComparePanel({ summary }) {
-  const [aKey, setAKey] = useState(null)
-  const [bKey, setBKey] = useState(null)
+function ComparePanel({ summary, aKey, bKey, setAKey, setBKey }) {
 
   const monthKey = (s) => `${s.year}-${String(s.month).padStart(2,'0')}`
   const sorted = [...(summary || [])].sort((a,b) => monthKey(a) < monthKey(b) ? -1 : 1)
@@ -326,6 +467,8 @@ export default function SecureVault() {
   const [activeTab, setActiveTab]   = useState('tracker')
   const [monthIdx, setMonthIdx]     = useState(() => MONTHS.length - 1) // default to latest
   const [editEntry, setEditEntry]   = useState(null)       // null = closed, false = new, obj = edit
+  const [compareA, setCompareA]     = useState(null)       // lifted from ComparePanel for print
+  const [compareB, setCompareB]     = useState(null)
   const [deleteId, setDeleteId]     = useState(null)
 
   // File upload state
@@ -456,9 +599,17 @@ export default function SecureVault() {
             </button>
           </div>
 
+          {/* Print button */}
+          <button
+            onClick={() => printMonthly(payments, `${MONTH_FULL[month-1]} ${year}`, invoiced, received, outstanding)}
+            className="w-full flex items-center justify-center gap-2 py-2 mb-4 rounded-xl bg-gray-800/60 border border-gray-700/40 text-gray-400 text-xs font-semibold hover:text-gray-200 hover:bg-gray-700/50 transition-colors"
+          >
+            <Printer size={13} /> Print {MONTH_NAMES[month-1]} {year}
+          </button>
+
           {/* Stat cards */}
           <div className="grid grid-cols-3 gap-2.5 mb-5">
-            <Stat label="Invoiced" value={fmt$(invoiced)} sub={`${payments.length} items`} />
+            <Stat label="Invoiced" value={fmt$(invoiced)} sub={`${payments.length} BMW's Closed`} />
             <Stat label="Received" value={fmt$(received)} sub={`${pctReceived}%`} color="text-emerald-400" />
             <Stat label="Outstanding" value={fmt$(outstanding)} sub="pending" color={outstanding > 0 ? 'text-amber-400' : 'text-gray-400'} />
           </div>
@@ -575,9 +726,17 @@ export default function SecureVault() {
             <>
               {/* All-time summary table */}
               <div className="bg-gray-800/50 border border-gray-700/40 rounded-2xl overflow-hidden mb-4">
-                <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-700/40">
-                  <BarChart3 size={14} className="text-blue-400" />
-                  <h3 className="text-sm font-bold text-gray-200">All Months</h3>
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700/40">
+                  <div className="flex items-center gap-2">
+                    <BarChart3 size={14} className="text-blue-400" />
+                    <h3 className="text-sm font-bold text-gray-200">All Months</h3>
+                  </div>
+                  <button
+                    onClick={() => printCompare(summary, compareA, compareB)}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-700/60 border border-gray-600/40 text-gray-400 text-xs font-semibold hover:text-gray-200 hover:bg-gray-700 transition-colors"
+                  >
+                    <Printer size={12} /> Print
+                  </button>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
@@ -627,7 +786,7 @@ export default function SecureVault() {
                 </div>
               </div>
 
-              <ComparePanel summary={summary} />
+              <ComparePanel summary={summary} aKey={compareA} bKey={compareB} setAKey={setCompareA} setBKey={setCompareB} />
             </>
           )}
         </div>
