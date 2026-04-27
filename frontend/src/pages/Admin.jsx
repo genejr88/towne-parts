@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Store, Users, Plus, Trash2, UserX, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Store, Users, Plus, Trash2, UserX, ToggleLeft, ToggleRight, Star } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { vendorsApi, usersApi } from '@/lib/api'
 import Button from '@/components/ui/Button'
@@ -61,11 +61,11 @@ function VendorSection() {
 
   const { data: vendors, isLoading } = useQuery({
     queryKey: ['vendors'],
-    queryFn: vendorsApi.list,
+    queryFn: () => vendorsApi.list({ all: true }),
   })
 
-  const deactivateMutation = useMutation({
-    mutationFn: ({ id, active }) => vendorsApi.update(id, { active }),
+  const updateMutation = useMutation({
+    mutationFn: ({ id, ...data }) => vendorsApi.update(id, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['vendors'] }),
     onError: (err) => toast.error(err.message),
   })
@@ -85,14 +85,16 @@ function VendorSection() {
         <div className="flex items-center gap-2">
           <Store size={18} className="text-blue-400" />
           <h2 className="text-base font-bold text-gray-100">Vendors</h2>
-          {vendors && (
-            <Badge variant="default">{vendors.length}</Badge>
-          )}
+          {vendors && <Badge variant="default">{vendors.length}</Badge>}
         </div>
         <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>
           <Plus size={15} /> Add
         </Button>
       </div>
+
+      <p className="text-xs text-gray-500 mb-3">
+        ★ = default vendor — auto-selected when creating a new RO
+      </p>
 
       {isLoading ? (
         <div className="flex justify-center py-8"><Spinner /></div>
@@ -104,28 +106,50 @@ function VendorSection() {
             <motion.div
               key={v.id}
               layout
-              className="bg-gray-800/60 border border-gray-700/50 rounded-xl px-4 py-3.5 flex items-center gap-3"
+              className={`border rounded-xl px-4 py-3.5 flex items-center gap-3 transition-colors ${
+                v.isDefault
+                  ? 'bg-amber-950/30 border-amber-500/40'
+                  : 'bg-gray-800/60 border-gray-700/50'
+              }`}
             >
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <p className="text-sm font-semibold text-gray-100 truncate">{v.name}</p>
-                  {v.active === false && <Badge variant="gray">Inactive</Badge>}
+                  {v.isDefault && (
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300">
+                      Default
+                    </span>
+                  )}
+                  {!v.isActive && <Badge variant="gray">Inactive</Badge>}
                 </div>
                 {v.phone && <p className="text-xs text-gray-500 mt-0.5">{v.phone}</p>}
                 {v.email && <p className="text-xs text-gray-500">{v.email}</p>}
               </div>
 
+              {/* Star = set as default */}
+              <button
+                onClick={() => updateMutation.mutate({ id: v.id, isDefault: !v.isDefault })}
+                className={`p-1.5 transition-colors rounded-lg ${
+                  v.isDefault
+                    ? 'text-amber-400 hover:text-amber-300'
+                    : 'text-gray-600 hover:text-amber-400'
+                }`}
+                title={v.isDefault ? 'Remove default' : 'Set as default'}
+              >
+                <Star size={16} className={v.isDefault ? 'fill-amber-400' : ''} />
+              </button>
+
               {/* Toggle active */}
               <button
-                onClick={() => deactivateMutation.mutate({ id: v.id, active: !(v.active !== false) })}
+                onClick={() => updateMutation.mutate({ id: v.id, isActive: !v.isActive })}
                 className={`p-1.5 transition-colors rounded-lg ${
-                  v.active !== false
+                  v.isActive
                     ? 'text-emerald-400 hover:text-emerald-300'
                     : 'text-gray-600 hover:text-gray-400'
                 }`}
-                title={v.active !== false ? 'Deactivate' : 'Activate'}
+                title={v.isActive ? 'Deactivate' : 'Activate'}
               >
-                {v.active !== false ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
+                {v.isActive ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
               </button>
 
               <button

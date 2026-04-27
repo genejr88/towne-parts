@@ -589,7 +589,11 @@ function PartRow({ part, roId, inventoryMatch }) {
   const cycleFinish = () => updateMutation.mutate({ finishStatus: nextFinishStatus(part.finishStatus || 'NO_FINISH_NEEDED') })
 
   return (
-    <div className={`border border-gray-700/40 rounded-xl p-3.5 mb-2 transition-opacity ${part.isReceived ? 'opacity-50' : ''}`}>
+    <div className={`border rounded-xl p-3.5 mb-2 transition-colors ${
+      part.isReceived
+        ? 'bg-emerald-950/30 border-emerald-700/50'
+        : 'border-gray-700/40'
+    }`}>
       <div className="flex items-start gap-3">
         {/* Received checkbox */}
         <button
@@ -605,7 +609,7 @@ function PartRow({ part, roId, inventoryMatch }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             {part.partNumber && (
-              <span className={`text-xs font-mono font-semibold ${part.isReceived ? 'line-through text-gray-600' : 'text-gray-300'}`}>
+              <span className={`text-xs font-mono font-semibold ${part.isReceived ? 'text-emerald-400/70 line-through' : 'text-gray-300'}`}>
                 {part.partNumber}
               </span>
             )}
@@ -614,11 +618,16 @@ function PartRow({ part, roId, inventoryMatch }) {
                 ×{part.qty}
               </span>
             )}
+            {part.isReceived && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300">
+                <Check size={9} strokeWidth={3} /> HERE
+              </span>
+            )}
             {part.hasCore && (
               <Badge variant="orange" className="text-[10px] py-0.5 px-2">Core</Badge>
             )}
           </div>
-          <p className={`text-sm mt-0.5 ${part.isReceived ? 'line-through text-gray-600' : 'text-gray-200'}`}>
+          <p className={`text-sm mt-0.5 ${part.isReceived ? 'text-gray-400' : 'text-gray-200'}`}>
             {part.description || <span className="text-gray-600 italic">No description</span>}
           </p>
           {inventoryMatch && (

@@ -25,7 +25,10 @@ enum Role {
 model Vendor {
   id        Int      @id @default(autoincrement())
   name      String   @unique
+  phone     String?
+  email     String?
   isActive  Boolean  @default(true)
+  isDefault Boolean  @default(false)
   createdAt DateTime @default(now())
   ros       RO[]
 

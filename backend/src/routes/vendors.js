@@ -4,7 +4,7 @@ const { requireAuth, requireAdmin } = require('../middleware/auth')
 
 const router = express.Router()
 
-// GET /api/vendors — list active vendors
+// GET /api/vendors — list active vendors (or all with ?all=true)
 router.get('/', requireAuth, async (req, res) => {
   try {
     const { all } = req.query
@@ -12,7 +12,7 @@ router.get('/', requireAuth, async (req, res) => {
 
     const vendors = await prisma.vendor.findMany({
       where,
-      orderBy: { name: 'asc' },
+      orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
     })
 
     return res.json({ success: true, data: vendors })
@@ -24,7 +24,7 @@ router.get('/', requireAuth, async (req, res) => {
 
 // POST /api/vendors — create vendor (admin only)
 router.post('/', requireAuth, requireAdmin, async (req, res) => {
-  const { name } = req.body
+  const { name, phone, email, isDefault } = req.body
 
   if (!name || !name.trim()) {
     return res.status(400).json({ success: false, error: 'Vendor name is required.' })
@@ -36,8 +36,18 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
       return res.status(409).json({ success: false, error: 'A vendor with that name already exists.' })
     }
 
+    // If setting as default, unset all existing defaults first
+    if (isDefault) {
+      await prisma.vendor.updateMany({ where: { isDefault: true }, data: { isDefault: false } })
+    }
+
     const vendor = await prisma.vendor.create({
-      data: { name: name.trim() },
+      data: {
+        name:      name.trim(),
+        phone:     phone?.trim()  || null,
+        email:     email?.trim()  || null,
+        isDefault: Boolean(isDefault),
+      },
     })
 
     return res.status(201).json({ success: true, data: vendor })
@@ -50,7 +60,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
 // PUT /api/vendors/:id — update vendor
 router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id)
-  const { name, isActive } = req.body
+  const { name, phone, email, isActive, isDefault } = req.body
 
   try {
     const existing = await prisma.vendor.findUnique({ where: { id } })
@@ -66,8 +76,19 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
     }
 
     const updateData = {}
-    if (name !== undefined) updateData.name = name.trim()
-    if (isActive !== undefined) updateData.isActive = Boolean(isActive)
+    if (name      !== undefined) updateData.name      = name.trim()
+    if (phone     !== undefined) updateData.phone     = phone?.trim() || null
+    if (email     !== undefined) updateData.email     = email?.trim() || null
+    if (isActive  !== undefined) updateData.isActive  = Boolean(isActive)
+    if (isDefault !== undefined) updateData.isDefault = Boolean(isDefault)
+
+    // Enforce single default: unset all others before setting this one
+    if (isDefault === true) {
+      await prisma.vendor.updateMany({
+        where: { isDefault: true, id: { not: id } },
+        data: { isDefault: false },
+      })
+    }
 
     const vendor = await prisma.vendor.update({ where: { id }, data: updateData })
 

@@ -125,7 +125,7 @@ export const srcApi = {
 
 // ── Vendors ───────────────────────────────────────────────────────────────────
 export const vendorsApi = {
-  list: () => unwrap(api.get('/vendors')),
+  list: (params) => unwrap(api.get('/vendors', { params })),
   create: (data) => unwrap(api.post('/vendors', data)),
   update: (id, data) => unwrap(api.put(`/vendors/${id}`, data)),
   remove: (id) => unwrap(api.delete(`/vendors/${id}`)),

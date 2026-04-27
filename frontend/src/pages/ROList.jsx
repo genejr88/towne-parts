@@ -123,6 +123,16 @@ function CreateROModal({ open, onClose }) {
     enabled: open,
   })
 
+  // Auto-select the default vendor once vendors load
+  useEffect(() => {
+    if (open && vendors?.length > 0) {
+      const def = vendors.find((v) => v.isDefault)
+      if (def) {
+        setForm((f) => f.vendorId ? f : { ...f, vendorId: String(def.id) })
+      }
+    }
+  }, [vendors, open])
+
   const mutation = useMutation({
     mutationFn: (data) => rosApi.create(data),
     onSuccess: (ro) => {
