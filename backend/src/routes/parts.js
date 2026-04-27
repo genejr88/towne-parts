@@ -260,6 +260,40 @@ router.delete('/:id', requireAuth, async (req, res) => {
   }
 })
 
+// GET /api/parts/ready-for-paint?days=7
+// Parts with finishStatus=NEEDS_PAINT that were received within the last N days
+// on non-archived ROs. Used by the Dashboard "Recent Ready for Paint" stat.
+router.get('/ready-for-paint', requireAuth, async (req, res) => {
+  const days = Math.min(parseInt(req.query.days) || 7, 90)
+  const since = new Date()
+  since.setDate(since.getDate() - (days - 1))
+  since.setHours(0, 0, 0, 0)
+
+  try {
+    const parts = await prisma.part.findMany({
+      where: {
+        finishStatus: 'NEEDS_PAINT',
+        isReceived: true,
+        receivedAt: { gte: since },
+        ro: { isArchived: false },
+      },
+      select: {
+        id: true,
+        description: true,
+        partNumber: true,
+        receivedAt: true,
+        ro: { select: { id: true, roNumber: true, vehicleMake: true, vehicleModel: true } },
+      },
+      orderBy: { receivedAt: 'desc' },
+    })
+
+    return res.json({ success: true, data: parts })
+  } catch (err) {
+    console.error('Ready for paint error:', err)
+    return res.status(500).json({ success: false, error: err.message })
+  }
+})
+
 // POST /api/parts/:id/photos — upload a photo for a part
 router.post('/:id/photos', requireAuth, photoUpload.single('file'), async (req, res) => {
   const id = parseInt(req.params.id)

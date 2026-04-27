@@ -1,20 +1,22 @@
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { PackageX, PackageCheck, Package, Layers, RotateCcw, TrendingUp, FileWarning, ChevronRight, History } from 'lucide-react'
+import { PackageCheck, Package, RotateCcw, FileWarning, ChevronRight, History, Palette } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { rosApi, srcApi } from '@/lib/api'
+import { rosApi, srcApi, partsApi } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import Spinner from '@/components/ui/Spinner'
 
-function StatCard({ icon: Icon, label, value, color, onClick, delay = 0 }) {
+function StatCard({ icon: Icon, label, value, sub, color, onClick, delay = 0 }) {
   const colorMap = {
-    red: 'from-red-600/20 to-red-500/5 border-red-500/20 text-red-400',
+    red:    'from-red-600/20 to-red-500/5 border-red-500/20 text-red-400',
     yellow: 'from-amber-600/20 to-amber-500/5 border-amber-500/20 text-amber-400',
-    green: 'from-emerald-600/20 to-emerald-500/5 border-emerald-500/20 text-emerald-400',
-    blue: 'from-blue-600/20 to-blue-500/5 border-blue-500/20 text-blue-400',
+    green:  'from-emerald-600/20 to-emerald-500/5 border-emerald-500/20 text-emerald-400',
+    blue:   'from-blue-600/20 to-blue-500/5 border-blue-500/20 text-blue-400',
     purple: 'from-purple-600/20 to-purple-500/5 border-purple-500/20 text-purple-400',
     orange: 'from-orange-600/20 to-orange-500/5 border-orange-500/20 text-orange-400',
   }
+  const classes = colorMap[color] || colorMap.blue
+  const iconColor = classes.split(' ').find(c => c.startsWith('text-')) || 'text-blue-400'
 
   return (
     <motion.div
@@ -22,15 +24,16 @@ function StatCard({ icon: Icon, label, value, color, onClick, delay = 0 }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.3 }}
       onClick={onClick}
-      className={`bg-gradient-to-br ${colorMap[color] || colorMap.blue} border rounded-2xl p-4 ${onClick ? 'cursor-pointer active:scale-95 transition-transform' : ''}`}
+      className={`bg-gradient-to-br ${classes} border rounded-2xl p-4 ${onClick ? 'cursor-pointer active:scale-95 transition-transform' : ''}`}
     >
       <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">{label}</p>
-          <p className="text-3xl font-bold text-gray-100">{value ?? '—'}</p>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2 leading-none">{label}</p>
+          <p className="text-3xl font-bold text-gray-100 tabular-nums">{value ?? '—'}</p>
+          {sub && <p className="text-[11px] text-gray-500 mt-1 leading-tight">{sub}</p>}
         </div>
-        <div className={`p-2.5 rounded-xl bg-gray-800/50`}>
-          <Icon size={22} className={colorMap[color]?.split(' ').find(c => c.startsWith('text-')) || 'text-blue-400'} />
+        <div className="p-2.5 rounded-xl bg-gray-800/50 shrink-0 ml-2">
+          <Icon size={22} className={iconColor} />
         </div>
       </div>
     </motion.div>
@@ -51,26 +54,25 @@ export default function Dashboard() {
     queryFn: () => srcApi.list({ status: 'open' }),
   })
 
+  const { data: paintParts, isLoading: paintLoading } = useQuery({
+    queryKey: ['parts', 'ready-for-paint', 7],
+    queryFn: () => partsApi.readyForPaint(7),
+    staleTime: 60_000,
+  })
+
   const { data: missingPartsList } = useQuery({
     queryKey: ['ros', 'missing-parts-list'],
     queryFn: () => rosApi.list({ missingPartsList: true, archived: false }),
   })
 
-  const isLoading = rosLoading || srcLoading
+  const isLoading = rosLoading || srcLoading || paintLoading
 
-  // Compute stats from ros list
-  const stats = ros
-    ? {
-        total: ros.length,
-        missing: ros.filter((r) => r.partsStatus === 'missing').length,
-        acknowledged: ros.filter((r) => r.partsStatus === 'acknowledged').length,
-        allHere: ros.filter((r) => r.partsStatus === 'all_here').length,
-        inProduction: ros.filter((r) =>
-          r.stage && r.stage !== 'Unassigned' && r.stage !== 'Completed'
-        ).length,
-        srcOpen: srcEntries?.length ?? 0,
-      }
-    : null
+  const stats = {
+    activeROs:     ros?.length ?? null,
+    allHere:       ros?.filter((r) => r.partsStatus === 'ALL_HERE').length ?? null,
+    srcOpen:       srcEntries?.length ?? null,
+    readyForPaint: paintParts?.length ?? null,
+  }
 
   const firstName = user?.name?.split(' ')[0] || user?.username || 'there'
 
@@ -94,52 +96,44 @@ export default function Dashboard() {
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3">
+          {/* Ready for Paint — parts received this week needing paint */}
+          <StatCard
+            icon={Palette}
+            label="Ready for Paint"
+            value={stats.readyForPaint}
+            sub="parts in last 7 days"
+            color="orange"
+            delay={0}
+            onClick={() => navigate('/recent')}
+          />
+
+          {/* Active ROs */}
           <StatCard
             icon={Package}
             label="Active ROs"
-            value={stats?.total}
+            value={stats.activeROs}
             color="blue"
-            delay={0}
+            delay={0.05}
             onClick={() => navigate('/ros')}
           />
-          <StatCard
-            icon={PackageX}
-            label="Parts Missing"
-            value={stats?.missing}
-            color="red"
-            delay={0.05}
-            onClick={() => navigate('/ros?status=missing')}
-          />
-          <StatCard
-            icon={TrendingUp}
-            label="Acknowledged"
-            value={stats?.acknowledged}
-            color="yellow"
-            delay={0.1}
-            onClick={() => navigate('/ros?status=acknowledged')}
-          />
+
+          {/* All Here */}
           <StatCard
             icon={PackageCheck}
-            label="All Here"
-            value={stats?.allHere}
+            label="All Parts Here"
+            value={stats.allHere}
             color="green"
-            delay={0.15}
+            delay={0.1}
             onClick={() => navigate('/ros?status=all_here')}
           />
-          <StatCard
-            icon={Layers}
-            label="In Production"
-            value={stats?.inProduction}
-            color="purple"
-            delay={0.2}
-            onClick={() => navigate('/board')}
-          />
+
+          {/* Open S.R.C. */}
           <StatCard
             icon={RotateCcw}
             label="Open S.R.C."
-            value={stats?.srcOpen}
-            color="orange"
-            delay={0.25}
+            value={stats.srcOpen}
+            color="purple"
+            delay={0.15}
             onClick={() => navigate('/src')}
           />
         </div>
@@ -149,7 +143,7 @@ export default function Dashboard() {
       <motion.button
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3, duration: 0.3 }}
+        transition={{ delay: 0.25, duration: 0.3 }}
         onClick={() => navigate('/recent')}
         className="w-full mt-4 flex items-center gap-3 bg-gradient-to-br from-emerald-600/15 to-emerald-500/5 border border-emerald-500/25 rounded-2xl px-4 py-3.5 active:scale-[0.98] transition-transform group"
       >
@@ -163,7 +157,7 @@ export default function Dashboard() {
         <ChevronRight size={16} className="text-emerald-400/70 group-active:translate-x-0.5 transition-transform shrink-0" />
       </motion.button>
 
-      {/* ROs Missing Parts List */}
+      {/* ROs with no parts added yet */}
       {missingPartsList && missingPartsList.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 16 }}
