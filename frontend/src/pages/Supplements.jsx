@@ -99,7 +99,7 @@ export default function Supplements() {
             className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
               filter === key
                 ? 'bg-blue-600 border-blue-500 text-white'
-                : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-600'
+                : 'bg-gray-800 border-gray-600 text-gray-300 hover:text-white hover:border-gray-500'
             }`}
           >
             {label}
@@ -126,34 +126,34 @@ export default function Supplements() {
               key={roNumber}
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-gray-800/50 border border-gray-700/40 rounded-2xl overflow-hidden"
+              className="bg-gray-800/70 border border-gray-700/60 rounded-2xl overflow-hidden"
             >
               {/* RO header row */}
               <button
                 onClick={() => ro?.id && navigate(`/ros/${ro.id}`)}
-                className="w-full flex items-center justify-between px-4 py-3 border-b border-gray-700/40 hover:bg-gray-700/30 transition-colors group"
+                className="w-full flex items-center justify-between px-4 py-3 border-b border-gray-700/60 hover:bg-gray-700/40 transition-colors group"
               >
                 <div className="text-left min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-black text-gray-100 font-mono">RO #{roNumber}</span>
-                    <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                       {items.length} supplement{items.length !== 1 ? 's' : ''}
                     </span>
                   </div>
                   <div className="flex gap-2 flex-wrap mt-0.5">
                     {ro?.insuranceCompany && (
-                      <span className="text-xs text-gray-500">{ro.insuranceCompany}</span>
+                      <span className="text-xs text-gray-300">{ro.insuranceCompany}</span>
                     )}
                     {ro?.ownerName && (
-                      <span className="text-xs text-gray-600">{ro.ownerName}</span>
+                      <span className="text-xs text-gray-400">{ro.ownerName}</span>
                     )}
                   </div>
                 </div>
-                <ChevronRight size={14} className="text-gray-600 group-hover:text-gray-400 transition-colors shrink-0" />
+                <ChevronRight size={14} className="text-gray-500 group-hover:text-gray-200 transition-colors shrink-0" />
               </button>
 
               {/* Supplement entries */}
-              <div className="divide-y divide-gray-700/30">
+              <div className="divide-y divide-gray-700/50">
                 {items.map((s) => {
                   const isFiled = s.status === 'FILED'
                   return (
@@ -189,9 +189,9 @@ export default function Supplements() {
                             </span>
                           </div>
                           {s.notes && (
-                            <p className="text-xs text-gray-500 italic mt-0.5 truncate">{s.notes}</p>
+                            <p className="text-xs text-gray-400 italic mt-0.5 truncate">{s.notes}</p>
                           )}
-                          <p className="text-[10px] text-gray-700 mt-0.5">{fmtDate(s.createdAt)}</p>
+                          <p className="text-[10px] text-gray-500 mt-0.5">{fmtDate(s.createdAt)}</p>
                         </div>
 
                         {/* Actions */}
@@ -204,7 +204,7 @@ export default function Supplements() {
                             className={`p-2 rounded-xl border transition-colors ${
                               isFiled
                                 ? 'border-emerald-700/40 text-emerald-500 hover:bg-amber-500/5 hover:text-amber-400 hover:border-amber-500/30'
-                                : 'border-gray-700/40 text-gray-500 hover:bg-emerald-500/5 hover:text-emerald-400 hover:border-emerald-500/30'
+                                : 'border-gray-600/60 text-gray-400 hover:bg-emerald-500/5 hover:text-emerald-400 hover:border-emerald-500/30'
                             }`}
                           >
                             {isFiled ? <Clock size={13} /> : <Check size={13} />}
@@ -222,7 +222,7 @@ export default function Supplements() {
                               </button>
                               <button
                                 onClick={() => setDeleteId(null)}
-                                className="p-1.5 rounded-xl text-gray-600 hover:text-gray-400 transition-colors"
+                                className="p-1.5 rounded-xl text-gray-400 hover:text-gray-200 transition-colors"
                               >
                                 <X size={13} />
                               </button>
@@ -230,7 +230,7 @@ export default function Supplements() {
                           ) : (
                             <button
                               onClick={() => setDeleteId(s.id)}
-                              className="p-2 rounded-xl text-gray-700 hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-colors"
+                              className="p-2 rounded-xl text-gray-500 hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-colors"
                             >
                               <Trash2 size={13} />
                             </button>
