@@ -56,6 +56,8 @@ model RO {
   productionSupplementNote String?
   productionUpdatedAt     DateTime?
   isBmw                   Boolean       @default(false)
+  prestorageActive        Boolean       @default(false)
+  prestorageStartDate     DateTime?
   isTotalLoss             Boolean       @default(false)
   totalLossReleased       Boolean       @default(false)
   totalLossJobId          String?

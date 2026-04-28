@@ -190,6 +190,8 @@ router.put('/:id', requireAuth, async (req, res) => {
     productionFinalSupplement,
     productionSupplementNote,
     isBmw,
+    prestorageActive,
+    prestorageStartDate,
     isTotalLoss,
     assignedTech,
     // Customer / Owner
@@ -237,6 +239,8 @@ router.put('/:id', requireAuth, async (req, res) => {
     if (productionFinalSupplement !== undefined) updateData.productionFinalSupplement = Boolean(productionFinalSupplement)
     if (productionSupplementNote !== undefined) updateData.productionSupplementNote = productionSupplementNote
     if (isBmw !== undefined) updateData.isBmw = Boolean(isBmw)
+    if (prestorageActive !== undefined) updateData.prestorageActive = Boolean(prestorageActive)
+    if (prestorageStartDate !== undefined) updateData.prestorageStartDate = prestorageStartDate ? new Date(prestorageStartDate) : null
     if (isTotalLoss !== undefined) updateData.isTotalLoss = Boolean(isTotalLoss)
     if (assignedTech !== undefined) updateData.assignedTech = assignedTech || null
 

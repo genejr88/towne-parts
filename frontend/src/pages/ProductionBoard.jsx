@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChevronLeft, ChevronRight, ChevronDown, Car, FileText, Check, ClipboardList, X, Clock, Truck,
   Search, Package, CheckCircle2, XCircle, User, Shield, AlertTriangle, Wrench, Pencil,
-  ExternalLink, DollarSign, FilePlus,
+  ExternalLink, DollarSign, FilePlus, Warehouse,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { productionApi, rosApi, supplementsApi } from '@/lib/api'
@@ -15,7 +15,8 @@ import EmptyState from '@/components/ui/EmptyState'
 import Textarea from '@/components/ui/Textarea'
 
 // Card gradient based on total loss or parts status
-function cardBg(partsStatus, isTotalLoss, totalLossReleased) {
+function cardBg(partsStatus, isTotalLoss, totalLossReleased, prestorageActive) {
+  if (prestorageActive)                 return 'from-orange-950 to-amber-900/30'
   if (isTotalLoss && totalLossReleased) return 'from-emerald-950 to-gray-900'
   if (isTotalLoss) return 'from-purple-950 to-purple-900/60'
   if (partsStatus === 'MISSING') return 'from-red-950/60 to-gray-900'
@@ -25,7 +26,8 @@ function cardBg(partsStatus, isTotalLoss, totalLossReleased) {
 }
 
 // Top accent stripe gradient — primary visual identity for the card
-function statusStripe(partsStatus, isTotalLoss, totalLossReleased) {
+function statusStripe(partsStatus, isTotalLoss, totalLossReleased, prestorageActive) {
+  if (prestorageActive)                 return 'from-orange-500 via-amber-400 to-orange-500'
   if (isTotalLoss && totalLossReleased) return 'from-emerald-500 via-emerald-400 to-emerald-500'
   if (isTotalLoss)                      return 'from-purple-500 via-fuchsia-500 to-purple-500'
   if (partsStatus === 'MISSING')        return 'from-red-500 via-rose-500 to-red-500'
@@ -851,6 +853,7 @@ export default function ProductionBoard() {
       productionSupplementNote: local.productionSupplementNote ?? ro?.productionSupplementNote ?? '',
       isTotalLoss: local.isTotalLoss ?? ro?.isTotalLoss ?? false,
       totalLossReleased: local.totalLossReleased ?? ro?.totalLossReleased ?? false,
+      prestorageActive: local.prestorageActive ?? ro?.prestorageActive ?? false,
       assignedTech: local.assignedTech ?? ro?.assignedTech ?? '',
     }
   }
@@ -1042,12 +1045,26 @@ export default function ProductionBoard() {
           >
             {/* ── RO Card 3.0 — Hero design ────────────────────────────── */}
             <div className={`relative rounded-2xl overflow-hidden border ${
+              state.prestorageActive ? 'border-orange-500/60' :
               state.isTotalLoss && state.totalLossReleased ? 'border-emerald-600/60' :
               state.isTotalLoss ? 'border-purple-500/60' : 'border-gray-700/50'
-            } bg-gradient-to-b ${cardBg(effectivePartsStatus(ro), state.isTotalLoss, state.totalLossReleased)} shadow-2xl shadow-black/40 mb-4`}>
+            } bg-gradient-to-b ${cardBg(effectivePartsStatus(ro), state.isTotalLoss, state.totalLossReleased, state.prestorageActive)} shadow-2xl shadow-black/40 mb-4`}>
 
               {/* Top status accent stripe — sets the visual identity instantly */}
-              <div className={`h-1 bg-gradient-to-r ${statusStripe(effectivePartsStatus(ro), state.isTotalLoss, state.totalLossReleased)}`} />
+              <div className={`h-1 bg-gradient-to-r ${statusStripe(effectivePartsStatus(ro), state.isTotalLoss, state.totalLossReleased, state.prestorageActive)}`} />
+
+              {/* Pre-Storage accruing banner */}
+              {state.prestorageActive && (
+                <div className="bg-orange-500/10 border-b border-orange-500/20 px-4 py-1.5 flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-orange-400 animate-pulse shrink-0" />
+                  <span className="text-xs font-black uppercase tracking-widest text-orange-300">Pre-Storage Accruing</span>
+                  {ro.prestorageStartDate && (
+                    <span className="text-[10px] text-orange-500 ml-auto">
+                      Since {new Date(ro.prestorageStartDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </span>
+                  )}
+                </div>
+              )}
 
               {/* Subtle radial glow accent in top-right (nearly invisible but adds depth) */}
               <div className="absolute top-0 right-0 w-40 h-40 bg-white/[0.02] rounded-full blur-3xl pointer-events-none" />
@@ -1068,6 +1085,12 @@ export default function ProductionBoard() {
                       {state.productionFinalSupplement && (
                         <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-300 flex items-center gap-1">
                           <FileText size={8} /> Final Supp
+                        </span>
+                      )}
+                      {/* Supplement pending — no prestorage yet */}
+                      {!state.prestorageActive && ro.supplements?.some(s => s.status === 'REQUESTED') && (
+                        <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-yellow-500/15 border border-yellow-500/30 text-yellow-300">
+                          <FilePlus size={8} /> Supp Pending
                         </span>
                       )}
                     </div>
@@ -1357,6 +1380,39 @@ export default function ProductionBoard() {
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {/* Pre-Storage toggle — always visible */}
+            <div className={`border rounded-2xl p-3 mb-2 transition-colors duration-300 ${
+              state.prestorageActive
+                ? 'bg-orange-950/60 border-orange-500/60'
+                : 'bg-gray-800/60 border-gray-700/50'
+            }`}>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <div
+                  onClick={() => updateField('prestorageActive', !state.prestorageActive)}
+                  className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex items-center shrink-0 ${
+                    state.prestorageActive ? 'bg-orange-500' : 'bg-gray-700'
+                  }`}
+                >
+                  <motion.div
+                    animate={{ x: state.prestorageActive ? 24 : 2 }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                    className="w-5 h-5 bg-white rounded-full shadow-md absolute"
+                  />
+                </div>
+                <div>
+                  <p className={`text-sm font-semibold flex items-center gap-1.5 ${state.prestorageActive ? 'text-orange-300' : 'text-gray-200'}`}>
+                    <Warehouse size={14} />
+                    Pre-Storage Accruing
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {state.prestorageActive && ro.prestorageStartDate
+                      ? `Since ${new Date(ro.prestorageStartDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+                      : 'Storage charges being billed'}
+                  </p>
+                </div>
+              </label>
+            </div>
 
             {/* Total Loss toggle — always visible */}
             <div className={`border rounded-2xl p-3 mb-2 transition-colors duration-300 ${

@@ -4,10 +4,14 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   FilePlus, FileCheck, Clock, ChevronRight, X, Trash2, Check,
+  FileText, Send, Download, Warehouse,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { supplementsApi } from '@/lib/api'
+import { jsPDF } from 'jspdf'
+import { supplementsApi, prestorageApi, rosApi } from '@/lib/api'
 import Spinner from '@/components/ui/Spinner'
+import Modal from '@/components/ui/Modal'
+import Button from '@/components/ui/Button'
 
 const STATUS_FILTERS = [
   { key: null,          label: 'All' },
@@ -22,11 +26,235 @@ function fmtDate(iso) {
   })
 }
 
+function fmtFullDate(date) {
+  return date.toLocaleDateString('en-US', {
+    month: 'long', day: 'numeric', year: 'numeric',
+  })
+}
+
+// Skip weekends to find nth business day from a given date
+function addBusinessDays(date, n) {
+  const d = new Date(date)
+  let count = 0
+  while (count < n) {
+    d.setDate(d.getDate() + 1)
+    const dow = d.getDay()
+    if (dow !== 0 && dow !== 6) count++
+  }
+  return d
+}
+
+// ── PDF Generator ────────────────────────────────────────────────────────────
+function generatePrestoragePDF(ro) {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
+  const W = doc.internal.pageSize.getWidth()
+  const margin = 25
+  const maxW = W - margin * 2
+
+  const today = new Date()
+  const storageStart = addBusinessDays(today, 2)
+
+  doc.setFontSize(11)
+  doc.setFont('helvetica', 'normal')
+
+  // ── Right-aligned letterhead ──────────────────────────────────────
+  doc.setFont('helvetica', 'bold')
+  doc.text('TOWNE BODY SHOP', W - margin, 22, { align: 'right' })
+  doc.setFont('helvetica', 'normal')
+  doc.text('1298 Stratford Avenue', W - margin, 28, { align: 'right' })
+  doc.text('Stratford, CT 06615', W - margin, 34, { align: 'right' })
+  doc.text('203-375-5288', W - margin, 40, { align: 'right' })
+
+  // ── Date ─────────────────────────────────────────────────────────
+  let y = 58
+  doc.text(fmtFullDate(today), margin, y)
+
+  // ── Addressee block ──────────────────────────────────────────────
+  y = 74
+  doc.text(ro.insuranceCompany || '[Insurance Company]', margin, y)
+
+  y = 88
+  if (ro.claimNumber) { doc.text(ro.claimNumber, margin, y); y += 6 }
+  doc.text(ro.ownerName || '[Customer Name]', margin, y); y += 6
+  const vehicle = [ro.vehicleYear, ro.vehicleMake, ro.vehicleModel].filter(Boolean).join(' ') || '[Year Make Model]'
+  doc.text(vehicle, margin, y)
+
+  // ── Salutation ───────────────────────────────────────────────────
+  y = 118
+  doc.text('To Whom it may concern,', margin, y)
+
+  // ── Paragraph 1 ──────────────────────────────────────────────────
+  y += 9
+  const p1 = 'We are notifying you that there is a pending supplement on this vehicle. In accordance with Connecticut statute 38a-790-7, as the repairer we are requesting a Connecticut licensed appraiser complete the supplement in person at our facility. Our company policy does not permit the use of virtual desk reviews.'
+  const lines1 = doc.splitTextToSize(p1, maxW)
+  doc.text(lines1, margin, y)
+  y += lines1.length * 5.5 + 9
+
+  // ── Paragraph 2 ──────────────────────────────────────────────────
+  const p2 = `In an effort to better service our customers and reduce unnecessary delays, storage charges of $125 for the first five days and $175 beyond the fifth day will be charged on any vehicle that is not inspected within 2 business days of the date of this notification. The initial request was sent today, ${fmtFullDate(today)}. Storage will occur starting ${fmtFullDate(storageStart)}.`
+  const lines2 = doc.splitTextToSize(p2, maxW)
+  doc.text(lines2, margin, y)
+  y += lines2.length * 5.5 + 9
+
+  // ── Paragraph 3 ──────────────────────────────────────────────────
+  const p3 = 'In accordance with Connecticut statute 14-65i, signage explaining the conditions in which storage charges may be imposed is posted in our office. Furthermore, Connecticut law requires that we grant 8 hours of free storage. Our policy provides 2 days of free storage.'
+  const lines3 = doc.splitTextToSize(p3, maxW)
+  doc.text(lines3, margin, y)
+  y += lines3.length * 5.5 + 9
+
+  // ── Paragraph 4 (bold) ───────────────────────────────────────────
+  doc.setFont('helvetica', 'bold')
+  const p4 = 'Failure to comply with this request will result in a formal complaint to the Connecticut Department of Insurance.'
+  const lines4 = doc.splitTextToSize(p4, maxW)
+  doc.text(lines4, margin, y)
+
+  // ── Download ─────────────────────────────────────────────────────
+  const lastName = (ro.ownerName || 'customer').trim().split(/\s+/).pop()
+  doc.save(`${lastName}_prestorage.pdf`)
+
+  return storageStart
+}
+
+// ── Pre-Storage Modal ────────────────────────────────────────────────────────
+function PreStorageModal({ open, onClose, ro }) {
+  const queryClient = useQueryClient()
+  const [forwardToTotal, setForwardToTotal] = useState(false)
+  const [activated, setActivated] = useState(false)
+
+  const today = new Date()
+  const storageStart = addBusinessDays(today, 2)
+
+  const activateMutation = useMutation({
+    mutationFn: (data) => prestorageApi.activate(ro.id, data),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['production'] })
+      queryClient.invalidateQueries({ queryKey: ['supplements-all'] })
+      setActivated(true)
+      const msg = res.totalJobId
+        ? 'Pre-storage activated + job created in Towne Total ✓'
+        : 'Pre-storage activated on Board ✓'
+      toast.success(msg)
+    },
+    onError: (err) => toast.error(err.message || 'Failed to activate pre-storage'),
+  })
+
+  const handleDownloadPDF = () => {
+    generatePrestoragePDF(ro)
+    toast.success('PDF downloaded')
+  }
+
+  const handleActivate = () => {
+    activateMutation.mutate({
+      storageStartDate: storageStart.toISOString(),
+      forwardToTotal,
+    })
+  }
+
+  const vehicle = [ro?.vehicleYear, ro?.vehicleMake, ro?.vehicleModel].filter(Boolean).join(' ')
+
+  return (
+    <Modal open={open} onClose={onClose} title="Generate Pre-Storage Letter">
+      <div className="space-y-4">
+
+        {/* Info preview */}
+        <div className="bg-gray-900/60 border border-gray-700/50 rounded-xl p-3 space-y-1.5">
+          <div className="flex justify-between text-xs">
+            <span className="text-gray-500">Customer</span>
+            <span className="text-gray-200 font-semibold">{ro?.ownerName || '—'}</span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-gray-500">Vehicle</span>
+            <span className="text-gray-200 font-semibold">{vehicle || '—'}</span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-gray-500">Insurance</span>
+            <span className="text-gray-200 font-semibold">{ro?.insuranceCompany || '—'}</span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-gray-500">Claim #</span>
+            <span className="text-gray-200 font-mono">{ro?.claimNumber || '—'}</span>
+          </div>
+          <div className="border-t border-gray-700/50 pt-1.5 mt-1.5 flex justify-between text-xs">
+            <span className="text-gray-500">Letter date</span>
+            <span className="text-gray-100 font-semibold">{fmtFullDate(today)}</span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-gray-500">Storage starts</span>
+            <span className="text-amber-300 font-bold">{fmtFullDate(storageStart)}</span>
+          </div>
+        </div>
+
+        {/* Download button */}
+        <Button
+          variant="primary"
+          onClick={handleDownloadPDF}
+          className="w-full flex items-center justify-center gap-2"
+        >
+          <Download size={15} />
+          Download PDF — {(ro?.ownerName || 'customer').trim().split(/\s+/).pop()}_prestorage.pdf
+        </Button>
+
+        {/* Divider */}
+        <div className="relative flex items-center gap-3">
+          <div className="flex-1 border-t border-gray-700/50" />
+          <span className="text-[10px] text-gray-600 font-bold uppercase tracking-widest shrink-0">Optional</span>
+          <div className="flex-1 border-t border-gray-700/50" />
+        </div>
+
+        {/* Forward to Total toggle */}
+        <button
+          onClick={() => setForwardToTotal(!forwardToTotal)}
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors text-sm ${
+            forwardToTotal
+              ? 'bg-blue-600/15 border-blue-500/40 text-blue-300'
+              : 'bg-gray-800/60 border-gray-700/50 text-gray-400 hover:text-gray-200'
+          }`}
+        >
+          <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
+            forwardToTotal ? 'bg-blue-500 border-blue-400' : 'border-gray-600'
+          }`}>
+            {forwardToTotal && <Check size={10} className="text-white" />}
+          </div>
+          <div className="text-left">
+            <p className="font-semibold leading-tight">Forward to Towne Total</p>
+            <p className="text-[10px] text-gray-500 mt-0.5">Creates a pre-storage job with $125/$175 daily rates</p>
+          </div>
+          <Send size={14} className="ml-auto shrink-0" />
+        </button>
+
+        {/* Activate pre-storage button */}
+        {!activated ? (
+          <Button
+            variant="secondary"
+            loading={activateMutation.isPending}
+            onClick={handleActivate}
+            className="w-full flex items-center justify-center gap-2"
+          >
+            <Warehouse size={15} />
+            Activate Pre-Storage on Board
+          </Button>
+        ) : (
+          <div className="flex items-center justify-center gap-2 py-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm font-bold">
+            <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            Pre-Storage Accruing
+          </div>
+        )}
+
+        <Button variant="ghost" onClick={onClose} className="w-full">
+          Close
+        </Button>
+      </div>
+    </Modal>
+  )
+}
+
+// ── Main Page ────────────────────────────────────────────────────────────────
 export default function Supplements() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [filter, setFilter] = useState(null)  // null = all
+  const [filter, setFilter] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
+  const [prestorageRO, setPrestorageRO] = useState(null)
 
   const { data: supplements = [], isLoading } = useQuery({
     queryKey: ['supplements-all', filter],
@@ -129,28 +357,54 @@ export default function Supplements() {
               className="bg-gray-800/70 border border-gray-700/60 rounded-2xl overflow-hidden"
             >
               {/* RO header row */}
-              <button
-                onClick={() => ro?.id && navigate(`/ros/${ro.id}`)}
-                className="w-full flex items-center justify-between px-4 py-3 border-b border-gray-700/60 hover:bg-gray-700/40 transition-colors group"
-              >
-                <div className="text-left min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-black text-gray-100 font-mono">RO #{roNumber}</span>
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                      {items.length} supplement{items.length !== 1 ? 's' : ''}
+              <div className="border-b border-gray-700/60">
+                <button
+                  onClick={() => ro?.id && navigate(`/ros/${ro.id}`)}
+                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-700/40 transition-colors group"
+                >
+                  <div className="text-left min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-black text-gray-100 font-mono">RO #{roNumber}</span>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                        {items.length} supplement{items.length !== 1 ? 's' : ''}
+                      </span>
+                      {ro?.prestorageActive && (
+                        <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300">
+                          <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                          Pre-Storage
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex gap-2 flex-wrap mt-0.5">
+                      {ro?.insuranceCompany && (
+                        <span className="text-xs text-gray-300">{ro.insuranceCompany}</span>
+                      )}
+                      {ro?.ownerName && (
+                        <span className="text-xs text-gray-400">{ro.ownerName}</span>
+                      )}
+                    </div>
+                  </div>
+                  <ChevronRight size={14} className="text-gray-500 group-hover:text-gray-200 transition-colors shrink-0" />
+                </button>
+
+                {/* Pre-Storage action row */}
+                {ro && (
+                  <div className="px-4 pb-2.5 flex items-center justify-between">
+                    <span className="text-[10px] text-gray-600">
+                      {ro.prestorageActive && ro.prestorageStartDate
+                        ? `Storage accruing since ${fmtDate(ro.prestorageStartDate)}`
+                        : 'No pre-storage active'}
                     </span>
+                    <button
+                      onClick={() => setPrestorageRO(ro)}
+                      className="flex items-center gap-1.5 text-[11px] font-bold text-orange-400 hover:text-orange-300 transition-colors px-2 py-1 rounded-lg hover:bg-orange-500/10"
+                    >
+                      <FileText size={12} />
+                      Generate Pre-Storage
+                    </button>
                   </div>
-                  <div className="flex gap-2 flex-wrap mt-0.5">
-                    {ro?.insuranceCompany && (
-                      <span className="text-xs text-gray-300">{ro.insuranceCompany}</span>
-                    )}
-                    {ro?.ownerName && (
-                      <span className="text-xs text-gray-400">{ro.ownerName}</span>
-                    )}
-                  </div>
-                </div>
-                <ChevronRight size={14} className="text-gray-500 group-hover:text-gray-200 transition-colors shrink-0" />
-              </button>
+                )}
+              </div>
 
               {/* Supplement entries */}
               <div className="divide-y divide-gray-700/50">
@@ -245,6 +499,18 @@ export default function Supplements() {
           ))}
         </div>
       )}
+
+      {/* Pre-Storage Modal */}
+      <AnimatePresence>
+        {prestorageRO && (
+          <PreStorageModal
+            key={prestorageRO.id}
+            open={!!prestorageRO}
+            ro={prestorageRO}
+            onClose={() => setPrestorageRO(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }

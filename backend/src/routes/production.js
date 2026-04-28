@@ -44,6 +44,38 @@ async function createTotalsJob(ro) {
   return res.data.data?.id
 }
 
+async function createPrestorageTotalsJob(ro, storageStartDate) {
+  const token = await getTotalsToken()
+  const dateIn = storageStartDate ? new Date(storageStartDate).toISOString() : new Date().toISOString()
+  const nameParts = (ro.ownerName || '').trim().split(/\s+/)
+  const firstName = nameParts[0] || null
+  const lastName = nameParts.slice(1).join(' ') || null
+
+  const res = await axios.post(
+    `${TOTALS_URL}/api/jobs`,
+    {
+      firstName,
+      lastName,
+      dateIn,
+      dateOut: dateIn,  // same day; user updates dateOut in Towne Total when car leaves
+      year: ro.vehicleYear || null,
+      make: ro.vehicleMake || null,
+      model: ro.vehicleModel || null,
+      color: ro.vehicleColor || null,
+      insuranceCompany: ro.insuranceCompany || null,
+      claimNumber: ro.claimNumber || null,
+      roNumber: ro.roNumber || null,
+      notes: `Pre-Storage — Pending Supplement (RO ${ro.roNumber})`,
+      chargeStorage: true,
+      storageRateFirstCustom: 125,
+      storageRateAfterCustom: 175,
+      charges: [],
+    },
+    { headers: { Authorization: `Bearer ${token}` } }
+  )
+  return res.data.data?.id
+}
+
 const router = express.Router()
 
 // GET /api/production
@@ -157,6 +189,7 @@ router.post('/:roId', requireAuth, async (req, res) => {
     productionSupplementNote,
     isTotalLoss,
     totalLossReleased,
+    prestorageActive,
     assignedTech,
   } = req.body
 
@@ -178,6 +211,7 @@ router.post('/:roId', requireAuth, async (req, res) => {
     if (productionSupplementNote !== undefined) updateData.productionSupplementNote = productionSupplementNote
     if (isTotalLoss !== undefined) updateData.isTotalLoss = Boolean(isTotalLoss)
     if (totalLossReleased !== undefined) updateData.totalLossReleased = Boolean(totalLossReleased)
+    if (prestorageActive !== undefined) updateData.prestorageActive = Boolean(prestorageActive)
     if (assignedTech !== undefined) updateData.assignedTech = assignedTech || null
 
     // Auto-create totals job when flagged total loss for the first time
@@ -214,6 +248,59 @@ router.post('/:roId', requireAuth, async (req, res) => {
     return res.json({ success: true, data: ro })
   } catch (err) {
     console.error('Update production error:', err)
+    return res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// POST /api/production/prestorage/:roId
+// Activate pre-storage on an RO and optionally create a job in Towne Total
+router.post('/prestorage/:roId', requireAuth, async (req, res) => {
+  const roId = parseInt(req.params.roId)
+  const { storageStartDate, forwardToTotal } = req.body
+
+  try {
+    const existing = await prisma.rO.findUnique({ where: { id: roId } })
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'RO not found.' })
+    }
+
+    const updateData = {
+      prestorageActive: true,
+      prestorageStartDate: storageStartDate ? new Date(storageStartDate) : null,
+      productionUpdatedAt: new Date(),
+    }
+
+    let totalJobId = null
+    if (forwardToTotal) {
+      try {
+        totalJobId = await createPrestorageTotalsJob(existing, storageStartDate)
+      } catch (e) {
+        console.error('Failed to create prestorage totals job:', e.message)
+        // Non-fatal — board update still goes through
+      }
+    }
+
+    const ro = await prisma.rO.update({
+      where: { id: roId },
+      data: updateData,
+      include: {
+        vendor: true,
+        parts: { select: { id: true, isReceived: true, finishStatus: true } },
+        supplements: { select: { id: true, number: true, status: true } },
+      },
+    })
+
+    await prisma.activityLog.create({
+      data: {
+        roId,
+        eventType: 'PRODUCTION_UPDATED',
+        message: `Pre-storage activated on RO ${existing.roNumber}${totalJobId ? ' — job created in Towne Total' : ''}`,
+      },
+    })
+
+    return res.json({ success: true, data: ro, totalJobId })
+  } catch (err) {
+    console.error('Activate prestorage error:', err)
     return res.status(500).json({ success: false, error: err.message })
   }
 })

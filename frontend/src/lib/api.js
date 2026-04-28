@@ -183,6 +183,11 @@ export const supplementsApi = {
   remove: (id) => unwrap(api.delete(`/supplements/${id}`)),
 }
 
+// ── Pre-Storage ────────────────────────────────────────────────────────────────
+export const prestorageApi = {
+  activate: (roId, data) => unwrap(api.post(`/production/prestorage/${roId}`, data)),
+}
+
 // ── BMW Payment Tracker ───────────────────────────────────────────────────────
 export const bmwApi = {
   list: (pin, month, year) =>
