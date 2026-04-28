@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Store, Users, Plus, Trash2, UserX, ToggleLeft, ToggleRight, Star } from 'lucide-react'
+import { Store, Users, Plus, Trash2, UserX, ToggleLeft, ToggleRight, Star, Pencil, KeyRound, Eye, EyeOff } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { vendorsApi, usersApi } from '@/lib/api'
 import Button from '@/components/ui/Button'
@@ -13,25 +13,51 @@ import Spinner from '@/components/ui/Spinner'
 import EmptyState from '@/components/ui/EmptyState'
 
 // ── Vendors ────────────────────────────────────────────────────────────────────
-function AddVendorModal({ open, onClose }) {
+function VendorModal({ open, onClose, vendor = null }) {
   const queryClient = useQueryClient()
-  const [form, setForm] = useState({ name: '', phone: '', email: '', make: '' })
+  const isEdit = !!vendor
+
+  const [form, setForm] = useState(
+    vendor
+      ? { name: vendor.name, phone: vendor.phone || '', email: vendor.email || '', make: vendor.make || '' }
+      : { name: '', phone: '', email: '', make: '' }
+  )
+
+  // Reset form when vendor changes (switching between edit targets)
+  const resetForm = (v) => {
+    if (v) {
+      setForm({ name: v.name, phone: v.phone || '', email: v.email || '', make: v.make || '' })
+    } else {
+      setForm({ name: '', phone: '', email: '', make: '' })
+    }
+  }
+
+  // Sync when vendor prop changes
+  const prevVendorId = vendor?.id
+  if (vendor?.id !== prevVendorId) resetForm(vendor)
 
   const mutation = useMutation({
-    mutationFn: vendorsApi.create,
+    mutationFn: isEdit
+      ? (data) => vendorsApi.update(vendor.id, data)
+      : vendorsApi.create,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vendors'] })
-      toast.success('Vendor added')
-      setForm({ name: '', phone: '', email: '', make: '' })
+      toast.success(isEdit ? 'Vendor updated' : 'Vendor added')
+      if (!isEdit) setForm({ name: '', phone: '', email: '', make: '' })
       onClose()
     },
-    onError: (err) => toast.error(err.message || 'Failed to add vendor'),
+    onError: (err) => toast.error(err.message || 'Failed to save vendor'),
   })
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
 
+  const handleSubmit = () => {
+    if (!form.name.trim()) { toast.error('Name is required'); return }
+    mutation.mutate(form)
+  }
+
   return (
-    <Modal open={open} onClose={onClose} title="Add Vendor">
+    <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Vendor' : 'Add Vendor'}>
       <div className="space-y-4">
         <Input label="Vendor Name *" value={form.name} onChange={set('name')} placeholder="BMW of Bridgeport, LKQ, etc." autoFocus />
         <Input label="Vehicle Make (for auto-select)" value={form.make} onChange={set('make')} placeholder="BMW, Toyota, Ford…" />
@@ -42,13 +68,10 @@ function AddVendorModal({ open, onClose }) {
           <Button
             variant="primary"
             loading={mutation.isPending}
-            onClick={() => {
-              if (!form.name.trim()) { toast.error('Name is required'); return }
-              mutation.mutate(form)
-            }}
+            onClick={handleSubmit}
             className="flex-1"
           >
-            Add Vendor
+            {isEdit ? 'Save Changes' : 'Add Vendor'}
           </Button>
         </div>
       </div>
@@ -59,6 +82,7 @@ function AddVendorModal({ open, onClose }) {
 function VendorSection() {
   const queryClient = useQueryClient()
   const [addOpen, setAddOpen] = useState(false)
+  const [editVendor, setEditVendor] = useState(null)
 
   const { data: vendors, isLoading } = useQuery({
     queryKey: ['vendors'],
@@ -132,6 +156,15 @@ function VendorSection() {
                 {v.email && <p className="text-xs text-gray-500">{v.email}</p>}
               </div>
 
+              {/* Edit */}
+              <button
+                onClick={() => setEditVendor(v)}
+                className="p-1.5 text-gray-600 hover:text-blue-400 transition-colors rounded-lg"
+                title="Edit vendor"
+              >
+                <Pencil size={15} />
+              </button>
+
               {/* Star = set as default */}
               <button
                 onClick={() => updateMutation.mutate({ id: v.id, isDefault: !v.isDefault })}
@@ -173,51 +206,158 @@ function VendorSection() {
         </div>
       )}
 
-      <AddVendorModal open={addOpen} onClose={() => setAddOpen(false)} />
+      {/* Add modal */}
+      <VendorModal open={addOpen} onClose={() => setAddOpen(false)} />
+
+      {/* Edit modal */}
+      <AnimatePresence>
+        {editVendor && (
+          <VendorModal
+            key={editVendor.id}
+            open={!!editVendor}
+            vendor={editVendor}
+            onClose={() => setEditVendor(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }
 
 // ── Users ──────────────────────────────────────────────────────────────────────
-function AddUserModal({ open, onClose }) {
+function UserModal({ open, onClose, user = null }) {
   const queryClient = useQueryClient()
-  const [form, setForm] = useState({ name: '', username: '', password: '', role: 'USER' })
+  const isEdit = !!user
+
+  const [form, setForm] = useState(
+    user
+      ? { name: user.name || '', username: user.username, role: user.role, newPassword: '', confirmPassword: '' }
+      : { name: '', username: '', password: '', role: 'USER' }
+  )
+  const [showPw, setShowPw] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
 
   const mutation = useMutation({
-    mutationFn: usersApi.create,
+    mutationFn: isEdit
+      ? (data) => usersApi.update(user.id, data)
+      : usersApi.create,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
-      toast.success('User created')
-      setForm({ name: '', username: '', password: '', role: 'USER' })
+      toast.success(isEdit ? 'User updated' : 'User created')
+      if (!isEdit) setForm({ name: '', username: '', password: '', role: 'USER' })
       onClose()
     },
-    onError: (err) => toast.error(err.message || 'Failed to create user'),
+    onError: (err) => toast.error(err.message || 'Failed to save user'),
   })
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
 
   const handleSubmit = () => {
-    if (!form.username.trim() || !form.password.trim()) {
-      toast.error('Username and password are required')
-      return
+    if (isEdit) {
+      // Validate password change if provided
+      if (form.newPassword) {
+        if (form.newPassword.length < 6) { toast.error('Password must be at least 6 characters'); return }
+        if (form.newPassword !== form.confirmPassword) { toast.error('Passwords do not match'); return }
+      }
+      const payload = {
+        name: form.name,
+        username: form.username,
+        role: form.role,
+      }
+      if (form.newPassword) payload.password = form.newPassword
+      mutation.mutate(payload)
+    } else {
+      if (!form.username.trim() || !form.password.trim()) {
+        toast.error('Username and password are required')
+        return
+      }
+      if (form.password.length < 6) { toast.error('Password must be at least 6 characters'); return }
+      mutation.mutate(form)
     }
-    mutation.mutate(form)
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Add User">
+    <Modal open={open} onClose={onClose} title={isEdit ? `Edit ${user.name || user.username}` : 'Add User'}>
       <div className="space-y-4">
-        <Input label="Full Name" value={form.name} onChange={set('name')} placeholder="John Smith" />
-        <Input label="Username *" value={form.username} onChange={set('username')} placeholder="jsmith" autoCapitalize="none" />
-        <Input label="Password *" type="password" value={form.password} onChange={set('password')} placeholder="Min 6 characters" />
+        <Input label="Full Name" value={form.name} onChange={set('name')} placeholder="John Smith" autoFocus={!isEdit} />
+        <Input
+          label="Username *"
+          value={form.username}
+          onChange={set('username')}
+          placeholder="jsmith"
+          autoCapitalize="none"
+          autoFocus={isEdit}
+        />
         <Select label="Role" value={form.role} onChange={set('role')}>
           <option value="USER">User (Staff)</option>
           <option value="ADMIN">Admin</option>
         </Select>
+
+        {isEdit ? (
+          <>
+            <div className="border-t border-gray-700/50 pt-4">
+              <p className="text-xs text-gray-500 mb-3">Reset password — leave blank to keep current</p>
+              <div className="space-y-3">
+                <div className="relative">
+                  <Input
+                    label="New Password"
+                    type={showPw ? 'text' : 'password'}
+                    value={form.newPassword}
+                    onChange={set('newPassword')}
+                    placeholder="Min 6 characters"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPw(!showPw)}
+                    className="absolute right-3 top-[34px] text-gray-500 hover:text-gray-300 transition-colors"
+                  >
+                    {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+                {form.newPassword && (
+                  <div className="relative">
+                    <Input
+                      label="Confirm Password"
+                      type={showConfirm ? 'text' : 'password'}
+                      value={form.confirmPassword}
+                      onChange={set('confirmPassword')}
+                      placeholder="Repeat new password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirm(!showConfirm)}
+                      className="absolute right-3 top-[34px] text-gray-500 hover:text-gray-300 transition-colors"
+                    >
+                      {showConfirm ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="relative">
+            <Input
+              label="Password *"
+              type={showPw ? 'text' : 'password'}
+              value={form.password}
+              onChange={set('password')}
+              placeholder="Min 6 characters"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPw(!showPw)}
+              className="absolute right-3 top-[34px] text-gray-500 hover:text-gray-300 transition-colors"
+            >
+              {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
+            </button>
+          </div>
+        )}
+
         <div className="flex gap-3 pt-2">
           <Button variant="secondary" onClick={onClose} className="flex-1">Cancel</Button>
           <Button variant="primary" loading={mutation.isPending} onClick={handleSubmit} className="flex-1">
-            Create User
+            {isEdit ? 'Save Changes' : 'Create User'}
           </Button>
         </div>
       </div>
@@ -228,6 +368,7 @@ function AddUserModal({ open, onClose }) {
 function UsersSection() {
   const queryClient = useQueryClient()
   const [addOpen, setAddOpen] = useState(false)
+  const [editUser, setEditUser] = useState(null)
 
   const { data: users, isLoading } = useQuery({
     queryKey: ['users'],
@@ -282,6 +423,16 @@ function UsersSection() {
                 </div>
                 <p className="text-xs text-gray-500 mt-0.5">@{u.username}</p>
               </div>
+
+              {/* Edit / reset password */}
+              <button
+                onClick={() => setEditUser(u)}
+                className="p-1.5 text-gray-600 hover:text-blue-400 transition-colors rounded-lg"
+                title="Edit user / reset password"
+              >
+                <Pencil size={15} />
+              </button>
+
               <button
                 onClick={() => {
                   if (window.confirm(`Remove user "${u.name || u.username}"?`)) {
@@ -297,7 +448,18 @@ function UsersSection() {
         </div>
       )}
 
-      <AddUserModal open={addOpen} onClose={() => setAddOpen(false)} />
+      <UserModal open={addOpen} onClose={() => setAddOpen(false)} />
+
+      <AnimatePresence>
+        {editUser && (
+          <UserModal
+            key={editUser.id}
+            open={!!editUser}
+            user={editUser}
+            onClose={() => setEditUser(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }

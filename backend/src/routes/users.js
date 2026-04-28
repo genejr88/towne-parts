@@ -11,12 +11,13 @@ function formatUser(u) {
   return {
     id: u.id,
     username: u.username,
+    name: u.name || null,
     role: u.role,
     createdAt: u.createdAt,
   }
 }
 
-const USER_SELECT = { id: true, username: true, role: true, createdAt: true }
+const USER_SELECT = { id: true, username: true, name: true, role: true, createdAt: true }
 
 // GET /api/users — list all users (admin only)
 router.get('/', requireAuth, requireAdmin, async (req, res) => {
@@ -34,7 +35,7 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
 
 // POST /api/users — create user (admin only)
 router.post('/', requireAuth, requireAdmin, async (req, res) => {
-  const { username, password, role } = req.body
+  const { username, password, role, name } = req.body
 
   if (!username || !password) {
     return res.status(400).json({ success: false, error: 'Username and password are required.' })
@@ -58,6 +59,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
     const user = await prisma.user.create({
       data: {
         username: identifier,
+        name: name?.trim() || null,
         password: hashed,
         role: role || 'USER',
       },
@@ -74,7 +76,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
 // PUT /api/users/:id — update user (admin only)
 router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id)
-  const { username, password, role } = req.body
+  const { username, password, role, name } = req.body
 
   const validRoles = ['ADMIN', 'USER']
   if (role && !validRoles.includes(role)) {
@@ -99,6 +101,7 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
 
     const updateData = {}
     if (username) updateData.username = username.toLowerCase().trim()
+    if (name !== undefined) updateData.name = name?.trim() || null
     if (role) updateData.role = role
     if (password) updateData.password = await bcrypt.hash(password, SALT_ROUNDS)
 

@@ -135,6 +135,7 @@ export const vendorsApi = {
 export const usersApi = {
   list: () => unwrap(api.get('/users')),
   create: (data) => unwrap(api.post('/users', data)),
+  update: (id, data) => unwrap(api.put(`/users/${id}`, data)),
   remove: (id) => unwrap(api.delete(`/users/${id}`)),
 }
 
