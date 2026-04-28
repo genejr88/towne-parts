@@ -3,12 +3,28 @@ import { PackageCheck, Layers, RotateCcw, Settings, Package, FilePlus } from 'lu
 import { useAuth } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 
+function BmwIcon({ size = 22 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="11" fill="#111827" />
+      <path d="M12 2A10 10 0 0 0 2 12h10V2z"   fill="#0065B3" />
+      <path d="M12 22A10 10 0 0 0 22 12H12v10z" fill="#0065B3" />
+      <path d="M22 12A10 10 0 0 0 12 2v10h10z"  fill="#f0f0f0" />
+      <path d="M2 12A10 10 0 0 0 12 22V12H2z"   fill="#f0f0f0" />
+      <circle cx="12" cy="12" r="10" fill="none" stroke="#111827" strokeWidth="1.5" />
+      <line x1="12" y1="2"  x2="12" y2="22" stroke="#111827" strokeWidth="1" />
+      <line x1="2"  y1="12" x2="22" y2="12" stroke="#111827" strokeWidth="1" />
+    </svg>
+  )
+}
+
 const navItems = [
   { to: '/ros',         icon: PackageCheck, label: 'Parts' },
   { to: '/board',       icon: Layers,       label: 'Board' },
   { to: '/supplements', icon: FilePlus,     label: 'Supps' },
   { to: '/src',         icon: RotateCcw,    label: 'S.R.C.' },
   { to: '/inventory',   icon: Package,      label: 'Inventory' },
+  { to: '/vault',       icon: BmwIcon,      label: 'BMW' },
   { to: '/admin',       icon: Settings,     label: 'Admin' },
 ]
 

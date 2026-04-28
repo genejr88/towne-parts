@@ -68,7 +68,7 @@ export default function Header() {
     setPinError('')
     try {
       await privateApi.verify(pinValue.trim())
-      sessionStorage.setItem('private_pin', pinValue.trim())
+      localStorage.setItem('private_pin', pinValue.trim())
       setPinModalOpen(false)
       setPinValue('')
       navigate('/vault')

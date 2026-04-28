@@ -1,11 +1,10 @@
-import { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Lock, Plus, Pencil, Trash2, Check, X, ChevronLeft, ChevronRight,
   Upload, Camera, FileText, Image, BarChart3, ArrowLeftRight,
-  DollarSign, Clock, CheckCircle2, Printer,
+  DollarSign, Clock, CheckCircle2, Printer, Eye, EyeOff,
 } from 'lucide-react'
 import { bmwApi, privateApi } from '@/lib/api'
 import Spinner from '@/components/ui/Spinner'
@@ -455,14 +454,84 @@ function PrivateFileCard({ file, pin, onDelete }) {
   )
 }
 
+// ── PIN entry screen ───────────────────────────────────────────────────────────
+function PinEntryScreen({ onUnlock }) {
+  const [value,   setValue]   = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error,   setError]   = useState('')
+  const [show,    setShow]    = useState(false)
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!value.trim() || loading) return
+    setLoading(true)
+    setError('')
+    try {
+      await privateApi.verify(value.trim())
+      localStorage.setItem('private_pin', value.trim())
+      onUnlock(value.trim())
+    } catch {
+      setError('Incorrect PIN')
+      setValue('')
+    }
+    setLoading(false)
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[70vh] px-6">
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="w-full max-w-xs"
+      >
+        <div className="flex flex-col items-center gap-3 mb-8">
+          <svg width="56" height="56" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="11" fill="#111827" />
+            <path d="M12 2A10 10 0 0 0 2 12h10V2z"   fill="#0065B3" />
+            <path d="M12 22A10 10 0 0 0 22 12H12v10z" fill="#0065B3" />
+            <path d="M22 12A10 10 0 0 0 12 2v10h10z"  fill="#f0f0f0" />
+            <path d="M2 12A10 10 0 0 0 12 22V12H2z"   fill="#f0f0f0" />
+            <circle cx="12" cy="12" r="10" fill="none" stroke="#111827" strokeWidth="1.5" />
+            <line x1="12" y1="2"  x2="12" y2="22" stroke="#111827" strokeWidth="1" />
+            <line x1="2"  y1="12" x2="22" y2="12" stroke="#111827" strokeWidth="1" />
+          </svg>
+          <h1 className="text-xl font-black text-gray-100">BMW Tracker</h1>
+          <p className="text-sm text-gray-500">Enter PIN to unlock</p>
+        </div>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          <div className="relative">
+            <input
+              type={show ? 'text' : 'password'}
+              value={value}
+              onChange={e => { setValue(e.target.value); setError('') }}
+              placeholder="PIN"
+              autoFocus
+              className="w-full bg-gray-800 border border-gray-700/60 rounded-xl px-4 py-3.5 text-center text-lg tracking-widest text-gray-100 placeholder-gray-600 focus:outline-none focus:border-blue-500/50 transition-colors pr-11"
+              autoComplete="off"
+            />
+            <button type="button" onClick={() => setShow(s => !s)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400 transition-colors">
+              {show ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
+          {error && <p className="text-xs text-red-400 text-center">{error}</p>}
+          <button type="submit" disabled={!value.trim() || loading}
+            className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-sm font-semibold text-white transition-colors">
+            {loading ? 'Checking…' : 'Unlock'}
+          </button>
+        </form>
+      </motion.div>
+    </div>
+  )
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 const TABS = ['tracker', 'compare', 'files']
 const MONTHS = generateMonthList()
 
 export default function SecureVault() {
-  const navigate   = useNavigate()
   const queryClient = useQueryClient()
-  const pin = sessionStorage.getItem('private_pin')
+  const [pin, setPin] = useState(() => localStorage.getItem('private_pin'))
 
   const [activeTab, setActiveTab]   = useState('tracker')
   const [monthIdx, setMonthIdx]     = useState(() => MONTHS.length - 1) // default to latest
@@ -476,8 +545,6 @@ export default function SecureVault() {
   const [caption, setCaption]       = useState('')
   const [uploading, setUploading]   = useState(false)
   const [uploadError, setUploadError] = useState('')
-
-  useEffect(() => { if (!pin) navigate('/', { replace: true }) }, [pin, navigate])
 
   const { month, year } = MONTHS[monthIdx] || {}
 
@@ -533,8 +600,8 @@ export default function SecureVault() {
   }
 
   const handleLock = () => {
-    sessionStorage.removeItem('private_pin')
-    navigate('/', { replace: true })
+    localStorage.removeItem('private_pin')
+    setPin(null)
   }
 
   // Stats for current month
@@ -543,7 +610,7 @@ export default function SecureVault() {
   const outstanding = invoiced - received
   const pctReceived = invoiced > 0 ? Math.round((received / invoiced) * 100) : 0
 
-  if (!pin) return null
+  if (!pin) return <PinEntryScreen onUnlock={setPin} />
 
   return (
     <div className="px-4 py-5 pb-24 max-w-3xl mx-auto">
