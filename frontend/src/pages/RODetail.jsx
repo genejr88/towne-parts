@@ -1,5 +1,20 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+
+function BmwRoundel({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className="shrink-0">
+      <circle cx="12" cy="12" r="11" fill="#111827" />
+      <path d="M12 2A10 10 0 0 0 2 12h10V2z"   fill="#0065B3" />
+      <path d="M12 22A10 10 0 0 0 22 12H12v10z" fill="#0065B3" />
+      <path d="M22 12A10 10 0 0 0 12 2v10h10z"  fill="#f0f0f0" />
+      <path d="M2 12A10 10 0 0 0 12 22V12H2z"   fill="#f0f0f0" />
+      <circle cx="12" cy="12" r="10" fill="none" stroke="#1f2937" strokeWidth="1.5" />
+      <line x1="12" y1="2"  x2="12" y2="22" stroke="#1f2937" strokeWidth="1" />
+      <line x1="2"  y1="12" x2="22" y2="12" stroke="#1f2937" strokeWidth="1" />
+    </svg>
+  )
+}
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -61,6 +76,7 @@ function EditROModal({ open, onClose, ro }) {
     vehicleColor:     ro.vehicleColor || '',
     vin:              ro.vin || '',
     vendorId:         ro.vendorId?.toString() || '',
+    isBmw:            ro.isBmw || false,
     // Customer
     ownerName:        ro.ownerName || '',
     ownerPhone:       ro.ownerPhone || '',
@@ -87,6 +103,7 @@ function EditROModal({ open, onClose, ro }) {
         vehicleColor:     ro.vehicleColor || '',
         vin:              ro.vin || '',
         vendorId:         ro.vendorId?.toString() || '',
+        isBmw:            ro.isBmw || false,
         ownerName:        ro.ownerName || '',
         ownerPhone:       ro.ownerPhone || '',
         ownerPhone2:      ro.ownerPhone2 || '',
@@ -128,6 +145,7 @@ function EditROModal({ open, onClose, ro }) {
     vehicleColor:     form.vehicleColor || null,
     vin:              form.vin || null,
     vendorId:         form.vendorId || null,
+    isBmw:            form.isBmw,
     ownerName:        form.ownerName || null,
     ownerPhone:       form.ownerPhone || null,
     ownerPhone2:      form.ownerPhone2 || null,
@@ -161,6 +179,20 @@ function EditROModal({ open, onClose, ro }) {
           <option value="">— None —</option>
           {vendors?.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
         </Select>
+
+        {/* BMW flag */}
+        <button
+          type="button"
+          onClick={() => setForm((f) => ({ ...f, isBmw: !f.isBmw }))}
+          className={`w-full flex items-center gap-2.5 px-4 py-3 rounded-xl border transition-colors text-sm font-semibold ${
+            form.isBmw
+              ? 'bg-blue-600/20 border-blue-500/50 text-blue-300'
+              : 'bg-gray-800/60 border-gray-700/50 text-gray-500 hover:text-gray-300'
+          }`}
+        >
+          <BmwRoundel size={18} />
+          {form.isBmw ? 'BMW Job ✓' : 'Mark as BMW Job'}
+        </button>
 
         {/* ── Customer / Owner ── */}
         <EditSection icon={User} label="Customer / Owner" />
@@ -901,9 +933,15 @@ export default function RODetail() {
           <ArrowLeft size={20} />
         </button>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-base font-bold text-gray-100 font-mono">{ro.roNumber}</h1>
             <PartsBadge status={ro.partsStatus} />
+            {ro.isBmw && (
+              <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-blue-600/20 border border-blue-500/40 text-blue-300">
+                <BmwRoundel size={11} />
+                BMW
+              </span>
+            )}
           </div>
           <p className="text-xs text-gray-500 truncate">
             {[ro.vehicleYear, ro.vehicleMake, ro.vehicleModel].filter(Boolean).join(' ')}

@@ -106,6 +106,7 @@ router.post('/', requireAuth, async (req, res) => {
     ownerName,
     insuranceCompany,
     claimNumber,
+    isBmw,
   } = req.body
 
   if (!roNumber) {
@@ -130,6 +131,7 @@ router.post('/', requireAuth, async (req, res) => {
         ownerName:        ownerName        || null,
         insuranceCompany: insuranceCompany || null,
         claimNumber:      claimNumber      || null,
+        isBmw:            isBmw !== undefined ? Boolean(isBmw) : (vehicleMake?.trim().toLowerCase() === 'bmw'),
       },
       include: { vendor: true },
     })
@@ -187,6 +189,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     productionNextStep,
     productionFinalSupplement,
     productionSupplementNote,
+    isBmw,
     isTotalLoss,
     assignedTech,
     // Customer / Owner
@@ -233,6 +236,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     if (productionNextStep !== undefined) updateData.productionNextStep = productionNextStep
     if (productionFinalSupplement !== undefined) updateData.productionFinalSupplement = Boolean(productionFinalSupplement)
     if (productionSupplementNote !== undefined) updateData.productionSupplementNote = productionSupplementNote
+    if (isBmw !== undefined) updateData.isBmw = Boolean(isBmw)
     if (isTotalLoss !== undefined) updateData.isTotalLoss = Boolean(isTotalLoss)
     if (assignedTech !== undefined) updateData.assignedTech = assignedTech || null
 

@@ -55,6 +55,7 @@ model RO {
   productionFinalSupplement Boolean     @default(false)
   productionSupplementNote String?
   productionUpdatedAt     DateTime?
+  isBmw                   Boolean       @default(false)
   isTotalLoss             Boolean       @default(false)
   totalLossReleased       Boolean       @default(false)
   totalLossJobId          String?

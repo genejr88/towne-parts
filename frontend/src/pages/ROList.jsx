@@ -23,18 +23,35 @@ const FILTER_TABS = [
   { key: 'archived', label: 'Archived' },
 ]
 
+function BmwRoundel({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className="shrink-0">
+      <circle cx="12" cy="12" r="11" fill="#111827" />
+      <path d="M12 2A10 10 0 0 0 2 12h10V2z"   fill="#0065B3" />
+      <path d="M12 22A10 10 0 0 0 22 12H12v10z" fill="#0065B3" />
+      <path d="M22 12A10 10 0 0 0 12 2v10h10z"  fill="#f0f0f0" />
+      <path d="M2 12A10 10 0 0 0 12 22V12H2z"   fill="#f0f0f0" />
+      <circle cx="12" cy="12" r="10" fill="none" stroke="#1f2937" strokeWidth="1.5" />
+      <line x1="12" y1="2"  x2="12" y2="22" stroke="#1f2937" strokeWidth="1" />
+      <line x1="2"  y1="12" x2="22" y2="12" stroke="#1f2937" strokeWidth="1" />
+    </svg>
+  )
+}
+
 function ROCard({ ro, onClick, onUnarchive }) {
-  const statusBg = {
-    MISSING: 'border-l-red-500',
-    ACKNOWLEDGED: 'border-l-amber-500',
-    ALL_HERE: 'border-l-emerald-500',
-  }[ro.partsStatus] || 'border-l-gray-600'
+  const statusBg = ro.isBmw
+    ? 'border-l-blue-500'
+    : ({
+        MISSING: 'border-l-red-500',
+        ACKNOWLEDGED: 'border-l-amber-500',
+        ALL_HERE: 'border-l-emerald-500',
+      }[ro.partsStatus] || 'border-l-gray-600')
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`bg-gray-800/80 border border-gray-700/60 rounded-xl border-l-4 overflow-hidden ${statusBg}`}
+      className={`border border-gray-700/60 rounded-xl border-l-4 overflow-hidden ${statusBg} ${ro.isBmw ? 'bg-blue-950/30' : 'bg-gray-800/80'}`}
     >
       <div
         onClick={onClick}
@@ -47,6 +64,12 @@ function ROCard({ ro, onClick, onUnarchive }) {
                 {ro.roNumber}
               </span>
               <PartsBadge status={ro.partsStatus} />
+              {ro.isBmw && (
+                <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-blue-600/20 border border-blue-500/40 text-blue-300">
+                  <BmwRoundel size={11} />
+                  BMW
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-1.5 text-sm text-gray-400 mb-1">
               <Car size={13} className="shrink-0" />
@@ -97,6 +120,7 @@ const EMPTY_FORM = {
   roNumber: '', vehicleYear: '', vehicleMake: '', vehicleModel: '',
   vehicleColor: '', vin: '', vendorId: '',
   ownerName: '', insuranceCompany: '', claimNumber: '',
+  isBmw: false,
 }
 
 function CreateROModal({ open, onClose }) {
@@ -133,15 +157,15 @@ function CreateROModal({ open, onClose }) {
     }
   }, [vendors, open])
 
-  // Auto-select vendor by make when vehicleMake changes
+  // Auto-select vendor by make + auto-flag BMW when vehicleMake changes
   useEffect(() => {
-    if (!vendors?.length || !form.vehicleMake?.trim()) return
-    const match = vendors.find(
-      (v) => v.make && v.make.toLowerCase() === form.vehicleMake.trim().toLowerCase()
-    )
-    if (match) {
-      setForm((f) => ({ ...f, vendorId: String(match.id) }))
-    }
+    if (!form.vehicleMake?.trim()) return
+    const make = form.vehicleMake.trim().toLowerCase()
+    const isBmw = make === 'bmw'
+    setForm((f) => ({ ...f, isBmw }))
+    if (!vendors?.length) return
+    const match = vendors.find((v) => v.make && v.make.toLowerCase() === make)
+    if (match) setForm((f) => ({ ...f, vendorId: String(match.id), isBmw }))
   }, [form.vehicleMake, vendors])
 
   const mutation = useMutation({
@@ -174,6 +198,7 @@ function CreateROModal({ open, onClose }) {
       ownerName:        form.ownerName        || null,
       insuranceCompany: form.insuranceCompany || null,
       claimNumber:      form.claimNumber      || null,
+      isBmw:            form.isBmw,
     })
   }
 
@@ -232,6 +257,20 @@ function CreateROModal({ open, onClose }) {
           <option value="">— Select vendor —</option>
           {vendors?.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
         </Select>
+
+        {/* BMW flag */}
+        <button
+          type="button"
+          onClick={() => setForm((f) => ({ ...f, isBmw: !f.isBmw }))}
+          className={`w-full flex items-center gap-2.5 px-4 py-3 rounded-xl border transition-colors text-sm font-semibold ${
+            form.isBmw
+              ? 'bg-blue-600/20 border-blue-500/50 text-blue-300'
+              : 'bg-gray-800/60 border-gray-700/50 text-gray-500 hover:text-gray-300'
+          }`}
+        >
+          <BmwRoundel size={18} />
+          {form.isBmw ? 'BMW Job ✓' : 'Mark as BMW Job'}
+        </button>
 
         <div className="flex gap-3 pt-2">
           <Button variant="secondary" type="button" onClick={handleClose} className="flex-1">
