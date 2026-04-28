@@ -27,6 +27,7 @@ model Vendor {
   name      String   @unique
   phone     String?
   email     String?
+  make      String?
   isActive  Boolean  @default(true)
   isDefault Boolean  @default(false)
   createdAt DateTime @default(now())

@@ -24,7 +24,7 @@ router.get('/', requireAuth, async (req, res) => {
 
 // POST /api/vendors — create vendor (admin only)
 router.post('/', requireAuth, requireAdmin, async (req, res) => {
-  const { name, phone, email, isDefault } = req.body
+  const { name, phone, email, make, isDefault } = req.body
 
   if (!name || !name.trim()) {
     return res.status(400).json({ success: false, error: 'Vendor name is required.' })
@@ -46,6 +46,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
         name:      name.trim(),
         phone:     phone?.trim()  || null,
         email:     email?.trim()  || null,
+        make:      make?.trim()   || null,
         isDefault: Boolean(isDefault),
       },
     })
@@ -60,7 +61,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
 // PUT /api/vendors/:id — update vendor
 router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id)
-  const { name, phone, email, isActive, isDefault } = req.body
+  const { name, phone, email, make, isActive, isDefault } = req.body
 
   try {
     const existing = await prisma.vendor.findUnique({ where: { id } })
@@ -79,6 +80,7 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
     if (name      !== undefined) updateData.name      = name.trim()
     if (phone     !== undefined) updateData.phone     = phone?.trim() || null
     if (email     !== undefined) updateData.email     = email?.trim() || null
+    if (make      !== undefined) updateData.make      = make?.trim()  || null
     if (isActive  !== undefined) updateData.isActive  = Boolean(isActive)
     if (isDefault !== undefined) updateData.isDefault = Boolean(isDefault)
 

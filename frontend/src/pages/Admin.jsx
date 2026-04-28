@@ -15,14 +15,14 @@ import EmptyState from '@/components/ui/EmptyState'
 // ── Vendors ────────────────────────────────────────────────────────────────────
 function AddVendorModal({ open, onClose }) {
   const queryClient = useQueryClient()
-  const [form, setForm] = useState({ name: '', phone: '', email: '' })
+  const [form, setForm] = useState({ name: '', phone: '', email: '', make: '' })
 
   const mutation = useMutation({
     mutationFn: vendorsApi.create,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vendors'] })
       toast.success('Vendor added')
-      setForm({ name: '', phone: '', email: '' })
+      setForm({ name: '', phone: '', email: '', make: '' })
       onClose()
     },
     onError: (err) => toast.error(err.message || 'Failed to add vendor'),
@@ -33,7 +33,8 @@ function AddVendorModal({ open, onClose }) {
   return (
     <Modal open={open} onClose={onClose} title="Add Vendor">
       <div className="space-y-4">
-        <Input label="Vendor Name *" value={form.name} onChange={set('name')} placeholder="LKQ, Copart, etc." autoFocus />
+        <Input label="Vendor Name *" value={form.name} onChange={set('name')} placeholder="BMW of Bridgeport, LKQ, etc." autoFocus />
+        <Input label="Vehicle Make (for auto-select)" value={form.make} onChange={set('make')} placeholder="BMW, Toyota, Ford…" />
         <Input label="Phone" type="tel" value={form.phone} onChange={set('phone')} placeholder="(555) 555-5555" />
         <Input label="Email" type="email" value={form.email} onChange={set('email')} placeholder="orders@vendor.com" />
         <div className="flex gap-3 pt-2">
@@ -122,6 +123,11 @@ function VendorSection() {
                   )}
                   {!v.isActive && <Badge variant="gray">Inactive</Badge>}
                 </div>
+                {v.make && (
+                  <span className="inline-block text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-300 mt-0.5">
+                    {v.make}
+                  </span>
+                )}
                 {v.phone && <p className="text-xs text-gray-500 mt-0.5">{v.phone}</p>}
                 {v.email && <p className="text-xs text-gray-500">{v.email}</p>}
               </div>

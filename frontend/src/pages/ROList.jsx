@@ -133,6 +133,17 @@ function CreateROModal({ open, onClose }) {
     }
   }, [vendors, open])
 
+  // Auto-select vendor by make when vehicleMake changes
+  useEffect(() => {
+    if (!vendors?.length || !form.vehicleMake?.trim()) return
+    const match = vendors.find(
+      (v) => v.make && v.make.toLowerCase() === form.vehicleMake.trim().toLowerCase()
+    )
+    if (match) {
+      setForm((f) => ({ ...f, vendorId: String(match.id) }))
+    }
+  }, [form.vehicleMake, vendors])
+
   const mutation = useMutation({
     mutationFn: (data) => rosApi.create(data),
     onSuccess: (ro) => {
