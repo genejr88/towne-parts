@@ -6,11 +6,12 @@ const { requireAuth } = require('../middleware/auth')
 
 // ── Telegram helper ───────────────────────────────────────────────────────────
 function sendTelegramMessage(text) {
-  const { TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID } = process.env
-  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return Promise.resolve()
+  const { TELEGRAM_BOT_TOKEN, TELEGRAM_SUPP_CHAT_ID, TELEGRAM_CHAT_ID } = process.env
+  const chatId = TELEGRAM_SUPP_CHAT_ID || TELEGRAM_CHAT_ID
+  if (!TELEGRAM_BOT_TOKEN || !chatId) return Promise.resolve()
 
   const body = JSON.stringify({
-    chat_id: TELEGRAM_CHAT_ID,
+    chat_id: chatId,
     text,
     parse_mode: 'HTML',
     link_preview_options: { is_disabled: true },
