@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   FilePlus, FileCheck, Clock, ChevronRight, X, Trash2, Check,
   FileText, Send, Download, Warehouse, AlertTriangle, Save,
+  CheckCircle2, RotateCcw,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { jsPDF } from 'jspdf'
@@ -18,6 +19,7 @@ const STATUS_FILTERS = [
   { key: null,          label: 'All' },
   { key: 'REQUESTED',  label: 'Requested' },
   { key: 'FILED',      label: 'Filed' },
+  { key: 'COMPLETED',  label: 'Completed' },
 ]
 
 function fmtDate(iso) {
@@ -427,6 +429,16 @@ export default function Supplements() {
     toast.success(next === 'FILED' ? 'Marked as Filed' : 'Marked as Requested')
   }
 
+  const handleComplete = (s) => {
+    updateMutation.mutate({ id: s.id, data: { status: 'COMPLETED' } })
+    toast.success('Supplement marked complete')
+  }
+
+  const handleUncomplete = (s) => {
+    updateMutation.mutate({ id: s.id, data: { status: 'FILED' } })
+    toast.success('Moved back to Filed')
+  }
+
   // Group by RO
   const grouped = supplements.reduce((acc, s) => {
     const key = s.ro?.roNumber || 'Unknown'
@@ -435,8 +447,9 @@ export default function Supplements() {
     return acc
   }, {})
 
-  const requestedCount = supplements.filter(s => s.status === 'REQUESTED').length
-  const filedCount     = supplements.filter(s => s.status === 'FILED').length
+  const requestedCount  = supplements.filter(s => s.status === 'REQUESTED').length
+  const filedCount      = supplements.filter(s => s.status === 'FILED').length
+  const completedCount  = supplements.filter(s => s.status === 'COMPLETED').length
 
   return (
     <div className="px-4 py-5 pb-28 max-w-2xl mx-auto">
@@ -452,6 +465,11 @@ export default function Supplements() {
           {filedCount > 0 && (
             <span className="flex items-center gap-1 text-xs text-emerald-400 font-semibold">
               <FileCheck size={12} /> {filedCount} filed
+            </span>
+          )}
+          {completedCount > 0 && (
+            <span className="flex items-center gap-1 text-xs text-gray-400 font-semibold">
+              <CheckCircle2 size={12} /> {completedCount} completed
             </span>
           )}
         </div>
@@ -548,20 +566,25 @@ export default function Supplements() {
               {/* Supplement entries */}
               <div className="divide-y divide-gray-700/50">
                 {items.map((s) => {
-                  const isFiled = s.status === 'FILED'
+                  const isCompleted = s.status === 'COMPLETED'
+                  const isFiled     = s.status === 'FILED'
                   return (
                     <AnimatePresence key={s.id} mode="wait">
                       <motion.div
                         layout
-                        className="px-4 py-3 flex items-center gap-3"
+                        className={`px-4 py-3 flex items-center gap-3 transition-opacity ${isCompleted ? 'opacity-60' : ''}`}
                       >
                         {/* Status icon */}
                         <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                          isFiled
+                          isCompleted
+                            ? 'bg-gray-700/40 border border-gray-600/30'
+                            : isFiled
                             ? 'bg-emerald-500/15 border border-emerald-500/30'
                             : 'bg-amber-500/15 border border-amber-500/30'
                         }`}>
-                          {isFiled
+                          {isCompleted
+                            ? <CheckCircle2 size={15} className="text-gray-400" />
+                            : isFiled
                             ? <FileCheck size={15} className="text-emerald-400" />
                             : <FilePlus size={15} className="text-amber-400" />
                           }
@@ -570,15 +593,17 @@ export default function Supplements() {
                         {/* Info */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-bold text-gray-200">
+                            <span className={`text-sm font-bold ${isCompleted ? 'text-gray-400 line-through decoration-gray-600' : 'text-gray-200'}`}>
                               Supplement {s.number}
                             </span>
                             <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${
-                              isFiled
+                              isCompleted
+                                ? 'bg-gray-700/40 border-gray-600/30 text-gray-500'
+                                : isFiled
                                 ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400'
                                 : 'bg-amber-500/10 border-amber-500/25 text-amber-400'
                             }`}>
-                              {isFiled ? 'Filed' : 'Requested'}
+                              {isCompleted ? 'Completed' : isFiled ? 'Filed' : 'Requested'}
                             </span>
                           </div>
                           {s.notes && (
@@ -589,19 +614,45 @@ export default function Supplements() {
 
                         {/* Actions */}
                         <div className="flex items-center gap-1.5 shrink-0">
-                          {/* Status toggle */}
-                          <button
-                            onClick={() => handleStatusToggle(s)}
-                            disabled={updateMutation.isPending}
-                            title={isFiled ? 'Mark as Requested' : 'Mark as Filed'}
-                            className={`p-2 rounded-xl border transition-colors ${
-                              isFiled
-                                ? 'border-emerald-700/40 text-emerald-500 hover:bg-amber-500/5 hover:text-amber-400 hover:border-amber-500/30'
-                                : 'border-gray-600/60 text-gray-400 hover:bg-emerald-500/5 hover:text-emerald-400 hover:border-emerald-500/30'
-                            }`}
-                          >
-                            {isFiled ? <Clock size={13} /> : <Check size={13} />}
-                          </button>
+                          {isCompleted ? (
+                            /* Undo complete → back to Filed */
+                            <button
+                              onClick={() => handleUncomplete(s)}
+                              disabled={updateMutation.isPending}
+                              title="Move back to Filed"
+                              className="p-2 rounded-xl border border-gray-600/50 text-gray-500 hover:text-emerald-400 hover:border-emerald-500/30 hover:bg-emerald-500/5 transition-colors"
+                            >
+                              <RotateCcw size={13} />
+                            </button>
+                          ) : (
+                            <>
+                              {/* REQUESTED → FILED or FILED → REQUESTED toggle */}
+                              <button
+                                onClick={() => handleStatusToggle(s)}
+                                disabled={updateMutation.isPending}
+                                title={isFiled ? 'Mark as Requested' : 'Mark as Filed'}
+                                className={`p-2 rounded-xl border transition-colors ${
+                                  isFiled
+                                    ? 'border-emerald-700/40 text-emerald-500 hover:bg-amber-500/5 hover:text-amber-400 hover:border-amber-500/30'
+                                    : 'border-gray-600/60 text-gray-400 hover:bg-emerald-500/5 hover:text-emerald-400 hover:border-emerald-500/30'
+                                }`}
+                              >
+                                {isFiled ? <Clock size={13} /> : <Check size={13} />}
+                              </button>
+
+                              {/* Filed → Complete (only shown when FILED) */}
+                              {isFiled && (
+                                <button
+                                  onClick={() => handleComplete(s)}
+                                  disabled={updateMutation.isPending}
+                                  title="Mark as Completed"
+                                  className="p-2 rounded-xl border border-gray-600/50 text-gray-400 hover:text-sky-400 hover:border-sky-500/30 hover:bg-sky-500/5 transition-colors"
+                                >
+                                  <CheckCircle2 size={13} />
+                                </button>
+                              )}
+                            </>
+                          )}
 
                           {/* Delete */}
                           {deleteId === s.id ? (

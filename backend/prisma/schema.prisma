@@ -247,6 +247,7 @@ model Supplement {
 enum SupplementStatus {
   REQUESTED
   FILED
+  COMPLETED
 }
 
 model BMWPayment {
