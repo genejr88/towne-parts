@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   FilePlus, FileCheck, Clock, ChevronRight, X, Trash2, Check,
-  FileText, Send, Download, Warehouse,
+  FileText, Send, Download, Warehouse, AlertTriangle, Save,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { jsPDF } from 'jspdf'
@@ -12,6 +12,7 @@ import { supplementsApi, prestorageApi, rosApi } from '@/lib/api'
 import Spinner from '@/components/ui/Spinner'
 import Modal from '@/components/ui/Modal'
 import Button from '@/components/ui/Button'
+import Input from '@/components/ui/Input'
 
 const STATUS_FILTERS = [
   { key: null,          label: 'All' },
@@ -115,14 +116,94 @@ function generatePrestoragePDF(ro) {
   return storageStart
 }
 
+// ── Required fields check ────────────────────────────────────────────────────
+function getMissingFields(ro) {
+  const missing = []
+  if (!ro?.ownerName?.trim())       missing.push('ownerName')
+  if (!ro?.vehicleYear?.trim() && !ro?.vehicleMake?.trim()) missing.push('vehicle')
+  if (!ro?.insuranceCompany?.trim()) missing.push('insuranceCompany')
+  if (!ro?.claimNumber?.trim())      missing.push('claimNumber')
+  return missing
+}
+
+const FIELD_LABELS = {
+  ownerName:        'Customer Name',
+  vehicle:          'Year & Make',
+  insuranceCompany: 'Insurance Company',
+  claimNumber:      'Claim #',
+}
+
 // ── Pre-Storage Modal ────────────────────────────────────────────────────────
-function PreStorageModal({ open, onClose, ro }) {
+function PreStorageModal({ open, onClose, ro: initialRo }) {
   const queryClient = useQueryClient()
+  const [ro, setRo] = useState(initialRo)
   const [forwardToTotal, setForwardToTotal] = useState(false)
   const [activated, setActivated] = useState(false)
 
+  // Inline edit form for missing fields
+  const [editForm, setEditForm] = useState({
+    ownerName:        initialRo?.ownerName        || '',
+    vehicleYear:      initialRo?.vehicleYear       || '',
+    vehicleMake:      initialRo?.vehicleMake       || '',
+    vehicleModel:     initialRo?.vehicleModel      || '',
+    insuranceCompany: initialRo?.insuranceCompany  || '',
+    claimNumber:      initialRo?.claimNumber       || '',
+  })
+
+  // Reset when opened for a new RO
+  useEffect(() => {
+    if (open) {
+      setRo(initialRo)
+      setActivated(false)
+      setForwardToTotal(false)
+      setEditForm({
+        ownerName:        initialRo?.ownerName        || '',
+        vehicleYear:      initialRo?.vehicleYear       || '',
+        vehicleMake:      initialRo?.vehicleMake       || '',
+        vehicleModel:     initialRo?.vehicleModel      || '',
+        insuranceCompany: initialRo?.insuranceCompany  || '',
+        claimNumber:      initialRo?.claimNumber       || '',
+      })
+    }
+  }, [open, initialRo])
+
+  const missingFields = getMissingFields(ro)
+  const hasMissing = missingFields.length > 0
+
   const today = new Date()
   const storageStart = addBusinessDays(today, 2)
+
+  // Save missing fields back to the RO
+  const saveMutation = useMutation({
+    mutationFn: (data) => rosApi.update(ro.id, data),
+    onSuccess: (updated) => {
+      // Merge saved data back so modal shows correct values
+      setRo((prev) => ({ ...prev, ...updated }))
+      queryClient.invalidateQueries({ queryKey: ['supplements-all'] })
+      queryClient.invalidateQueries({ queryKey: ['ros'] })
+      toast.success('RO updated')
+    },
+    onError: (err) => toast.error(err.message || 'Failed to save'),
+  })
+
+  const handleSaveFields = () => {
+    // Validate the fields being entered
+    if (!editForm.ownerName.trim())       { toast.error('Customer name is required'); return }
+    if (!editForm.vehicleYear.trim() && !editForm.vehicleMake.trim()) {
+      toast.error('Year and Make are required'); return
+    }
+    if (!editForm.insuranceCompany.trim()) { toast.error('Insurance company is required'); return }
+    if (!editForm.claimNumber.trim())      { toast.error('Claim number is required'); return }
+
+    saveMutation.mutate({
+      ownerName:        editForm.ownerName.trim()        || null,
+      vehicleYear:      editForm.vehicleYear.trim()       || null,
+      vehicleMake:      editForm.vehicleMake.trim()       || null,
+      vehicleModel:     editForm.vehicleModel.trim()      || null,
+      insuranceCompany: editForm.insuranceCompany.trim()  || null,
+      claimNumber:      editForm.claimNumber.trim()       || null,
+    })
+  }
 
   const activateMutation = useMutation({
     mutationFn: (data) => prestorageApi.activate(ro.id, data),
@@ -130,10 +211,9 @@ function PreStorageModal({ open, onClose, ro }) {
       queryClient.invalidateQueries({ queryKey: ['production'] })
       queryClient.invalidateQueries({ queryKey: ['supplements-all'] })
       setActivated(true)
-      const msg = res.totalJobId
+      toast.success(res.totalJobId
         ? 'Pre-storage activated + job created in Towne Total ✓'
-        : 'Pre-storage activated on Board ✓'
-      toast.success(msg)
+        : 'Pre-storage activated on Board ✓')
     },
     onError: (err) => toast.error(err.message || 'Failed to activate pre-storage'),
   })
@@ -151,93 +231,166 @@ function PreStorageModal({ open, onClose, ro }) {
   }
 
   const vehicle = [ro?.vehicleYear, ro?.vehicleMake, ro?.vehicleModel].filter(Boolean).join(' ')
+  const setField = (k) => (e) => setEditForm((f) => ({ ...f, [k]: e.target.value }))
 
   return (
     <Modal open={open} onClose={onClose} title="Generate Pre-Storage Letter">
-      <div className="space-y-4">
+      <div className="space-y-4 max-h-[80vh] overflow-y-auto pr-0.5">
 
-        {/* Info preview */}
-        <div className="bg-gray-900/60 border border-gray-700/50 rounded-xl p-3 space-y-1.5">
-          <div className="flex justify-between text-xs">
-            <span className="text-gray-500">Customer</span>
-            <span className="text-gray-200 font-semibold">{ro?.ownerName || '—'}</span>
-          </div>
-          <div className="flex justify-between text-xs">
-            <span className="text-gray-500">Vehicle</span>
-            <span className="text-gray-200 font-semibold">{vehicle || '—'}</span>
-          </div>
-          <div className="flex justify-between text-xs">
-            <span className="text-gray-500">Insurance</span>
-            <span className="text-gray-200 font-semibold">{ro?.insuranceCompany || '—'}</span>
-          </div>
-          <div className="flex justify-between text-xs">
-            <span className="text-gray-500">Claim #</span>
-            <span className="text-gray-200 font-mono">{ro?.claimNumber || '—'}</span>
-          </div>
-          <div className="border-t border-gray-700/50 pt-1.5 mt-1.5 flex justify-between text-xs">
-            <span className="text-gray-500">Letter date</span>
-            <span className="text-gray-100 font-semibold">{fmtFullDate(today)}</span>
-          </div>
-          <div className="flex justify-between text-xs">
-            <span className="text-gray-500">Storage starts</span>
-            <span className="text-amber-300 font-bold">{fmtFullDate(storageStart)}</span>
-          </div>
-        </div>
+        {/* ── Missing fields alert ─────────────────────────────────── */}
+        {hasMissing && (
+          <div className="bg-red-950/40 border border-red-500/40 rounded-xl p-3 space-y-3">
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={15} className="text-red-400 shrink-0" />
+              <p className="text-sm font-bold text-red-300">Required information missing</p>
+            </div>
+            <p className="text-xs text-red-400/80">
+              The following fields are required to generate the letter. Fill them in below and save to the RO.
+            </p>
 
-        {/* Download button */}
-        <Button
-          variant="primary"
-          onClick={handleDownloadPDF}
-          className="w-full flex items-center justify-center gap-2"
-        >
-          <Download size={15} />
-          Download PDF — {(ro?.ownerName || 'customer').trim().split(/\s+/).pop()}_prestorage.pdf
-        </Button>
+            {/* Missing field indicators */}
+            <div className="flex flex-wrap gap-1.5">
+              {missingFields.map((f) => (
+                <span key={f} className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-red-500/15 border border-red-500/30 text-red-300">
+                  {FIELD_LABELS[f]}
+                </span>
+              ))}
+            </div>
 
-        {/* Divider */}
-        <div className="relative flex items-center gap-3">
-          <div className="flex-1 border-t border-gray-700/50" />
-          <span className="text-[10px] text-gray-600 font-bold uppercase tracking-widest shrink-0">Optional</span>
-          <div className="flex-1 border-t border-gray-700/50" />
-        </div>
+            {/* Inline edit inputs */}
+            <div className="space-y-2 pt-1">
+              {missingFields.includes('ownerName') && (
+                <Input
+                  label="Customer Name *"
+                  value={editForm.ownerName}
+                  onChange={setField('ownerName')}
+                  placeholder="Jane Smith"
+                  autoFocus
+                />
+              )}
+              {missingFields.includes('vehicle') && (
+                <div className="grid grid-cols-3 gap-2">
+                  <Input label="Year *"  value={editForm.vehicleYear}  onChange={setField('vehicleYear')}  placeholder="2022" />
+                  <Input label="Make *"  value={editForm.vehicleMake}  onChange={setField('vehicleMake')}  placeholder="Toyota" />
+                  <Input label="Model"   value={editForm.vehicleModel} onChange={setField('vehicleModel')} placeholder="Camry" />
+                </div>
+              )}
+              {missingFields.includes('insuranceCompany') && (
+                <Input
+                  label="Insurance Company *"
+                  value={editForm.insuranceCompany}
+                  onChange={setField('insuranceCompany')}
+                  placeholder="State Farm"
+                />
+              )}
+              {missingFields.includes('claimNumber') && (
+                <Input
+                  label="Claim # *"
+                  value={editForm.claimNumber}
+                  onChange={setField('claimNumber')}
+                  placeholder="CLM-00123"
+                />
+              )}
+            </div>
 
-        {/* Forward to Total toggle */}
-        <button
-          onClick={() => setForwardToTotal(!forwardToTotal)}
-          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors text-sm ${
-            forwardToTotal
-              ? 'bg-blue-600/15 border-blue-500/40 text-blue-300'
-              : 'bg-gray-800/60 border-gray-700/50 text-gray-400 hover:text-gray-200'
-          }`}
-        >
-          <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
-            forwardToTotal ? 'bg-blue-500 border-blue-400' : 'border-gray-600'
-          }`}>
-            {forwardToTotal && <Check size={10} className="text-white" />}
+            <Button
+              variant="primary"
+              loading={saveMutation.isPending}
+              onClick={handleSaveFields}
+              className="w-full flex items-center justify-center gap-2"
+            >
+              <Save size={14} />
+              Save to RO & Continue
+            </Button>
           </div>
-          <div className="text-left">
-            <p className="font-semibold leading-tight">Forward to Towne Total</p>
-            <p className="text-[10px] text-gray-500 mt-0.5">Creates a pre-storage job with $125/$175 daily rates</p>
-          </div>
-          <Send size={14} className="ml-auto shrink-0" />
-        </button>
+        )}
 
-        {/* Activate pre-storage button */}
-        {!activated ? (
-          <Button
-            variant="secondary"
-            loading={activateMutation.isPending}
-            onClick={handleActivate}
-            className="w-full flex items-center justify-center gap-2"
-          >
-            <Warehouse size={15} />
-            Activate Pre-Storage on Board
-          </Button>
-        ) : (
-          <div className="flex items-center justify-center gap-2 py-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm font-bold">
-            <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-            Pre-Storage Accruing
-          </div>
+        {/* ── Info preview (shown once all fields are present) ─────── */}
+        {!hasMissing && (
+          <>
+            <div className="bg-gray-900/60 border border-gray-700/50 rounded-xl p-3 space-y-1.5">
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500">Customer</span>
+                <span className="text-gray-200 font-semibold">{ro?.ownerName}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500">Vehicle</span>
+                <span className="text-gray-200 font-semibold">{vehicle}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500">Insurance</span>
+                <span className="text-gray-200 font-semibold">{ro?.insuranceCompany}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500">Claim #</span>
+                <span className="text-gray-200 font-mono">{ro?.claimNumber}</span>
+              </div>
+              <div className="border-t border-gray-700/50 pt-1.5 mt-1.5 flex justify-between text-xs">
+                <span className="text-gray-500">Letter date</span>
+                <span className="text-gray-100 font-semibold">{fmtFullDate(today)}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500">Storage starts</span>
+                <span className="text-amber-300 font-bold">{fmtFullDate(storageStart)}</span>
+              </div>
+            </div>
+
+            {/* Download button */}
+            <Button
+              variant="primary"
+              onClick={handleDownloadPDF}
+              className="w-full flex items-center justify-center gap-2"
+            >
+              <Download size={15} />
+              Download PDF — {(ro?.ownerName || 'customer').trim().split(/\s+/).pop()}_prestorage.pdf
+            </Button>
+
+            {/* Divider */}
+            <div className="relative flex items-center gap-3">
+              <div className="flex-1 border-t border-gray-700/50" />
+              <span className="text-[10px] text-gray-600 font-bold uppercase tracking-widest shrink-0">Optional</span>
+              <div className="flex-1 border-t border-gray-700/50" />
+            </div>
+
+            {/* Forward to Total toggle */}
+            <button
+              onClick={() => setForwardToTotal(!forwardToTotal)}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors text-sm ${
+                forwardToTotal
+                  ? 'bg-blue-600/15 border-blue-500/40 text-blue-300'
+                  : 'bg-gray-800/60 border-gray-700/50 text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
+                forwardToTotal ? 'bg-blue-500 border-blue-400' : 'border-gray-600'
+              }`}>
+                {forwardToTotal && <Check size={10} className="text-white" />}
+              </div>
+              <div className="text-left">
+                <p className="font-semibold leading-tight">Forward to Towne Total</p>
+                <p className="text-[10px] text-gray-500 mt-0.5">Creates a pre-storage job with $125/$175 daily rates</p>
+              </div>
+              <Send size={14} className="ml-auto shrink-0" />
+            </button>
+
+            {/* Activate pre-storage button */}
+            {!activated ? (
+              <Button
+                variant="secondary"
+                loading={activateMutation.isPending}
+                onClick={handleActivate}
+                className="w-full flex items-center justify-center gap-2"
+              >
+                <Warehouse size={15} />
+                Activate Pre-Storage on Board
+              </Button>
+            ) : (
+              <div className="flex items-center justify-center gap-2 py-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm font-bold">
+                <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                Pre-Storage Accruing
+              </div>
+            )}
+          </>
         )}
 
         <Button variant="ghost" onClick={onClose} className="w-full">
