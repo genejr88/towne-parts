@@ -137,8 +137,8 @@ const FIELD_LABELS = {
 function PreStorageModal({ open, onClose, ro: initialRo }) {
   const queryClient = useQueryClient()
   const [ro, setRo] = useState(initialRo)
-  const [forwardToTotal, setForwardToTotal] = useState(false)
-  const [activated, setActivated] = useState(false)
+  const [forwardToTotal, setForwardToTotal] = useState(true)   // default checked
+  const [done, setDone] = useState(false)
 
   // Inline edit form for missing fields
   const [editForm, setEditForm] = useState({
@@ -154,8 +154,8 @@ function PreStorageModal({ open, onClose, ro: initialRo }) {
   useEffect(() => {
     if (open) {
       setRo(initialRo)
-      setActivated(false)
-      setForwardToTotal(false)
+      setDone(false)
+      setForwardToTotal(true)
       setEditForm({
         ownerName:        initialRo?.ownerName        || '',
         vehicleYear:      initialRo?.vehicleYear       || '',
@@ -210,20 +210,17 @@ function PreStorageModal({ open, onClose, ro: initialRo }) {
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['production'] })
       queryClient.invalidateQueries({ queryKey: ['supplements-all'] })
-      setActivated(true)
+      setDone(true)
       toast.success(res.totalJobId
-        ? 'Pre-storage activated + job created in Towne Total ✓'
-        : 'Pre-storage activated on Board ✓')
+        ? 'Pre-storage letter generated + Towne Total job created ✓'
+        : 'Pre-storage letter generated ✓')
     },
     onError: (err) => toast.error(err.message || 'Failed to activate pre-storage'),
   })
 
-  const handleDownloadPDF = () => {
+  // Generate PDF and auto-activate prestorage in one click
+  const handleGenerate = () => {
     generatePrestoragePDF(ro)
-    toast.success('PDF downloaded')
-  }
-
-  const handleActivate = () => {
     activateMutation.mutate({
       storageStartDate: storageStart.toISOString(),
       forwardToTotal,
@@ -306,7 +303,7 @@ function PreStorageModal({ open, onClose, ro: initialRo }) {
         )}
 
         {/* ── Info preview (shown once all fields are present) ─────── */}
-        {!hasMissing && (
+        {!hasMissing && !done && (
           <>
             <div className="bg-gray-900/60 border border-gray-700/50 rounded-xl p-3 space-y-1.5">
               <div className="flex justify-between text-xs">
@@ -335,24 +332,7 @@ function PreStorageModal({ open, onClose, ro: initialRo }) {
               </div>
             </div>
 
-            {/* Download button */}
-            <Button
-              variant="primary"
-              onClick={handleDownloadPDF}
-              className="w-full flex items-center justify-center gap-2"
-            >
-              <Download size={15} />
-              Download PDF — {(ro?.ownerName || 'customer').trim().split(/\s+/).pop()}_prestorage.pdf
-            </Button>
-
-            {/* Divider */}
-            <div className="relative flex items-center gap-3">
-              <div className="flex-1 border-t border-gray-700/50" />
-              <span className="text-[10px] text-gray-600 font-bold uppercase tracking-widest shrink-0">Optional</span>
-              <div className="flex-1 border-t border-gray-700/50" />
-            </div>
-
-            {/* Forward to Total toggle */}
+            {/* Forward to Towne Total toggle */}
             <button
               onClick={() => setForwardToTotal(!forwardToTotal)}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors text-sm ${
@@ -367,30 +347,36 @@ function PreStorageModal({ open, onClose, ro: initialRo }) {
                 {forwardToTotal && <Check size={10} className="text-white" />}
               </div>
               <div className="text-left">
-                <p className="font-semibold leading-tight">Forward to Towne Total</p>
-                <p className="text-[10px] text-gray-500 mt-0.5">Creates a pre-storage job with $125/$175 daily rates</p>
+                <p className="font-semibold leading-tight">Create job in Towne Total</p>
+                <p className="text-[10px] text-gray-500 mt-0.5">$125 first 5 days · $175/day after · live total on Board</p>
               </div>
               <Send size={14} className="ml-auto shrink-0" />
             </button>
 
-            {/* Activate pre-storage button */}
-            {!activated ? (
-              <Button
-                variant="secondary"
-                loading={activateMutation.isPending}
-                onClick={handleActivate}
-                className="w-full flex items-center justify-center gap-2"
-              >
-                <Warehouse size={15} />
-                Activate Pre-Storage on Board
-              </Button>
-            ) : (
-              <div className="flex items-center justify-center gap-2 py-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm font-bold">
-                <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                Pre-Storage Accruing
-              </div>
-            )}
+            {/* Single generate button — downloads PDF + activates prestorage */}
+            <Button
+              variant="primary"
+              loading={activateMutation.isPending}
+              onClick={handleGenerate}
+              className="w-full flex items-center justify-center gap-2"
+            >
+              <Download size={15} />
+              Generate Pre-Storage Letter
+            </Button>
           </>
+        )}
+
+        {/* ── Success state ────────────────────────────────────────── */}
+        {done && (
+          <div className="bg-emerald-950/40 border border-emerald-500/30 rounded-xl p-4 text-center space-y-1.5">
+            <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center mx-auto">
+              <Check size={20} className="text-emerald-400" />
+            </div>
+            <p className="text-sm font-bold text-emerald-300">Pre-Storage Letter Generated</p>
+            <p className="text-xs text-emerald-600">
+              PDF downloaded · Board flagged · {forwardToTotal ? 'Towne Total job created' : 'Not forwarded to Total'}
+            </p>
+          </div>
         )}
 
         <Button variant="ghost" onClick={onClose} className="w-full">

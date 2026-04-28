@@ -266,6 +266,7 @@ router.post('/prestorage/:roId', requireAuth, async (req, res) => {
 
     const updateData = {
       prestorageActive: true,
+      prestorageLetterDate: new Date(),
       prestorageStartDate: storageStartDate ? new Date(storageStartDate) : null,
       productionUpdatedAt: new Date(),
     }
@@ -274,6 +275,7 @@ router.post('/prestorage/:roId', requireAuth, async (req, res) => {
     if (forwardToTotal) {
       try {
         totalJobId = await createPrestorageTotalsJob(existing, storageStartDate)
+        if (totalJobId) updateData.prestorageJobId = totalJobId
       } catch (e) {
         console.error('Failed to create prestorage totals job:', e.message)
         // Non-fatal — board update still goes through

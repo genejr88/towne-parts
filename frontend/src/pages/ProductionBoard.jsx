@@ -83,6 +83,46 @@ function InsuranceText({ name }) {
   )
 }
 
+// Storage total: $125/day days 1-5, $175/day day 6+
+function calcStorageTotal(startDateISO) {
+  if (!startDateISO) return 0
+  const start = new Date(startDateISO)
+  start.setHours(0, 0, 0, 0)
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+  const days = Math.max(0, Math.floor((now - start) / (1000 * 60 * 60 * 24)))
+  if (days === 0) return 0
+  if (days <= 5) return days * 125
+  return 5 * 125 + (days - 5) * 175
+}
+
+function PrestorageIndicator({ ro }) {
+  if (!ro.prestorageLetterDate) return null
+  const graceOver = ro.prestorageStartDate && new Date() >= new Date(ro.prestorageStartDate)
+  const letterDate = new Date(ro.prestorageLetterDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const total = calcStorageTotal(ro.prestorageStartDate)
+
+  if (graceOver) {
+    return (
+      <div className="border border-orange-500/50 rounded-lg px-2 py-1.5 bg-orange-950/40 text-right min-w-[110px]">
+        <p className="text-[8px] font-black uppercase tracking-wider text-orange-400 leading-none">
+          Supp Filed {letterDate}
+        </p>
+        <p className="text-[15px] font-black text-orange-200 leading-tight mt-0.5">
+          ${total.toLocaleString()}
+        </p>
+        <p className="text-[7px] font-bold uppercase tracking-widest text-orange-500">accrued</p>
+      </div>
+    )
+  }
+
+  return (
+    <p className="text-[9px] font-bold text-yellow-400/90 text-right leading-none">
+      Supp Filed {letterDate}
+    </p>
+  )
+}
+
 const TOTALS_BASE = 'https://totals.towneapps.com'
 
 const FINISH_CONFIG = {
@@ -1104,8 +1144,11 @@ export default function ProductionBoard() {
                     </div>
                   </div>
 
-                  {/* Typography-only insurance label, tucked top-right */}
-                  {ro.insuranceCompany && <InsuranceText name={ro.insuranceCompany} />}
+                  {/* Insurance + pre-storage info — top-right */}
+                  <div className="flex flex-col items-end gap-1.5 shrink-0">
+                    {ro.insuranceCompany && <InsuranceText name={ro.insuranceCompany} />}
+                    <PrestorageIndicator ro={ro} />
+                  </div>
                 </div>
 
                 {/* ── VEHICLE LINE (with VIN inline-tail) ── */}
@@ -1380,39 +1423,6 @@ export default function ProductionBoard() {
                 </motion.div>
               )}
             </AnimatePresence>
-
-            {/* Pre-Storage toggle — always visible */}
-            <div className={`border rounded-2xl p-3 mb-2 transition-colors duration-300 ${
-              state.prestorageActive
-                ? 'bg-orange-950/60 border-orange-500/60'
-                : 'bg-gray-800/60 border-gray-700/50'
-            }`}>
-              <label className="flex items-center gap-3 cursor-pointer">
-                <div
-                  onClick={() => updateField('prestorageActive', !state.prestorageActive)}
-                  className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex items-center shrink-0 ${
-                    state.prestorageActive ? 'bg-orange-500' : 'bg-gray-700'
-                  }`}
-                >
-                  <motion.div
-                    animate={{ x: state.prestorageActive ? 24 : 2 }}
-                    transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                    className="w-5 h-5 bg-white rounded-full shadow-md absolute"
-                  />
-                </div>
-                <div>
-                  <p className={`text-sm font-semibold flex items-center gap-1.5 ${state.prestorageActive ? 'text-orange-300' : 'text-gray-200'}`}>
-                    <Warehouse size={14} />
-                    Pre-Storage Accruing
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {state.prestorageActive && ro.prestorageStartDate
-                      ? `Since ${new Date(ro.prestorageStartDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
-                      : 'Storage charges being billed'}
-                  </p>
-                </div>
-              </label>
-            </div>
 
             {/* Total Loss toggle — always visible */}
             <div className={`border rounded-2xl p-3 mb-2 transition-colors duration-300 ${
