@@ -70,7 +70,7 @@ Parts management system for Towne Body Shop. Tracks repair orders (ROs), parts o
 - `PrivateFile` — PIN-gated file storage (for vault Files tab)
 - `InventoryPart` — stock inventory catalog items
 - `InventoryPartPhoto` — photos per inventory item
-- `Supplement` — supplement requests per RO (number auto-increments within RO, status: REQUESTED | FILED)
+- `Supplement` — supplement requests per RO (number auto-increments within RO, status: REQUESTED | FILED | COMPLETED)
 - `BMWPayment` — BMW payment tracking (month, year, date, lastName, bmwNumber, roNumber, amount, status: NOT_RECEIVED | RECEIVED)
 
 ## Auth
@@ -81,12 +81,15 @@ Parts management system for Towne Body Shop. Tracks repair orders (ROs), parts o
 
 ## Deployment / Railway Notes
 - **Push to deploy**: `git push` → Railway auto-deploys from `main`
+- **Builder**: Set to **Nixpacks** (NOT Railpack). Railpack was causing build failures due to its static env-var scanner requiring BuildKit secrets at build time. Nixpacks doesn't have this issue.
+- **Metal Build Environment**: Must be **OFF** in Railway service Settings → Build. Metal forces Railpack even if Nixpacks is selected.
 - Start script (in `backend/package.json`):
   `npx prisma db push --accept-data-loss && node prisma/seed.js && node prisma/seed-bmw.js && node src/index.js`
 - `prisma db push --accept-data-loss` applies schema changes (NOT migrate deploy — this app uses db push)
 - PostgreSQL via `DATABASE_URL` env var in Railway dashboard
 - Uploads stored in `backend/uploads/` — **ephemeral on Railway** (lost on redeploy); private files and part photos do not persist
 - `PRIVATE_PIN` env var must be set in Railway for vault access (default fallback: `TowneBMW2025`)
+- **Dead dependencies removed**: `better-sqlite3` was in `package.json` but never used — it requires Python to compile from source on Nixpacks/Node 18 and would break builds if re-added. Do not add SQLite packages; this app is PostgreSQL only.
 
 ## Frontend Patterns
 - TanStack Query: `useQuery`, `useMutation`, `useQueryClient`, `invalidateQueries`
@@ -124,13 +127,17 @@ Parts management system for Towne Body Shop. Tracks repair orders (ROs), parts o
 ## Supplement Workflow
 1. On Production Board → Final Supplement card → tap **Request** → logs `Supplement N` (REQUESTED status)
 2. Navigate to `/supplements` (BottomNav "Supps" tab) to manage status
-3. Supplements page: grouped by RO, filter All/Requested/Filed, one-tap toggle REQUESTED ↔ FILED, delete with confirm, tap RO header to open RO detail
+3. Supplements page: grouped by RO, filter All/Requested/Filed/Completed
+   - REQUESTED: amber icon — one-tap "File" button (→ FILED), trash
+   - FILED: green icon — "Complete" button (→ COMPLETED) + undo back to REQUESTED, trash; triggers Telegram notification when filed
+   - COMPLETED: dimmed row, strikethrough title — "Undo" back to FILED, trash
+   - Only REQUESTED supplements trigger the "Supp Pending" badge on the Production Board
 
 ## Current Feature State
 - ✅ RO management: create, edit, archive (delivered), unarchive
 - ✅ Parts per RO: add, edit, mark received, bulk received, notes, photos; received parts show green card + "HERE" badge
 - ✅ Production board: swipeable cards, stage chip (inline accordion), tech chip (inline accordion), Final Supplement toggle + Request button, Total Loss + released toggle, Totals job badge, customer/insurance edit sheet, parts progress bar, delivery confirm
-- ✅ Supplement requests: unlimited per RO, auto-numbered, Requested → Filed, dedicated management page
+- ✅ Supplement requests: unlimited per RO, auto-numbered, Requested → Filed → Completed, dedicated management page
 - ✅ Invoice upload per RO (PDF/image, fileType tagging)
 - ✅ Photo import via Tesseract.js OCR (local, no AI tokens)
 - ✅ Text/CCC file import for parts lists
