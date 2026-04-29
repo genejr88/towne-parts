@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   FilePlus, FileCheck, Clock, ChevronRight, X, Trash2, Check,
   FileText, Send, Download, Warehouse, AlertTriangle, Save,
-  CheckCircle2, RotateCcw,
+  CheckCircle2, RotateCcw, ArrowUpDown,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { jsPDF } from 'jspdf'
@@ -394,6 +394,7 @@ export default function Supplements() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [filter, setFilter] = useState(null)
+  const [sortOrder, setSortOrder] = useState('desc') // 'desc' = newest first, 'asc' = oldest first
   const [deleteId, setDeleteId] = useState(null)
   const [prestorageRO, setPrestorageRO] = useState(null)
 
@@ -439,13 +440,31 @@ export default function Supplements() {
     toast.success('Moved back to Filed')
   }
 
-  // Group by RO
-  const grouped = supplements.reduce((acc, s) => {
+  // Group by RO, then sort groups and items by createdAt
+  const rawGrouped = supplements.reduce((acc, s) => {
     const key = s.ro?.roNumber || 'Unknown'
     if (!acc[key]) acc[key] = { ro: s.ro, items: [] }
     acc[key].items.push(s)
     return acc
   }, {})
+
+  // Sort items within each group and sort the groups themselves
+  const grouped = Object.fromEntries(
+    Object.entries(rawGrouped)
+      .map(([key, { ro, items }]) => {
+        const sortedItems = [...items].sort((a, b) => {
+          const ta = new Date(a.createdAt).getTime()
+          const tb = new Date(b.createdAt).getTime()
+          return sortOrder === 'desc' ? tb - ta : ta - tb
+        })
+        return [key, { ro, items: sortedItems }]
+      })
+      .sort(([, a], [, b]) => {
+        const ta = Math.max(...a.items.map(i => new Date(i.createdAt).getTime()))
+        const tb = Math.max(...b.items.map(i => new Date(i.createdAt).getTime()))
+        return sortOrder === 'desc' ? tb - ta : ta - tb
+      })
+  )
 
   const requestedCount  = supplements.filter(s => s.status === 'REQUESTED').length
   const filedCount      = supplements.filter(s => s.status === 'FILED').length
@@ -475,8 +494,8 @@ export default function Supplements() {
         </div>
       </motion.div>
 
-      {/* Filter pills */}
-      <div className="flex gap-2 mb-5">
+      {/* Filter pills + sort toggle */}
+      <div className="flex items-center gap-2 mb-5 flex-wrap">
         {STATUS_FILTERS.map(({ key, label }) => (
           <button
             key={String(key)}
@@ -490,6 +509,15 @@ export default function Supplements() {
             {label}
           </button>
         ))}
+
+        {/* Sort toggle */}
+        <button
+          onClick={() => setSortOrder(o => o === 'desc' ? 'asc' : 'desc')}
+          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border bg-gray-800 border-gray-600 text-gray-300 hover:text-white hover:border-gray-500 transition-all"
+        >
+          <ArrowUpDown size={11} />
+          {sortOrder === 'desc' ? 'Newest' : 'Oldest'}
+        </button>
       </div>
 
       {/* Content */}
