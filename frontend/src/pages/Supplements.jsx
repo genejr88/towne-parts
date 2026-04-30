@@ -665,7 +665,7 @@ export default function Supplements() {
             to="/carriers"
             className="flex items-center gap-1.5 text-xs font-semibold text-gray-400 hover:text-blue-400 transition-colors"
           >
-            <BookOpen size={13} /> Carrier History
+            <BookOpen size={13} /> Filing History
           </Link>
         </div>
         <div className="flex items-center gap-3 mt-1">
@@ -851,14 +851,14 @@ export default function Supplements() {
                               <button
                                 onClick={() => handleStatusToggle(s)}
                                 disabled={updateMutation.isPending}
-                                title={isFiled ? 'Mark as Requested' : 'Mark as Filed'}
-                                className={`p-2 rounded-xl border transition-colors ${
+                                title={isFiled ? 'Mark as Requested' : 'File this supplement'}
+                                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-[11px] font-bold transition-colors ${
                                   isFiled
                                     ? 'border-emerald-700/40 text-emerald-500 hover:bg-amber-500/5 hover:text-amber-400 hover:border-amber-500/30'
                                     : 'border-gray-600/60 text-gray-400 hover:bg-emerald-500/5 hover:text-emerald-400 hover:border-emerald-500/30'
                                 }`}
                               >
-                                {isFiled ? <Clock size={13} /> : <Check size={13} />}
+                                {isFiled ? <><Clock size={11} /> Undo</> : <><Check size={11} /> File</>}
                               </button>
 
                               {/* Filed → Complete (only shown when FILED) */}

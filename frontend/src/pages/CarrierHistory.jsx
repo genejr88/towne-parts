@@ -258,7 +258,7 @@ export default function CarrierHistory() {
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mb-5">
         <div className="flex items-center gap-2">
           <BookOpen size={18} className="text-blue-400" />
-          <h1 className="text-xl font-black text-gray-100 tracking-tight">Carrier Billing History</h1>
+          <h1 className="text-xl font-black text-gray-100 tracking-tight">Carrier Filing History</h1>
         </div>
       </motion.div>
 
