@@ -181,6 +181,14 @@ export const supplementsApi = {
   create: (roId, data) => unwrap(api.post(`/supplements/ro/${roId}`, data)),
   update: (id, data) => unwrap(api.put(`/supplements/${id}`, data)),
   remove: (id) => unwrap(api.delete(`/supplements/${id}`)),
+  file: (id, data) => unwrap(api.post(`/supplements/${id}/file`, data)),
+}
+
+// ── Carriers ──────────────────────────────────────────────────────────────────
+export const carriersApi = {
+  list:   ()         => unwrap(api.get('/carriers')),
+  get:    (id)       => unwrap(api.get(`/carriers/${id}`)),
+  update: (id, data) => unwrap(api.put(`/carriers/${id}`, data)),
 }
 
 // ── Pre-Storage ────────────────────────────────────────────────────────────────

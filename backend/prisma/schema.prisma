@@ -230,18 +230,53 @@ model PrivateFile {
 }
 
 model Supplement {
-  id               Int              @id @default(autoincrement())
+  id               Int                   @id @default(autoincrement())
   roId             Int
-  ro               RO               @relation(fields: [roId], references: [id], onDelete: Cascade)
+  ro               RO                    @relation(fields: [roId], references: [id], onDelete: Cascade)
   number           Int
-  status           SupplementStatus @default(REQUESTED)
+  status           SupplementStatus      @default(REQUESTED)
   insuranceCompany String?
   notes            String?
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  filingLogs       SupplementFilingLog[]
 
   @@unique([roId, number])
   @@map("supplements")
+}
+
+model CarrierProfile {
+  id              Int                   @id @default(autoincrement())
+  name            String                @unique
+  contactName     String?
+  contactEmail    String?
+  contactPhone    String?
+  contactFax      String?
+  portalUrl       String?
+  preferredMethod String?
+  notes           String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  filingLogs      SupplementFilingLog[]
+
+  @@map("carrier_profiles")
+}
+
+model SupplementFilingLog {
+  id           Int             @id @default(autoincrement())
+  supplement   Supplement      @relation(fields: [supplementId], references: [id], onDelete: Cascade)
+  supplementId Int
+  carrier      CarrierProfile? @relation(fields: [carrierId], references: [id], onDelete: SetNull)
+  carrierId    Int?
+  method       String
+  contactEmail String?
+  contactFax   String?
+  contactPhone String?
+  portalUrl    String?
+  notes        String?
+  createdAt    DateTime        @default(now())
+
+  @@map("supplement_filing_logs")
 }
 
 enum SupplementStatus {

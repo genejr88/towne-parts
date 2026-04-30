@@ -161,6 +161,101 @@ router.put('/:id', async (req, res) => {
   }
 })
 
+// ── POST /api/supplements/:id/file ───────────────────────────────────────────
+// Logs HOW a supplement was filed + upserts CarrierProfile + transitions to FILED
+router.post('/:id/file', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id)
+    const { method, contactEmail, contactFax, contactPhone, portalUrl, notes } = req.body
+    if (!method) return res.status(400).json({ success: false, error: 'method is required' })
+
+    const supplement = await prisma.supplement.findUnique({
+      where: { id },
+      include: {
+        ro: {
+          select: {
+            id: true, roNumber: true,
+            vehicleYear: true, vehicleMake: true, vehicleModel: true,
+            ownerName: true, insuranceCompany: true,
+          },
+        },
+      },
+    })
+    if (!supplement) return res.status(404).json({ success: false, error: 'Not found' })
+
+    const carrierName = supplement.insuranceCompany || supplement.ro?.insuranceCompany || null
+
+    // Upsert carrier profile with the latest contact info from this filing
+    let carrierId = null
+    if (carrierName) {
+      const updateData = { updatedAt: new Date() }
+      if (contactEmail)    updateData.contactEmail    = contactEmail
+      if (contactFax)      updateData.contactFax      = contactFax
+      if (contactPhone)    updateData.contactPhone     = contactPhone
+      if (portalUrl)       updateData.portalUrl        = portalUrl
+      if (method)          updateData.preferredMethod  = method
+
+      const carrier = await prisma.carrierProfile.upsert({
+        where:  { name: carrierName },
+        create: {
+          name: carrierName,
+          contactEmail:    contactEmail    || null,
+          contactFax:      contactFax      || null,
+          contactPhone:    contactPhone    || null,
+          portalUrl:       portalUrl       || null,
+          preferredMethod: method          || null,
+        },
+        update: updateData,
+      })
+      carrierId = carrier.id
+    }
+
+    // Create filing log + set supplement status to FILED in one transaction
+    const wasAlreadyFiled = supplement.status === 'FILED'
+
+    const [filingLog, updated] = await prisma.$transaction([
+      prisma.supplementFilingLog.create({
+        data: {
+          supplementId: id,
+          carrierId,
+          method,
+          contactEmail:  contactEmail  || null,
+          contactFax:    contactFax    || null,
+          contactPhone:  contactPhone  || null,
+          portalUrl:     portalUrl     || null,
+          notes:         notes         || null,
+        },
+      }),
+      prisma.supplement.update({
+        where: { id },
+        data:  { status: 'FILED' },
+        include: { _count: { select: { filingLogs: true } } },
+      }),
+    ])
+
+    // Fire Telegram if this is the first filing
+    if (!wasAlreadyFiled && supplement.ro) {
+      const ro      = supplement.ro
+      const year    = ro.vehicleYear  || ''
+      const make    = ro.vehicleMake  || ''
+      const model   = ro.vehicleModel || ''
+      const vehicle = [year, make, model].filter(Boolean).join(' ')
+      const customer  = ro.ownerName || 'Customer'
+      const insurance = carrierName  || 'Insurance'
+      const suppLabel = `Supplement ${supplement.number}`
+      const text = `RO ${ro.roNumber} | ${vehicle} | ${customer} : ${suppLabel} has been filed with ${insurance} 📋`
+      sendTelegramMessage(text).catch((err) =>
+        console.error('Telegram supplement-filed error:', err.message)
+      )
+    }
+
+    res.json({ success: true, data: { supplement: updated, filingLog } })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
 // ── DELETE /api/supplements/:id ───────────────────────────────────────────────
 router.delete('/:id', async (req, res) => {
   try {

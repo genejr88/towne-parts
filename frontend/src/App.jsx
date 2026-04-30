@@ -17,6 +17,7 @@ import SecureVault from '@/pages/SecureVault'
 import RecentActivity from '@/pages/RecentActivity'
 import Help from '@/pages/Help'
 import Supplements from '@/pages/Supplements'
+import CarrierHistory from '@/pages/CarrierHistory'
 
 function ProtectedRoute({ children, adminOnly = false }) {
   const { user, loading } = useAuth()
@@ -86,6 +87,9 @@ export default function App() {
         } />
         <Route path="/supplements" element={
           <ProtectedRoute><AppLayout><Supplements /></AppLayout></ProtectedRoute>
+        } />
+        <Route path="/carriers" element={
+          <ProtectedRoute><AppLayout><CarrierHistory /></AppLayout></ProtectedRoute>
         } />
         <Route path="/help" element={
           <ProtectedRoute><AppLayout><Help /></AppLayout></ProtectedRoute>

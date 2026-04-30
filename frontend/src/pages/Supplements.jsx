@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   FilePlus, FileCheck, Clock, ChevronRight, X, Trash2, Check,
   FileText, Send, Download, Warehouse, AlertTriangle, Save,
-  CheckCircle2, RotateCcw, ArrowUpDown,
+  CheckCircle2, RotateCcw, ArrowUpDown, BookOpen, Mail, ExternalLink,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { jsPDF } from 'jspdf'
-import { supplementsApi, prestorageApi, rosApi } from '@/lib/api'
+import { supplementsApi, carriersApi, prestorageApi, rosApi } from '@/lib/api'
 import Spinner from '@/components/ui/Spinner'
 import Modal from '@/components/ui/Modal'
 import Button from '@/components/ui/Button'
@@ -133,6 +133,185 @@ const FIELD_LABELS = {
   vehicle:          'Year & Make',
   insuranceCompany: 'Insurance Company',
   claimNumber:      'Claim #',
+}
+
+const METHODS = ['EMAIL', 'PORTAL', 'FAX', 'PHONE', 'MAIL']
+
+// ── Filing Modal ─────────────────────────────────────────────────────────────
+function FilingModal({ open, onClose, supplement }) {
+  const queryClient = useQueryClient()
+  const [method,       setMethod]       = useState('EMAIL')
+  const [contactEmail, setContactEmail] = useState('')
+  const [portalUrl,    setPortalUrl]    = useState('')
+  const [contactFax,   setContactFax]   = useState('')
+  const [contactPhone, setContactPhone] = useState('')
+  const [notes,        setNotes]        = useState('')
+
+  const carrierName = supplement?.insuranceCompany || supplement?.ro?.insuranceCompany || null
+
+  const { data: carriers = [] } = useQuery({
+    queryKey: ['carriers'],
+    queryFn:  carriersApi.list,
+  })
+
+  // Pre-fill from stored carrier profile
+  useEffect(() => {
+    if (!open || !carrierName || !carriers.length) return
+    const profile = carriers.find(c => c.name.toLowerCase() === carrierName.toLowerCase())
+    if (!profile) return
+    if (profile.preferredMethod) setMethod(profile.preferredMethod)
+    if (profile.contactEmail)    setContactEmail(profile.contactEmail)
+    if (profile.portalUrl)       setPortalUrl(profile.portalUrl)
+    if (profile.contactFax)      setContactFax(profile.contactFax)
+    if (profile.contactPhone)    setContactPhone(profile.contactPhone)
+  }, [open, carrierName, carriers])
+
+  // Reset on open
+  useEffect(() => {
+    if (open) {
+      setMethod('EMAIL'); setContactEmail(''); setPortalUrl('')
+      setContactFax('');  setContactPhone(''); setNotes('')
+    }
+  }, [open, supplement?.id])
+
+  const profile = carriers.find(c => c.name?.toLowerCase() === carrierName?.toLowerCase())
+  const lastLog = profile?.filingLogs?.[0]
+
+  const fileMutation = useMutation({
+    mutationFn: (data) => supplementsApi.file(supplement.id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['supplements-all'] })
+      queryClient.invalidateQueries({ queryKey: ['carriers'] })
+      toast.success('Filed!')
+      onClose()
+    },
+    onError: (err) => toast.error(err.message || 'Failed to log filing'),
+  })
+
+  const handleSubmit = () => {
+    fileMutation.mutate({
+      method,
+      contactEmail:  contactEmail  || undefined,
+      portalUrl:     portalUrl     || undefined,
+      contactFax:    contactFax    || undefined,
+      contactPhone:  contactPhone  || undefined,
+      notes:         notes         || undefined,
+    })
+  }
+
+  const openOutlook = () => {
+    if (!contactEmail) return
+    const roNum  = supplement?.ro?.roNumber || ''
+    const supp   = `Supplement ${supplement?.number || ''}`
+    const subject = encodeURIComponent(`${carrierName} – RO ${roNum} – ${supp}`)
+    const body    = encodeURIComponent(`Hi,\n\nPlease find attached ${supp} for RO ${roNum}.\n\nThank you,\nTowne Body Shop`)
+    window.location.href = `mailto:${contactEmail}?subject=${subject}&body=${body}`
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="How was this filed?">
+      <div className="space-y-4">
+        {carrierName && (
+          <p className="text-sm font-semibold text-gray-200">{carrierName}</p>
+        )}
+
+        {lastLog && (
+          <div className="text-xs text-blue-400/80 bg-blue-500/8 border border-blue-500/20 rounded-lg px-3 py-2">
+            Last filed {new Date(lastLog.createdAt).toLocaleDateString()} via {lastLog.method}
+          </div>
+        )}
+
+        {/* Method picker */}
+        <div className="flex gap-1.5 flex-wrap">
+          {METHODS.map(m => (
+            <button
+              key={m}
+              onClick={() => setMethod(m)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                method === m
+                  ? 'bg-blue-600 border-blue-500 text-white'
+                  : 'bg-gray-800 border-gray-600 text-gray-300 hover:border-gray-500'
+              }`}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+
+        {method === 'EMAIL' && (
+          <div className="space-y-2">
+            <Input
+              label="Email Address"
+              value={contactEmail}
+              onChange={e => setContactEmail(e.target.value)}
+              placeholder="adjuster@carrier.com"
+            />
+            {contactEmail && (
+              <button
+                onClick={openOutlook}
+                className="flex items-center gap-2 text-xs font-semibold text-blue-400 hover:text-blue-300 transition-colors"
+              >
+                <Mail size={13} /> Open in Outlook
+              </button>
+            )}
+          </div>
+        )}
+
+        {method === 'PORTAL' && (
+          <div className="space-y-2">
+            <Input
+              label="Portal URL"
+              value={portalUrl}
+              onChange={e => setPortalUrl(e.target.value)}
+              placeholder="https://carrier-portal.com"
+            />
+            {portalUrl && (
+              <a
+                href={portalUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-xs font-semibold text-blue-400 hover:text-blue-300 transition-colors"
+              >
+                <ExternalLink size={13} /> Open Portal
+              </a>
+            )}
+          </div>
+        )}
+
+        {method === 'FAX' && (
+          <Input
+            label="Fax Number"
+            value={contactFax}
+            onChange={e => setContactFax(e.target.value)}
+            placeholder="203-555-0100"
+          />
+        )}
+
+        {method === 'PHONE' && (
+          <Input
+            label="Phone Number"
+            value={contactPhone}
+            onChange={e => setContactPhone(e.target.value)}
+            placeholder="203-555-0100"
+          />
+        )}
+
+        <Input
+          label="Notes (optional)"
+          value={notes}
+          onChange={e => setNotes(e.target.value)}
+          placeholder="Any additional context"
+        />
+
+        <div className="flex gap-3 pt-1">
+          <Button variant="secondary" onClick={onClose} className="flex-1">Cancel</Button>
+          <Button variant="primary" loading={fileMutation.isPending} onClick={handleSubmit} className="flex-1">
+            Mark as Filed
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
 }
 
 // ── Pre-Storage Modal ────────────────────────────────────────────────────────
@@ -397,6 +576,7 @@ export default function Supplements() {
   const [sortOrder, setSortOrder] = useState('desc') // 'desc' = newest first, 'asc' = oldest first
   const [deleteId, setDeleteId] = useState(null)
   const [prestorageRO, setPrestorageRO] = useState(null)
+  const [fileRecord, setFileRecord] = useState(null)
 
   const { data: supplements = [], isLoading } = useQuery({
     queryKey: ['supplements-all', filter],
@@ -425,9 +605,14 @@ export default function Supplements() {
   })
 
   const handleStatusToggle = (s) => {
-    const next = s.status === 'REQUESTED' ? 'FILED' : 'REQUESTED'
-    updateMutation.mutate({ id: s.id, data: { status: next } })
-    toast.success(next === 'FILED' ? 'Marked as Filed' : 'Marked as Requested')
+    if (s.status === 'REQUESTED') {
+      // Open filing modal instead of direct update — captures HOW it was filed
+      setFileRecord(s)
+    } else {
+      // FILED → REQUESTED: direct toggle back, no modal needed
+      updateMutation.mutate({ id: s.id, data: { status: 'REQUESTED' } })
+      toast.success('Marked as Requested')
+    }
   }
 
   const handleComplete = (s) => {
@@ -474,7 +659,15 @@ export default function Supplements() {
     <div className="px-4 py-5 pb-28 max-w-2xl mx-auto">
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mb-5">
-        <h1 className="text-xl font-black text-gray-100 tracking-tight">Supplements</h1>
+        <div className="flex items-start justify-between">
+          <h1 className="text-xl font-black text-gray-100 tracking-tight">Supplements</h1>
+          <Link
+            to="/carriers"
+            className="flex items-center gap-1.5 text-xs font-semibold text-gray-400 hover:text-blue-400 transition-colors"
+          >
+            <BookOpen size={13} /> Carrier History
+          </Link>
+        </div>
         <div className="flex items-center gap-3 mt-1">
           {requestedCount > 0 && (
             <span className="flex items-center gap-1 text-xs text-amber-400 font-semibold">
@@ -717,6 +910,18 @@ export default function Supplements() {
           ))}
         </div>
       )}
+
+      {/* Filing Modal */}
+      <AnimatePresence>
+        {fileRecord && (
+          <FilingModal
+            key={fileRecord.id}
+            open={!!fileRecord}
+            supplement={fileRecord}
+            onClose={() => setFileRecord(null)}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Pre-Storage Modal */}
       <AnimatePresence>
