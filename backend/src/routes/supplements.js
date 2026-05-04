@@ -54,6 +54,7 @@ router.get('/', async (req, res) => {
             id: true,
             roNumber: true,
             insuranceCompany: true,
+            claimNumber: true,
             ownerName: true,
             vehicleYear: true,
             vehicleMake: true,
