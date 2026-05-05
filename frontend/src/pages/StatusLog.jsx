@@ -1,8 +1,8 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { Activity, ArrowLeft, Calendar, ChevronRight, Wrench, Clock, RefreshCw } from 'lucide-react'
+import { Activity, ArrowLeft, Calendar, ChevronRight, Wrench, Clock, RefreshCw, Package } from 'lucide-react'
 import { productionApi } from '@/lib/api'
 import { STAGE_COLORS, formatTimeAgo } from '@/lib/utils'
 import Spinner from '@/components/ui/Spinner'
@@ -28,11 +28,47 @@ function dayHeader(dateKey) {
   return { relative, long }
 }
 
+const SORT_OPTIONS = [
+  { key: 'date',  label: 'Date Modified' },
+  { key: 'ro',    label: 'RO #' },
+  { key: 'phase', label: 'Phase' },
+  { key: 'parts', label: 'Parts Here' },
+  { key: 'make',  label: 'Make' },
+]
+
+function sortUpdates(updates, sortKey) {
+  const arr = [...updates]
+  switch (sortKey) {
+    case 'ro':
+      return arr.sort((a, b) => (a.roNumber || '').localeCompare(b.roNumber || '', undefined, { numeric: true }))
+    case 'phase':
+      return arr.sort((a, b) => (a.stage || 'zzzz').localeCompare(b.stage || 'zzzz'))
+    case 'parts':
+      return arr.sort((a, b) => {
+        const aHere = a.partsStatus === 'ALL_HERE' ? 0 : 1
+        const bHere = b.partsStatus === 'ALL_HERE' ? 0 : 1
+        if (aHere !== bHere) return aHere - bHere
+        return (a.roNumber || '').localeCompare(b.roNumber || '', undefined, { numeric: true })
+      })
+    case 'make':
+      return arr.sort((a, b) => (a.vehicleMake || '').localeCompare(b.vehicleMake || ''))
+    case 'date':
+    default:
+      return arr.sort((a, b) => {
+        if (a.isStale !== b.isStale) return a.isStale ? 1 : -1
+        if (a.updatedAt && b.updatedAt) return new Date(b.updatedAt) - new Date(a.updatedAt)
+        return (a.roNumber || '').localeCompare(b.roNumber || '')
+      })
+  }
+}
+
 export default function StatusLog() {
-  const { data, isLoading, refetch, isFetching, dataUpdatedAt } = useQuery({
+  const [sortKey, setSortKey] = useState('date')
+
+  const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['production-status-log'],
     queryFn: () => productionApi.statusLog(14),
-    refetchInterval: 30_000,           // live update every 30s
+    refetchInterval: 30_000,
     refetchOnWindowFocus: true,
     staleTime: 15_000,
   })
@@ -75,7 +111,7 @@ export default function StatusLog() {
       </div>
 
       {/* Live indicator */}
-      <div className="flex items-center gap-2 ml-10 mb-5">
+      <div className="flex items-center gap-2 ml-10 mb-4">
         <span className="relative flex h-1.5 w-1.5">
           <span className="absolute inset-0 rounded-full bg-emerald-400 opacity-60 animate-ping" />
           <span className="relative rounded-full h-1.5 w-1.5 bg-emerald-400" />
@@ -86,6 +122,27 @@ export default function StatusLog() {
         <span className="text-[10px] text-gray-600 ml-auto">
           {totalUpdates} entr{totalUpdates !== 1 ? 'ies' : 'y'} across {nonEmptyDays.length} day{nonEmptyDays.length !== 1 ? 's' : ''}
         </span>
+      </div>
+
+      {/* Sort controls */}
+      <div className="flex items-center gap-1.5 flex-wrap mb-5">
+        <span className="text-[10px] uppercase tracking-wider font-semibold text-gray-600 mr-0.5">Sort:</span>
+        {SORT_OPTIONS.map(opt => (
+          <button
+            key={opt.key}
+            onClick={() => setSortKey(opt.key)}
+            className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${
+              sortKey === opt.key
+                ? 'bg-blue-600 border-blue-500 text-white shadow-sm shadow-blue-900/40'
+                : 'bg-gray-800/60 border-gray-700/50 text-gray-400 hover:text-gray-200 hover:border-gray-600'
+            }`}
+          >
+            {opt.key === 'parts' && (
+              <Package size={10} className="inline mr-1 -mt-px" />
+            )}
+            {opt.label}
+          </button>
+        ))}
       </div>
 
       {/* Daily timeline */}
@@ -100,6 +157,7 @@ export default function StatusLog() {
           {nonEmptyDays.map((day, dayIdx) => {
             const { relative, long } = dayHeader(day.date)
             const freshCount = day.updates.filter(u => !u.isStale).length
+            const sorted = sortUpdates(day.updates, sortKey)
             return (
               <motion.section
                 key={day.date}
@@ -124,7 +182,7 @@ export default function StatusLog() {
 
                 {/* RO entries for this day */}
                 <div className="space-y-2">
-                  {day.updates.map((u) => (
+                  {sorted.map((u) => (
                     <UpdateRow key={`${day.date}-${u.roId}`} update={u} />
                   ))}
                 </div>
@@ -140,6 +198,7 @@ export default function StatusLog() {
 function UpdateRow({ update: u }) {
   const stageColor = STAGE_COLORS[u.stage] || 'bg-gray-700/50 text-gray-400'
   const vehicle = [u.vehicleYear, u.vehicleMake, u.vehicleModel].filter(Boolean).join(' ')
+  const partsHere = u.partsStatus === 'ALL_HERE'
 
   return (
     <Link
@@ -162,6 +221,11 @@ function UpdateRow({ update: u }) {
                 <p className={`text-xs ${u.isStale ? 'text-gray-600' : 'text-gray-400'} truncate`}>
                   {vehicle}
                 </p>
+              )}
+              {partsHere && (
+                <span className={`inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${u.isStale ? 'bg-emerald-900/20 text-emerald-700' : 'bg-emerald-900/40 text-emerald-400'}`}>
+                  <Package size={8} /> All Here
+                </span>
               )}
             </div>
             {u.ownerName && (

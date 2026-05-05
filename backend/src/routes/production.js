@@ -309,6 +309,7 @@ router.get('/status-log', requireAuth, async (req, res) => {
         productionUpdatedAt: true,
         assignedTech: true,
         insuranceCompany: true,
+        partsStatus: true,
       },
     })
 
@@ -373,6 +374,7 @@ router.get('/status-log', requireAuth, async (req, res) => {
           vehicleModel: ro.vehicleModel,
           ownerName: ro.ownerName,
           insuranceCompany: ro.insuranceCompany,
+          partsStatus: ro.partsStatus || null,
           statusNote: source.statusNote || null,
           waitingParts: source.waitingParts || null,
           nextStep: source.nextStep || null,
