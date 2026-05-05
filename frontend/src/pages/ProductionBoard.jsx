@@ -5,10 +5,10 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChevronLeft, ChevronRight, ChevronDown, Car, FileText, Check, ClipboardList, X, Clock, Truck,
   Search, Package, CheckCircle2, XCircle, User, Shield, AlertTriangle, Wrench, Pencil,
-  ExternalLink, DollarSign, FilePlus, Warehouse, Activity,
+  ExternalLink, DollarSign, FilePlus, Warehouse, Activity, ListTodo, CheckSquare,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { productionApi, rosApi, supplementsApi } from '@/lib/api'
+import { productionApi, rosApi, supplementsApi, tasksApi } from '@/lib/api'
 import { STAGES, STAGE_COLORS, formatTimeAgo } from '@/lib/utils'
 import Spinner from '@/components/ui/Spinner'
 import EmptyState from '@/components/ui/EmptyState'
@@ -781,6 +781,221 @@ function DailyLogSheet({ open, onClose }) {
   )
 }
 
+// ── Task Sheet ────────────────────────────────────────────────────────────────
+function TaskSheet({ open, onClose, ro }) {
+  const queryClient = useQueryClient()
+  const [assignTo, setAssignTo] = useState('')
+  const [customName, setCustomName] = useState('')
+  const [note, setNote] = useState('')
+  const [showCustom, setShowCustom] = useState(false)
+
+  // Reset form when opening a new RO's sheet
+  useEffect(() => {
+    if (open) { setAssignTo(''); setCustomName(''); setNote(''); setShowCustom(false) }
+  }, [open, ro?.id])
+
+  const pendingTasks = ro?.tasks || []
+  const effectivePerson = assignTo === '__custom__' ? customName.trim() : assignTo
+  const canSave = effectivePerson && note.trim()
+
+  const createMutation = useMutation({
+    mutationFn: (data) => tasksApi.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['production'] })
+      setNote('')
+      setAssignTo('')
+      setCustomName('')
+      setShowCustom(false)
+      toast.success('Task assigned')
+    },
+    onError: (err) => toast.error(err.message || 'Failed to assign task'),
+  })
+
+  const doneMutation = useMutation({
+    mutationFn: (id) => tasksApi.complete(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['production'] }),
+    onError: (err) => toast.error(err.message || 'Failed'),
+  })
+
+  const removeMutation = useMutation({
+    mutationFn: (id) => tasksApi.remove(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['production'] }),
+    onError: (err) => toast.error(err.message || 'Failed'),
+  })
+
+  const handleAssign = () => {
+    if (!canSave || createMutation.isPending) return
+    createMutation.mutate({ roId: ro?.id, assignedTo: effectivePerson, note: note.trim() })
+  }
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 z-40"
+            onClick={onClose}
+          />
+          <motion.div
+            initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+            transition={{ type: 'spring', stiffness: 300, damping: 35 }}
+            className="fixed bottom-0 left-0 right-0 z-50 bg-gray-900 border-t border-gray-700/60 rounded-t-2xl max-h-[88vh] flex flex-col"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-4 border-b border-gray-800/60 shrink-0">
+              <div className="flex items-center gap-2">
+                <ListTodo size={17} className="text-orange-400" />
+                <h2 className="text-base font-bold text-gray-100">Tasks — RO #{ro?.roNumber}</h2>
+                {pendingTasks.length > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 text-xs font-bold border border-orange-500/30">
+                    {pendingTasks.length} open
+                  </span>
+                )}
+              </div>
+              <button onClick={onClose} className="text-gray-500 hover:text-gray-300 p-1">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-5">
+              {/* Open tasks for this RO */}
+              {pendingTasks.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2.5">Open Tasks</p>
+                  <div className="space-y-2">
+                    {pendingTasks.map((task) => (
+                      <div
+                        key={task.id}
+                        className="bg-orange-950/30 border border-orange-900/40 rounded-xl px-3.5 py-3"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <User size={10} className="text-orange-400 shrink-0" />
+                              <span className="text-xs font-bold text-orange-300">{task.assignedTo}</span>
+                            </div>
+                            <p className="text-sm text-gray-200 leading-snug">{task.note}</p>
+                            <p className="text-[10px] text-gray-600 mt-1.5 flex items-center gap-1">
+                              <Clock size={9} />
+                              {formatTimeAgo(task.createdAt)}
+                              {task.createdBy ? ` · by ${task.createdBy}` : ''}
+                            </p>
+                          </div>
+                          <div className="flex flex-col gap-1.5 shrink-0">
+                            <button
+                              onClick={() => doneMutation.mutate(task.id)}
+                              disabled={doneMutation.isPending}
+                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold hover:bg-emerald-500/25 disabled:opacity-50 transition-colors"
+                            >
+                              <CheckSquare size={11} /> Done
+                            </button>
+                            <button
+                              onClick={() => removeMutation.mutate(task.id)}
+                              disabled={removeMutation.isPending}
+                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gray-800 border border-gray-700 text-gray-500 text-xs font-medium hover:text-red-400 hover:border-red-900 disabled:opacity-50 transition-colors"
+                            >
+                              <X size={10} /> Delete
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* New task form */}
+              <div>
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
+                  {pendingTasks.length > 0 ? 'Add Another Task' : 'Assign a Task'}
+                </p>
+
+                {/* Person selector */}
+                <div className="mb-3">
+                  <p className="text-[11px] font-semibold text-gray-500 mb-2">Assign to:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {TECHS.map((tech) => (
+                      <button
+                        key={tech}
+                        type="button"
+                        onClick={() => { setAssignTo(tech); setShowCustom(false) }}
+                        className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                          assignTo === tech
+                            ? 'bg-orange-500/20 border-orange-500/60 text-orange-300'
+                            : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-orange-500/40 hover:text-gray-200'
+                        }`}
+                      >
+                        {assignTo === tech && <span className="mr-1">✓</span>}
+                        {tech}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => { setShowCustom(true); setAssignTo('__custom__') }}
+                      className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                        assignTo === '__custom__'
+                          ? 'bg-orange-500/20 border-orange-500/60 text-orange-300'
+                          : 'bg-gray-800 border-dashed border-gray-600 text-gray-500 hover:border-orange-500/40 hover:text-gray-200'
+                      }`}
+                    >
+                      + Other
+                    </button>
+                  </div>
+                  <AnimatePresence>
+                    {showCustom && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <input
+                          autoFocus
+                          type="text"
+                          value={customName}
+                          onChange={(e) => setCustomName(e.target.value)}
+                          placeholder="Type a name..."
+                          className="mt-2 w-full bg-gray-900/60 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-orange-500/60"
+                        />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                {/* Note */}
+                <div>
+                  <p className="text-[11px] font-semibold text-gray-500 mb-2">What needs to be done:</p>
+                  <textarea
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleAssign() }}
+                    rows={3}
+                    placeholder="Describe the task..."
+                    className="w-full bg-gray-900/60 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-orange-500/60 resize-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="shrink-0 p-4 border-t border-gray-800/60">
+              <button
+                onClick={handleAssign}
+                disabled={!canSave || createMutation.isPending}
+                className="w-full py-3 rounded-xl bg-orange-600 hover:bg-orange-500 disabled:opacity-40 disabled:pointer-events-none text-white font-semibold text-sm transition-colors flex items-center justify-center gap-2"
+              >
+                {createMutation.isPending ? <Spinner size="sm" /> : <ListTodo size={15} />}
+                Assign Task
+              </button>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  )
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function ProductionBoard() {
   const queryClient = useQueryClient()
@@ -799,6 +1014,7 @@ export default function ProductionBoard() {
   const [editOpen, setEditOpen] = useState(false)
   const [techPickerOpen, setTechPickerOpen] = useState(false)
   const [stagePickerOpen, setStagePickerOpen] = useState(false)
+  const [taskOpen, setTaskOpen] = useState(false)
   const searchRef = useRef(null)
   const saveTimeout = useRef(null)
   const touchStart = useRef(null) // { x, y }
@@ -935,10 +1151,10 @@ export default function ProductionBoard() {
 
   // Keyboard arrow keys — stable ref so listener is added once (not torn down on every keystroke)
   const navRef = useRef({})
-  navRef.current = { goPrev, goNext, logOpen, partsOpen, partsActivityOpen, searchOpen }
+  navRef.current = { goPrev, goNext, logOpen, partsOpen, partsActivityOpen, searchOpen, taskOpen }
   useEffect(() => {
     const onKey = (e) => {
-      if (navRef.current.logOpen || navRef.current.partsOpen || navRef.current.partsActivityOpen || navRef.current.searchOpen) return
+      if (navRef.current.logOpen || navRef.current.partsOpen || navRef.current.partsActivityOpen || navRef.current.searchOpen || navRef.current.taskOpen) return
       if (e.key === 'ArrowLeft') navRef.current.goPrev()
       if (e.key === 'ArrowRight') navRef.current.goNext()
     }
@@ -1253,6 +1469,21 @@ export default function ProductionBoard() {
                       {formatTimeAgo(ro.productionUpdatedAt)}
                     </span>
                   )}
+
+                  {/* Task button */}
+                  <button
+                    onClick={() => setTaskOpen(true)}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition-all ${
+                      (ro.tasks?.length || 0) > 0
+                        ? 'bg-orange-500/20 border-orange-500/50 text-orange-300 shadow-sm shadow-orange-900/30'
+                        : 'bg-gray-800/60 border-gray-700 border-dashed text-gray-500 hover:text-orange-300 hover:border-orange-500/40'
+                    }`}
+                  >
+                    <ListTodo size={10} />
+                    {(ro.tasks?.length || 0) > 0
+                      ? `${ro.tasks.length} Task${ro.tasks.length !== 1 ? 's' : ''}`
+                      : 'Task'}
+                  </button>
 
                   <button
                     onClick={() => setEditOpen(true)}
@@ -1576,6 +1807,7 @@ export default function ProductionBoard() {
       <PartsSheet open={partsOpen} onClose={() => setPartsOpen(false)} parts={ro?.parts || []} roNumber={ro?.roNumber} />
       <PartsActivitySheet open={partsActivityOpen} onClose={() => setPartsActivityOpen(false)} />
       <CustomerEditSheet open={editOpen} onClose={() => setEditOpen(false)} ro={ro} />
+      <TaskSheet open={taskOpen} onClose={() => setTaskOpen(false)} ro={ro} />
     </div>
   )
 }

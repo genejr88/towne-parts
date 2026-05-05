@@ -192,6 +192,15 @@ export const carriersApi = {
   update: (id, data) => unwrap(api.put(`/carriers/${id}`, data)),
 }
 
+// ── Tasks ─────────────────────────────────────────────────────────────────────
+export const tasksApi = {
+  list:     (params) => unwrap(api.get('/tasks', { params })),
+  create:   (data)   => unwrap(api.post('/tasks', data)),
+  update:   (id, data) => unwrap(api.put(`/tasks/${id}`, data)),
+  complete: (id)     => unwrap(api.put(`/tasks/${id}`, { status: 'DONE' })),
+  remove:   (id)     => unwrap(api.delete(`/tasks/${id}`)),
+}
+
 // ── Pre-Storage ────────────────────────────────────────────────────────────────
 export const prestorageApi = {
   activate: (roId, data) => unwrap(api.post(`/production/prestorage/${roId}`, data)),

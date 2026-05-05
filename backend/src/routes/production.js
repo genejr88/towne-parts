@@ -99,6 +99,11 @@ router.get('/', requireAuth, async (req, res) => {
           select: { id: true, number: true, status: true },
           orderBy: { number: 'asc' },
         },
+        tasks: {
+          where: { status: 'PENDING' },
+          select: { id: true, assignedTo: true, note: true, createdBy: true, createdAt: true },
+          orderBy: { createdAt: 'asc' },
+        },
       },
       orderBy: [
         { productionUpdatedAt: { sort: 'desc', nulls: 'last' } },

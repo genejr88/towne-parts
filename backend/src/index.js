@@ -38,6 +38,7 @@ const privateRoutes = require('./routes/private')
 const bmwRoutes = require('./routes/bmw')
 const supplementsRoutes = require('./routes/supplements')
 const carriersRoutes    = require('./routes/carriers')
+const tasksRoutes       = require('./routes/tasks')
 
 app.use('/api/auth', authRoutes)
 app.use('/api/ros', rosRoutes)
@@ -55,6 +56,7 @@ app.use('/api/private', privateRoutes)
 app.use('/api/bmw', bmwRoutes)
 app.use('/api/supplements', supplementsRoutes)
 app.use('/api/carriers',    carriersRoutes)
+app.use('/api/tasks',       tasksRoutes)
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }))
 

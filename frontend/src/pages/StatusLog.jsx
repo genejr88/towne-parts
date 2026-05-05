@@ -1,9 +1,13 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { motion } from 'framer-motion'
-import { Activity, ArrowLeft, Calendar, ChevronRight, Wrench, Clock, RefreshCw, Package } from 'lucide-react'
-import { productionApi } from '@/lib/api'
+import { Link, useNavigate } from 'react-router-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { motion, AnimatePresence } from 'framer-motion'
+import {
+  Activity, ArrowLeft, Calendar, ChevronRight, Wrench, Clock, RefreshCw,
+  Package, ListTodo, CheckSquare, User, X, Car,
+} from 'lucide-react'
+import toast from 'react-hot-toast'
+import { productionApi, tasksApi } from '@/lib/api'
 import { STAGE_COLORS, formatTimeAgo } from '@/lib/utils'
 import Spinner from '@/components/ui/Spinner'
 import EmptyState from '@/components/ui/EmptyState'
@@ -62,8 +66,191 @@ function sortUpdates(updates, sortKey) {
   }
 }
 
+// ── Tasks Modal ───────────────────────────────────────────────────────────────
+function TasksModal({ open, onClose }) {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+
+  const { data: tasks, isLoading } = useQuery({
+    queryKey: ['all-tasks-pending'],
+    queryFn: () => tasksApi.list({ status: 'PENDING' }),
+    enabled: open,
+    refetchInterval: open ? 15_000 : false,
+    staleTime: 5_000,
+  })
+
+  const doneMutation = useMutation({
+    mutationFn: (id) => tasksApi.complete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['all-tasks-pending'] })
+      queryClient.invalidateQueries({ queryKey: ['production'] })
+      toast.success('Task marked done')
+    },
+    onError: (err) => toast.error(err.message || 'Failed'),
+  })
+
+  const removeMutation = useMutation({
+    mutationFn: (id) => tasksApi.remove(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['all-tasks-pending'] })
+      queryClient.invalidateQueries({ queryKey: ['production'] })
+    },
+    onError: (err) => toast.error(err.message || 'Failed'),
+  })
+
+  // Group tasks by assignedTo
+  const grouped = useMemo(() => {
+    if (!tasks?.length) return []
+    const map = new Map()
+    for (const task of tasks) {
+      const name = task.assignedTo
+      if (!map.has(name)) map.set(name, [])
+      map.get(name).push(task)
+    }
+    // Sort alphabetically by name
+    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  }, [tasks])
+
+  const handleGoToRO = (task) => {
+    onClose()
+    navigate(`/ros/${task.ro?.id}`)
+  }
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/70 z-40"
+            onClick={onClose}
+          />
+          <motion.div
+            initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+            transition={{ type: 'spring', stiffness: 300, damping: 35 }}
+            className="fixed bottom-0 left-0 right-0 z-50 bg-gray-900 border-t border-gray-700/60 rounded-t-2xl max-h-[85vh] flex flex-col"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-4 border-b border-gray-800/60 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <ListTodo size={18} className="text-orange-400" />
+                <h2 className="text-base font-bold text-gray-100">Open Tasks</h2>
+                {tasks && tasks.length > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 text-xs font-bold border border-orange-500/30">
+                    {tasks.length}
+                  </span>
+                )}
+              </div>
+              <button onClick={onClose} className="text-gray-500 hover:text-gray-300 p-1">
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-4">
+              {isLoading && (
+                <div className="flex justify-center py-12"><Spinner size="lg" /></div>
+              )}
+
+              {!isLoading && grouped.length === 0 && (
+                <div className="flex flex-col items-center py-16 gap-3 text-gray-600">
+                  <CheckSquare size={36} className="opacity-30" />
+                  <p className="text-sm font-medium">No open tasks — all clear!</p>
+                </div>
+              )}
+
+              {grouped.length > 0 && (
+                <div className="space-y-6">
+                  {grouped.map(([name, personTasks]) => (
+                    <div key={name}>
+                      {/* Person header */}
+                      <div className="flex items-center gap-2 mb-2.5">
+                        <div className="w-7 h-7 rounded-full bg-orange-500/20 border border-orange-500/30 flex items-center justify-center shrink-0">
+                          <User size={13} className="text-orange-400" />
+                        </div>
+                        <span className="text-sm font-extrabold text-orange-300">{name}</span>
+                        <span className="text-xs font-semibold text-gray-600">
+                          {personTasks.length} task{personTasks.length !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+
+                      {/* Tasks for this person */}
+                      <div className="space-y-2 pl-9">
+                        {personTasks.map((task) => {
+                          const vehicle = [task.ro?.vehicleYear, task.ro?.vehicleMake, task.ro?.vehicleModel].filter(Boolean).join(' ')
+                          return (
+                            <div
+                              key={task.id}
+                              className="bg-gray-800/50 border border-gray-700/50 rounded-xl overflow-hidden"
+                            >
+                              {/* RO context row */}
+                              <button
+                                onClick={() => handleGoToRO(task)}
+                                className="w-full text-left px-3.5 pt-3 pb-1.5 hover:bg-gray-700/30 transition-colors"
+                              >
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-xs font-black text-gray-100 font-mono">
+                                    RO {task.ro?.roNumber || '—'}
+                                  </span>
+                                  {vehicle && (
+                                    <span className="text-xs text-gray-500 flex items-center gap-1">
+                                      <Car size={9} /> {vehicle}
+                                    </span>
+                                  )}
+                                  {task.ro?.ownerName && (
+                                    <span className="text-[11px] text-gray-600">{task.ro.ownerName}</span>
+                                  )}
+                                  <ChevronRight size={12} className="text-gray-700 ml-auto" />
+                                </div>
+                              </button>
+
+                              {/* Task note */}
+                              <div className="px-3.5 pb-3">
+                                <p className="text-sm text-gray-200 leading-snug mb-2">{task.note}</p>
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[10px] text-gray-600 flex items-center gap-1">
+                                    <Clock size={9} />
+                                    {formatTimeAgo(task.createdAt)}
+                                    {task.createdBy ? ` · by ${task.createdBy}` : ''}
+                                  </span>
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      onClick={() => doneMutation.mutate(task.id)}
+                                      disabled={doneMutation.isPending}
+                                      className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[11px] font-bold hover:bg-emerald-500/25 disabled:opacity-50 transition-colors"
+                                    >
+                                      <CheckSquare size={10} /> Done
+                                    </button>
+                                    <button
+                                      onClick={() => removeMutation.mutate(task.id)}
+                                      disabled={removeMutation.isPending}
+                                      className="p-1 rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-900/20 disabled:opacity-50 transition-colors"
+                                    >
+                                      <X size={12} />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  )
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function StatusLog() {
   const [sortKey, setSortKey] = useState('date')
+  const [tasksOpen, setTasksOpen] = useState(false)
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['production-status-log'],
@@ -72,6 +259,15 @@ export default function StatusLog() {
     refetchOnWindowFocus: true,
     staleTime: 15_000,
   })
+
+  // Pending task count for the badge
+  const { data: pendingTasks } = useQuery({
+    queryKey: ['all-tasks-pending'],
+    queryFn: () => tasksApi.list({ status: 'PENDING' }),
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  })
+  const pendingCount = pendingTasks?.length || 0
 
   const days = data?.days || []
   const nonEmptyDays = useMemo(() => days.filter(d => d.updates.length > 0), [days])
@@ -100,6 +296,25 @@ export default function StatusLog() {
             Daily production status — live updates from the board
           </p>
         </div>
+
+        {/* Tasks button */}
+        <button
+          onClick={() => setTasksOpen(true)}
+          className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+            pendingCount > 0
+              ? 'text-orange-300 bg-orange-950/40 border-orange-900/50 hover:bg-orange-950/60'
+              : 'text-gray-400 bg-gray-800/60 border-gray-700/50 hover:text-gray-100'
+          }`}
+        >
+          <ListTodo size={13} />
+          Tasks
+          {pendingCount > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-orange-500 text-white text-[9px] font-black flex items-center justify-center shadow-md">
+              {pendingCount > 9 ? '9+' : pendingCount}
+            </span>
+          )}
+        </button>
+
         <button
           onClick={() => refetch()}
           disabled={isFetching}
@@ -137,9 +352,7 @@ export default function StatusLog() {
                 : 'bg-gray-800/60 border-gray-700/50 text-gray-400 hover:text-gray-200 hover:border-gray-600'
             }`}
           >
-            {opt.key === 'parts' && (
-              <Package size={10} className="inline mr-1 -mt-px" />
-            )}
+            {opt.key === 'parts' && <Package size={10} className="inline mr-1 -mt-px" />}
             {opt.label}
           </button>
         ))}
@@ -191,6 +404,9 @@ export default function StatusLog() {
           })}
         </div>
       )}
+
+      {/* Tasks modal */}
+      <TasksModal open={tasksOpen} onClose={() => setTasksOpen(false)} />
     </div>
   )
 }
@@ -242,14 +458,14 @@ function UpdateRow({ update: u }) {
           <ChevronRight size={14} className="text-gray-700 mt-0.5 flex-shrink-0" />
         </div>
 
-        {/* Status note — the headline */}
+        {/* Status note */}
         {u.statusNote && (
           <p className={`text-sm leading-snug ${u.isStale ? 'text-gray-500' : 'text-gray-200'}`}>
             {u.statusNote}
           </p>
         )}
 
-        {/* Waiting parts / next step — secondary lines */}
+        {/* Waiting parts / next step */}
         {(u.waitingParts || u.nextStep) && (
           <div className={`mt-1.5 flex flex-col gap-0.5 text-[11px] ${u.isStale ? 'text-gray-600' : 'text-gray-500'}`}>
             {u.waitingParts && (
@@ -261,7 +477,7 @@ function UpdateRow({ update: u }) {
           </div>
         )}
 
-        {/* Footer: tech + timestamp + stale indicator */}
+        {/* Footer */}
         <div className="flex items-center gap-2 mt-2 text-[10px] text-gray-600">
           {u.tech && (
             <span className="flex items-center gap-1">
