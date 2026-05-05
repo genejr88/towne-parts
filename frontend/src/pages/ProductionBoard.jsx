@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChevronLeft, ChevronRight, ChevronDown, Car, FileText, Check, ClipboardList, X, Clock, Truck,
   Search, Package, CheckCircle2, XCircle, User, Shield, AlertTriangle, Wrench, Pencil,
-  ExternalLink, DollarSign, FilePlus, Warehouse,
+  ExternalLink, DollarSign, FilePlus, Warehouse, Activity,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { productionApi, rosApi, supplementsApi } from '@/lib/api'
@@ -784,6 +784,7 @@ function DailyLogSheet({ open, onClose }) {
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function ProductionBoard() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [index, setIndex] = useState(0)
   const [direction, setDirection] = useState(0) // -1 prev, 1 next
   const [localEdits, setLocalEdits] = useState({})
@@ -1055,6 +1056,14 @@ export default function ProductionBoard() {
           >
             <Package size={13} />
             Parts
+          </button>
+          <button
+            onClick={() => navigate('/board/log')}
+            className="flex items-center gap-1.5 text-xs text-purple-400 hover:text-purple-300 px-2 py-1 rounded-lg bg-purple-950/40 border border-purple-900/50 transition-colors"
+            title="Daily status log — live updates"
+          >
+            <Activity size={13} />
+            Status
           </button>
           <button
             onClick={() => setLogOpen(true)}

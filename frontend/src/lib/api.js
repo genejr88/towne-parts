@@ -84,6 +84,7 @@ export const productionApi = {
   save: (roId, data) => unwrap(api.post(`/production/${roId}`, data)),
   activity: (date) => unwrap(api.get('/production/activity', { params: date ? { date } : {} })),
   partsActivity: (days = 2) => unwrap(api.get('/production/parts-activity', { params: { days } })),
+  statusLog: (days = 14) => unwrap(api.get('/production/status-log', { params: { days } })),
 }
 
 // ── Invoices ──────────────────────────────────────────────────────────────────

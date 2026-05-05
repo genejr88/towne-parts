@@ -89,10 +89,27 @@ model RO {
   srcEntries              SRCEntry[]
   activityLog             ActivityLog[]
   supplements             Supplement[]
+  statusUpdates           ProductionStatusUpdate[]
   createdAt               DateTime      @default(now())
   updatedAt               DateTime      @updatedAt
 
   @@map("ros")
+}
+
+model ProductionStatusUpdate {
+  id            Int      @id @default(autoincrement())
+  roId          Int
+  ro            RO       @relation(fields: [roId], references: [id], onDelete: Cascade)
+  statusNote    String?
+  waitingParts  String?
+  nextStep      String?
+  stage         String?
+  tech          String?
+  createdBy     String?
+  createdAt     DateTime @default(now())
+
+  @@index([roId, createdAt])
+  @@map("production_status_updates")
 }
 
 model ROLocationPhoto {

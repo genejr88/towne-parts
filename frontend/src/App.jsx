@@ -18,6 +18,7 @@ import RecentActivity from '@/pages/RecentActivity'
 import Help from '@/pages/Help'
 import Supplements from '@/pages/Supplements'
 import CarrierHistory from '@/pages/CarrierHistory'
+import StatusLog from '@/pages/StatusLog'
 
 function ProtectedRoute({ children, adminOnly = false }) {
   const { user, loading } = useAuth()
@@ -69,6 +70,9 @@ export default function App() {
         } />
         <Route path="/board" element={
           <ProtectedRoute><AppLayout><ProductionBoard /></AppLayout></ProtectedRoute>
+        } />
+        <Route path="/board/log" element={
+          <ProtectedRoute><AppLayout><StatusLog /></AppLayout></ProtectedRoute>
         } />
         <Route path="/src" element={
           <ProtectedRoute><AppLayout><SRCTracker /></AppLayout></ProtectedRoute>

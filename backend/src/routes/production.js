@@ -235,6 +235,33 @@ router.post('/:roId', requireAuth, async (req, res) => {
       },
     })
 
+    // Snapshot a ProductionStatusUpdate when any of the key notes/stage/tech actually changed
+    const norm = (v) => (v == null ? '' : String(v).trim())
+    const noteChanged   = productionStatusNote   !== undefined && norm(productionStatusNote)   !== norm(existing.productionStatusNote)
+    const waitChanged   = productionWaitingParts !== undefined && norm(productionWaitingParts) !== norm(existing.productionWaitingParts)
+    const nextChanged   = productionNextStep     !== undefined && norm(productionNextStep)     !== norm(existing.productionNextStep)
+    const stageChanged  = productionStage        !== undefined && norm(productionStage)        !== norm(existing.productionStage)
+    const techChanged   = assignedTech           !== undefined && norm(assignedTech)           !== norm(existing.assignedTech)
+
+    if (noteChanged || waitChanged || nextChanged || stageChanged || techChanged) {
+      try {
+        await prisma.productionStatusUpdate.create({
+          data: {
+            roId,
+            statusNote:   norm(ro.productionStatusNote)   || null,
+            waitingParts: norm(ro.productionWaitingParts) || null,
+            nextStep:     norm(ro.productionNextStep)     || null,
+            stage:        norm(ro.productionStage)        || null,
+            tech:         norm(ro.assignedTech)           || null,
+            createdBy:    req.user?.username || null,
+          },
+        })
+      } catch (e) {
+        // Snapshot is best-effort — never fail the save
+        console.error('Status snapshot failed:', e.message)
+      }
+    }
+
     // Log activity
     const stageLabel = updateData.productionStage || existing.productionStage || 'unknown'
     await prisma.activityLog.create({
@@ -248,6 +275,137 @@ router.post('/:roId', requireAuth, async (req, res) => {
     return res.json({ success: true, data: ro })
   } catch (err) {
     console.error('Update production error:', err)
+    return res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// GET /api/production/status-log?days=14
+// Returns active ROs grouped by day, each day showing every RO's status as of
+// end-of-day. If there's no snapshot on that day, the most recent prior snapshot
+// is carried forward and flagged as stale.
+router.get('/status-log', requireAuth, async (req, res) => {
+  try {
+    const days = Math.min(Math.max(parseInt(req.query.days) || 14, 1), 60)
+
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const earliest = new Date(today)
+    earliest.setDate(earliest.getDate() - (days - 1))
+
+    // All active ROs
+    const ros = await prisma.rO.findMany({
+      where: { isArchived: false },
+      select: {
+        id: true,
+        roNumber: true,
+        vehicleYear: true,
+        vehicleMake: true,
+        vehicleModel: true,
+        ownerName: true,
+        productionStage: true,
+        productionStatusNote: true,
+        productionWaitingParts: true,
+        productionNextStep: true,
+        productionUpdatedAt: true,
+        assignedTech: true,
+        insuranceCompany: true,
+      },
+    })
+
+    // Pull all snapshots in-window for those ROs (single query, indexed by [roId, createdAt])
+    const snapshots = await prisma.productionStatusUpdate.findMany({
+      where: { roId: { in: ros.map(r => r.id) } },
+      orderBy: { createdAt: 'asc' },
+    })
+
+    // Index snapshots by roId for fast lookup
+    const byRo = new Map()
+    for (const s of snapshots) {
+      if (!byRo.has(s.roId)) byRo.set(s.roId, [])
+      byRo.get(s.roId).push(s)
+    }
+
+    // Build day buckets — newest day first
+    const dayBuckets = []
+    for (let i = 0; i < days; i++) {
+      const dayStart = new Date(today)
+      dayStart.setDate(dayStart.getDate() - i)
+      const dayEnd = new Date(dayStart)
+      dayEnd.setHours(23, 59, 59, 999)
+      dayBuckets.push({ dayStart, dayEnd, dayKey: dayStart.toISOString().slice(0, 10), updates: [] })
+    }
+
+    // For every (RO, day) compute the latest snapshot at-or-before end-of-day
+    for (const ro of ros) {
+      const list = byRo.get(ro.id) || []
+      for (const bucket of dayBuckets) {
+        // Last snapshot with createdAt <= dayEnd
+        let latest = null
+        for (let i = list.length - 1; i >= 0; i--) {
+          if (list[i].createdAt <= bucket.dayEnd) { latest = list[i]; break }
+        }
+
+        // Source of truth — fall back to the live RO record if no snapshots yet
+        const source = latest || {
+          statusNote: ro.productionStatusNote,
+          waitingParts: ro.productionWaitingParts,
+          nextStep: ro.productionNextStep,
+          stage: ro.productionStage,
+          tech: ro.assignedTech,
+          createdAt: ro.productionUpdatedAt || null,
+          createdBy: null,
+        }
+
+        // Stale if the source is older than the start of this bucket
+        const isStale = source.createdAt
+          ? new Date(source.createdAt) < bucket.dayStart
+          : true
+
+        // Skip if there's no information at all to display
+        const hasContent = source.statusNote || source.waitingParts || source.nextStep || source.stage
+        if (!hasContent) continue
+
+        bucket.updates.push({
+          roId: ro.id,
+          roNumber: ro.roNumber,
+          vehicleYear: ro.vehicleYear,
+          vehicleMake: ro.vehicleMake,
+          vehicleModel: ro.vehicleModel,
+          ownerName: ro.ownerName,
+          insuranceCompany: ro.insuranceCompany,
+          statusNote: source.statusNote || null,
+          waitingParts: source.waitingParts || null,
+          nextStep: source.nextStep || null,
+          stage: source.stage || null,
+          tech: source.tech || null,
+          updatedAt: source.createdAt,
+          updatedBy: source.createdBy || null,
+          isStale,
+        })
+      }
+    }
+
+    // Sort each day: fresh updates first (not stale), then by RO number
+    for (const bucket of dayBuckets) {
+      bucket.updates.sort((a, b) => {
+        if (a.isStale !== b.isStale) return a.isStale ? 1 : -1
+        // Then newest update first within the same staleness band
+        if (a.updatedAt && b.updatedAt) return new Date(b.updatedAt) - new Date(a.updatedAt)
+        return (a.roNumber || '').localeCompare(b.roNumber || '')
+      })
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        days: dayBuckets.map(b => ({
+          date: b.dayKey,
+          updates: b.updates,
+        })),
+      },
+    })
+  } catch (err) {
+    console.error('Get status log error:', err)
     return res.status(500).json({ success: false, error: err.message })
   }
 })
