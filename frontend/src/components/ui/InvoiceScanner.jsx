@@ -515,32 +515,123 @@ function otsuThreshold(gray) {
 }
 
 /* ── Automatic document edge detection ────────────────────────────────────────
- *  Three strategies tried in order — first valid result wins:
+ *  Four strategies are run; each yields a candidate box. We score every
+ *  candidate by fill-density on a shared "document" mask AND penalise extreme
+ *  aspect ratios — the highest-scoring valid box wins.
  *
- *  1. Background-colour sampling  (most robust in practice)
- *     Sample the 10px border strips of the frame; compute the median and std
- *     dev of those pixels to characterise the background. Mark every pixel
- *     that differs from the background by > max(12, 1.5·σ) as "document".
- *     Build row/col projection profiles and find the bounding box.
+ *  1. Sobel-gradient projection            (PRIMARY — best for clear edges)
+ *     Compute Sobel gradient magnitude of a lightly-blurred grayscale.
+ *     A pixel "belongs to document boundary" if its gradient exceeds the
+ *     85th-percentile of all gradients. We project these onto rows / cols
+ *     and locate the OUTERMOST significant peaks — those are the document
+ *     edges. Robust to uneven lighting and dark backgrounds.
  *
- *  2. Otsu on flat-field-corrected grayscale  (good contrast, even lighting)
- *     Same projection approach, but the foreground mask comes from Otsu's
- *     global optimal threshold after illumination correction.
+ *  2. Background-colour sampling
+ *     Sample the outer 5% border strips, take median + MAD (more robust
+ *     than std dev). Mark any pixel differing from bg-median by > MAD·1.5
+ *     as document. Apply morphological closing to fill text gaps before
+ *     projecting.
  *
- *  3. Row/column average step-change  (works even on same-brightness paper)
- *     Compute average brightness per row and per column. The derivative of
- *     these profiles shows the sharpest brightness transition in the image.
- *     For a document on a surface, the boundary produces a larger step than
- *     any line of text inside the document.
+ *  3. Otsu on flat-field-corrected grayscale
+ *     Same projection approach, but mask comes from Otsu after illumination
+ *     correction. Closing applied here too.
  *
- *  Sanity checks applied after each strategy:
- *    • Result must cover 20–92 % of each axis (rejects noise & whole-frame)
+ *  4. Row/column derivative                (FALLBACK — even-toned paper)
+ *     Original strategy — relies on a brightness step at the document edge.
+ *
+ *  Validation:
+ *    • Box must cover 20–95 % of each axis
+ *    • Aspect ratio must be 0.35–2.85 (rejects sliver false positives)
  *  Returns {x,y,x2,y2} normalised 0-1, or null if nothing is confident.
  * ────────────────────────────────────────────────────────────────────────── */
+
+// ── 3×3 box blur (separable) — fast noise reduction before edge detection ───
+function boxBlur3(src, w, h) {
+  const tmp = new Uint8ClampedArray(src.length)
+  const out = new Uint8ClampedArray(src.length)
+  // horizontal pass
+  for (let y = 0; y < h; y++) {
+    const off = y * w
+    for (let x = 0; x < w; x++) {
+      const x0 = x > 0 ? x - 1 : 0
+      const x1 = x < w - 1 ? x + 1 : w - 1
+      tmp[off + x] = (src[off + x0] + src[off + x] + src[off + x1]) / 3
+    }
+  }
+  // vertical pass
+  for (let y = 0; y < h; y++) {
+    const y0 = y > 0 ? y - 1 : 0
+    const y1 = y < h - 1 ? y + 1 : h - 1
+    for (let x = 0; x < w; x++) {
+      out[y * w + x] = (tmp[y0 * w + x] + tmp[y * w + x] + tmp[y1 * w + x]) / 3
+    }
+  }
+  return out
+}
+
+// ── Sobel gradient magnitude (Uint16Array, peaks where edges are) ───────────
+function sobelMagnitude(gray, w, h) {
+  const mag = new Uint16Array(w * h)
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x
+      const tl = gray[i - w - 1], t = gray[i - w], tr = gray[i - w + 1]
+      const l  = gray[i - 1],     r  = gray[i + 1]
+      const bl = gray[i + w - 1], b = gray[i + w], br = gray[i + w + 1]
+      const gx = (tr + 2 * r + br) - (tl + 2 * l + bl)
+      const gy = (bl + 2 * b + br) - (tl + 2 * t + tr)
+      // approximate magnitude
+      const a = Math.abs(gx) + Math.abs(gy)
+      mag[i] = a > 1020 ? 1020 : a // cap (4 * 255)
+    }
+  }
+  return mag
+}
+
+// ── Morphological closing (3×3 dilation then erosion) — fills small gaps ────
+function morphClose3(mask, w, h) {
+  const len = w * h
+  const dilated = new Uint8Array(len)
+  // Dilation: any of 3×3 neighbours == 1 → 1
+  for (let y = 0; y < h; y++) {
+    const y0 = y > 0 ? y - 1 : 0
+    const y1 = y < h - 1 ? y + 1 : h - 1
+    for (let x = 0; x < w; x++) {
+      const x0 = x > 0 ? x - 1 : 0
+      const x1 = x < w - 1 ? x + 1 : w - 1
+      let v = 0
+      for (let yy = y0; yy <= y1 && !v; yy++) {
+        for (let xx = x0; xx <= x1 && !v; xx++) {
+          if (mask[yy * w + xx]) v = 1
+        }
+      }
+      dilated[y * w + x] = v
+    }
+  }
+  const eroded = new Uint8Array(len)
+  // Erosion: ALL of 3×3 neighbours == 1 → 1
+  for (let y = 0; y < h; y++) {
+    const y0 = y > 0 ? y - 1 : 0
+    const y1 = y < h - 1 ? y + 1 : h - 1
+    for (let x = 0; x < w; x++) {
+      const x0 = x > 0 ? x - 1 : 0
+      const x1 = x < w - 1 ? x + 1 : w - 1
+      let v = 1
+      for (let yy = y0; yy <= y1 && v; yy++) {
+        for (let xx = x0; xx <= x1 && v; xx++) {
+          if (!dilated[yy * w + xx]) v = 0
+        }
+      }
+      eroded[y * w + x] = v
+    }
+  }
+  return eroded
+}
+
 function detectDocument(srcCanvas) {
   if (!srcCanvas || !srcCanvas.width || !srcCanvas.height) return null
 
-  const MAX_W = 400
+  const MAX_W = 600   // bumped from 400 — gives gradient detection cleaner edges
   const ratio = Math.min(1, MAX_W / srcCanvas.width)
   const w = Math.max(1, Math.round(srcCanvas.width  * ratio))
   const h = Math.max(1, Math.round(srcCanvas.height * ratio))
@@ -561,20 +652,49 @@ function detectDocument(srcCanvas) {
     gray[i] = (77 * data[p] + 150 * data[p + 1] + 29 * data[p + 2]) >> 8
   }
 
+  // Mild blur — kills JPEG/sensor noise without losing real edges
+  const blur = boxBlur3(gray, w, h)
+
+  // ── Validation helpers ──────────────────────────────────────────────────
+  const validBox = (box) => {
+    if (!box) return false
+    const dw = box.x2 - box.x
+    const dh = box.y2 - box.y
+    if (dw < 0.20 || dh < 0.20) return false
+    if (dw > 0.95 && dh > 0.95) return false
+    const aspect = dw / dh
+    return aspect > 0.35 && aspect < 2.85
+  }
+
+  const fillScore = (box, mask) => {
+    if (!box) return 0
+    const x0 = Math.max(0, Math.floor(box.x  * w))
+    const y0 = Math.max(0, Math.floor(box.y  * h))
+    const x1 = Math.min(w, Math.ceil (box.x2 * w))
+    const y1 = Math.min(h, Math.ceil (box.y2 * h))
+    let inside = 0, total = 0
+    for (let y = y0; y < y1; y++) {
+      const off = y * w
+      for (let x = x0; x < x1; x++) {
+        total++
+        if (mask[off + x]) inside++
+      }
+    }
+    return total ? inside / total : 0
+  }
+
   // ── Shared helper: projection profiles → bounding box ──────────────────
-  //    isDoc(pixelIndex) → true if pixel is considered "inside document"
-  const findBox = (isDoc) => {
+  const findBoxFromMask = (mask) => {
     const rowCounts = new Int32Array(h)
     const colCounts = new Int32Array(w)
     for (let y = 0; y < h; y++) {
       const off = y * w
       let rc = 0
       for (let x = 0; x < w; x++) {
-        if (isDoc(off + x)) { rc++; colCounts[x]++ }
+        if (mask[off + x]) { rc++; colCounts[x]++ }
       }
       rowCounts[y] = rc
     }
-    // A row/col qualifies if ≥ 12 % of it is "document"
     const rowT = Math.max(4, Math.round(w * 0.12))
     const colT = Math.max(4, Math.round(h * 0.12))
     let top = -1, bot = -1, lft = -1, rgt = -1
@@ -584,9 +704,8 @@ function detectDocument(srcCanvas) {
     for (let x = w - 1; x >= 0; x--) { if (colCounts[x] >= colT) { rgt = x; break } }
     if (top < 0 || bot <= top || lft < 0 || rgt <= lft) return null
     const dw = rgt - lft, dh = bot - top
-    // Must cover 20–92 % of each axis
     if (dw < w * 0.20 || dh < h * 0.20) return null
-    if (dw > w * 0.92 && dh > h * 0.92) return null
+    if (dw > w * 0.95 && dh > h * 0.95) return null
     const px = Math.max(2, Math.round(dw * 0.01))
     const py = Math.max(2, Math.round(dh * 0.01))
     return {
@@ -597,55 +716,121 @@ function detectDocument(srcCanvas) {
     }
   }
 
-  // ── Strategy 1: background-colour sampling ──────────────────────────────
-  const BORD = 10
+  // Score-and-collect candidates
+  const candidates = []
+
+  // ── Strategy 1: Sobel-gradient projection ───────────────────────────────
+  // Find edges via gradient magnitude — robust against lighting variance.
+  const grad = sobelMagnitude(blur, w, h)
+  // 85th-percentile threshold (sample down for speed)
+  const sample = []
+  const step = Math.max(1, Math.floor(grad.length / 4096))
+  for (let i = 0; i < grad.length; i += step) sample.push(grad[i])
+  sample.sort((a, b) => a - b)
+  const gradT = sample[Math.floor(sample.length * 0.85)] || 30
+
+  // Build edge mask, then close it to consolidate edge fragments
+  const gradMask = new Uint8Array(len)
+  for (let i = 0; i < len; i++) gradMask[i] = grad[i] >= gradT ? 1 : 0
+  const gradMaskClosed = morphClose3(gradMask, w, h)
+
+  // Project edge mask onto rows/cols → outermost significant peaks = bounds
+  const rowEdgeCounts = new Int32Array(h)
+  const colEdgeCounts = new Int32Array(w)
+  for (let y = 0; y < h; y++) {
+    const off = y * w
+    let rc = 0
+    for (let x = 0; x < w; x++) {
+      if (gradMaskClosed[off + x]) { rc++; colEdgeCounts[x]++ }
+    }
+    rowEdgeCounts[y] = rc
+  }
+  // A row/col is an "edge row" if its edge-count exceeds 35% of its max
+  let maxRow = 0, maxCol = 0
+  for (let y = 0; y < h; y++) if (rowEdgeCounts[y] > maxRow) maxRow = rowEdgeCounts[y]
+  for (let x = 0; x < w; x++) if (colEdgeCounts[x] > maxCol) maxCol = colEdgeCounts[x]
+  const rT = Math.max(4, maxRow * 0.35)
+  const cT = Math.max(4, maxCol * 0.35)
+
+  let top = -1, bot = -1, lft = -1, rgt = -1
+  for (let y = 0; y < h; y++) { if (rowEdgeCounts[y] >= rT) { top = y; break } }
+  for (let y = h - 1; y >= 0; y--) { if (rowEdgeCounts[y] >= rT) { bot = y; break } }
+  for (let x = 0; x < w; x++) { if (colEdgeCounts[x] >= cT) { lft = x; break } }
+  for (let x = w - 1; x >= 0; x--) { if (colEdgeCounts[x] >= cT) { rgt = x; break } }
+
+  if (top >= 0 && bot > top && lft >= 0 && rgt > lft) {
+    const px = Math.max(2, Math.round((rgt - lft) * 0.005))
+    const py = Math.max(2, Math.round((bot - top) * 0.005))
+    const sobBox = {
+      x:  Math.max(0, (lft - px) / w),
+      y:  Math.max(0, (top - py) / h),
+      x2: Math.min(1, (rgt + px) / w),
+      y2: Math.min(1, (bot + py) / h),
+    }
+    if (validBox(sobBox)) {
+      candidates.push({ name: 'sobel', box: sobBox, score: fillScore(sobBox, gradMaskClosed) * 1.10 }) // 10% bonus — usually best
+    }
+  }
+
+  // ── Strategy 2: background-colour sampling (improved with MAD + closing) ─
+  const BORD = Math.max(8, Math.round(Math.min(w, h) * 0.05))
   const bgArr = []
   for (let y = 0; y < Math.min(BORD, h); y++)
-    for (let x = 0; x < w; x++) bgArr.push(gray[y * w + x])
+    for (let x = 0; x < w; x++) bgArr.push(blur[y * w + x])
   for (let y = Math.max(0, h - BORD); y < h; y++)
-    for (let x = 0; x < w; x++) bgArr.push(gray[y * w + x])
+    for (let x = 0; x < w; x++) bgArr.push(blur[y * w + x])
   for (let y = BORD; y < h - BORD; y++) {
-    for (let x = 0; x < Math.min(BORD, w); x++) bgArr.push(gray[y * w + x])
-    for (let x = Math.max(0, w - BORD); x < w; x++) bgArr.push(gray[y * w + x])
+    for (let x = 0; x < Math.min(BORD, w); x++) bgArr.push(blur[y * w + x])
+    for (let x = Math.max(0, w - BORD); x < w; x++) bgArr.push(blur[y * w + x])
   }
   bgArr.sort((a, b) => a - b)
   const bgMedian = bgArr[bgArr.length >> 1]
-  const bgMu = bgArr.reduce((s, v) => s + v, 0) / bgArr.length
-  const bgSigma = Math.sqrt(bgArr.reduce((s, v) => s + (v - bgMu) ** 2, 0) / bgArr.length)
-  const diffT = Math.max(12, bgSigma * 1.5)
+  // Median Absolute Deviation — more robust than std dev to outliers
+  const dev = bgArr.map(v => Math.abs(v - bgMedian)).sort((a, b) => a - b)
+  const bgMAD = dev[dev.length >> 1] || 4
+  const diffT = Math.max(10, bgMAD * 2.5)
 
-  const box1 = findBox((i) => Math.abs(gray[i] - bgMedian) > diffT)
-  if (box1) {
-    console.debug('[Scanner] edge: bg-sample →', box1)
-    return box1
+  const bgMask = new Uint8Array(len)
+  for (let i = 0; i < len; i++) bgMask[i] = Math.abs(blur[i] - bgMedian) > diffT ? 1 : 0
+  const bgMaskClosed = morphClose3(bgMask, w, h)
+
+  const bgBox = findBoxFromMask(bgMaskClosed)
+  if (validBox(bgBox)) {
+    candidates.push({ name: 'bg-sample', box: bgBox, score: fillScore(bgBox, bgMaskClosed) })
   }
 
-  // ── Strategy 2: Otsu on illumination-corrected grayscale ────────────────
+  // ── Strategy 3: Otsu on illumination-corrected grayscale ────────────────
   const illum = estimateIllumination(gray, w, h)
   const corr  = correctGray(gray, illum, len, 240)
   const T     = otsuThreshold(corr)
 
-  const box2 = findBox((i) => corr[i] > T)
-  if (box2) {
-    console.debug('[Scanner] edge: otsu →', box2)
-    return box2
+  // Mask = pixels darker than threshold → text/document content vs paper.
+  // For document detection on a white surface we instead want pixels that
+  // differ from the surface; corr maps paper → ~240, so the document edges
+  // and content darken below 240. Using corr[i] < T captures the document body.
+  const otsuMask = new Uint8Array(len)
+  for (let i = 0; i < len; i++) otsuMask[i] = corr[i] < T ? 1 : 0
+  const otsuMaskClosed = morphClose3(otsuMask, w, h)
+
+  const otsuBox = findBoxFromMask(otsuMaskClosed)
+  if (validBox(otsuBox)) {
+    candidates.push({ name: 'otsu', box: otsuBox, score: fillScore(otsuBox, otsuMaskClosed) * 0.90 })
   }
 
-  // ── Strategy 3: row/column average step-change ──────────────────────────
+  // ── Strategy 4: row/column average step-change (fallback) ───────────────
   const rowAvg = new Float32Array(h)
   for (let y = 0; y < h; y++) {
     let s = 0; const off = y * w
-    for (let x = 0; x < w; x++) s += gray[off + x]
+    for (let x = 0; x < w; x++) s += blur[off + x]
     rowAvg[y] = s / w
   }
   const colAvg = new Float32Array(w)
   for (let x = 0; x < w; x++) {
     let s = 0
-    for (let y = 0; y < h; y++) s += gray[y * w + x]
+    for (let y = 0; y < h; y++) s += blur[y * w + x]
     colAvg[x] = s / h
   }
 
-  // First-order derivative of average profiles
   const rowD = new Float32Array(h)
   const colD = new Float32Array(w)
   let maxRD = 0, maxCD = 0
@@ -653,28 +838,40 @@ function detectDocument(srcCanvas) {
   for (let x = 1; x < w - 1; x++) { colD[x] = Math.abs(colAvg[x+1] - colAvg[x-1]); if (colD[x] > maxCD) maxCD = colD[x] }
 
   if (maxRD > 4 && maxCD > 4) {
-    const rDT = maxRD * 0.28
-    const cDT = maxCD * 0.28
-    let top = -1, bot = -1, lft = -1, rgt = -1
-    for (let y = 1; y < h - 1; y++) { if (rowD[y] >= rDT) { top = y; break } }
-    for (let y = h - 2; y > 0; y--) { if (rowD[y] >= rDT) { bot = y; break } }
-    for (let x = 1; x < w - 1; x++) { if (colD[x] >= cDT) { lft = x; break } }
-    for (let x = w - 2; x > 0; x--) { if (colD[x] >= cDT) { rgt = x; break } }
-    const dw = rgt - lft, dh = bot - top
-    if (top >= 0 && bot > top && lft >= 0 && rgt > lft &&
-        dw >= w * 0.15 && dh >= h * 0.15 && !(dw > w * 0.92 && dh > h * 0.92)) {
-      const box3 = {
-        x:  Math.max(0, (lft - 2) / w),
-        y:  Math.max(0, (top - 2) / h),
-        x2: Math.min(1, (rgt + 2) / w),
-        y2: Math.min(1, (bot + 2) / h),
+    const rDT = maxRD * 0.30
+    const cDT = maxCD * 0.30
+    let dt = -1, db = -1, dl = -1, dr = -1
+    for (let y = 1; y < h - 1; y++) { if (rowD[y] >= rDT) { dt = y; break } }
+    for (let y = h - 2; y > 0; y--) { if (rowD[y] >= rDT) { db = y; break } }
+    for (let x = 1; x < w - 1; x++) { if (colD[x] >= cDT) { dl = x; break } }
+    for (let x = w - 2; x > 0; x--) { if (colD[x] >= cDT) { dr = x; break } }
+    if (dt >= 0 && db > dt && dl >= 0 && dr > dl) {
+      const derBox = {
+        x:  Math.max(0, (dl - 2) / w),
+        y:  Math.max(0, (dt - 2) / h),
+        x2: Math.min(1, (dr + 2) / w),
+        y2: Math.min(1, (db + 2) / h),
       }
-      console.debug('[Scanner] edge: derivative →', box3)
-      return box3
+      if (validBox(derBox)) {
+        // Score against the bg mask (no native mask of its own)
+        candidates.push({ name: 'derivative', box: derBox, score: fillScore(derBox, bgMaskClosed) * 0.85 })
+      }
     }
   }
 
-  console.debug('[Scanner] edge: all strategies failed (bgMedian=%d, sigma=%.1f, diffT=%.1f)', bgMedian, bgSigma, diffT)
+  // Pick best candidate by score
+  candidates.sort((a, b) => b.score - a.score)
+  if (candidates.length > 0) {
+    const best = candidates[0]
+    console.debug(
+      '[Scanner] edge: %s won (score=%.3f). All:',
+      best.name, best.score,
+      candidates.map(c => `${c.name}=${c.score.toFixed(3)}`).join(', ')
+    )
+    return best.box
+  }
+
+  console.debug('[Scanner] edge: no valid candidate (bgMedian=%d, MAD=%.1f, gradT=%d)', bgMedian, bgMAD, gradT)
   return null
 }
 
