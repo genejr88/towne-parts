@@ -52,12 +52,49 @@ function ProtectedRoute({ children, adminOnly = false }) {
   return children
 }
 
+function SMSPolicy() {
+  return (
+    <div style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', maxWidth: 680, margin: '60px auto', padding: '0 24px', color: '#1e293b', lineHeight: 1.7 }}>
+      <h1 style={{ fontSize: '1.6rem', marginBottom: 4 }}>SMS Opt-In Policy</h1>
+      <div style={{ display: 'inline-block', background: '#f0f9ff', border: '1px solid #bae6fd', color: '#0284c7', padding: '4px 12px', borderRadius: 20, fontSize: '0.85rem', marginBottom: 24 }}>
+        Towne Body Shop — Linden, NJ
+      </div>
+      <h2 style={{ fontSize: '1.1rem', marginTop: 32, color: '#0ea5e9' }}>How We Collect Consent</h2>
+      <p style={{ color: '#334155' }}>Towne Body Shop collects customer mobile phone numbers at the time of vehicle drop-off as part of our standard intake process. Before recording a phone number for SMS communication, a staff member verbally informs the customer:</p>
+      <ul style={{ color: '#334155', paddingLeft: 20 }}>
+        <li>That they may receive text message updates about their vehicle repair or rental</li>
+        <li>That message frequency varies based on repair status</li>
+        <li>That they can opt out at any time by replying <strong>STOP</strong></li>
+      </ul>
+      <p style={{ color: '#334155' }}>Customer consent is confirmed verbally before any messages are sent. Phone numbers are never shared with third parties or used for marketing purposes.</p>
+      <h2 style={{ fontSize: '1.1rem', marginTop: 32, color: '#0ea5e9' }}>Types of Messages Sent</h2>
+      <ul style={{ color: '#334155', paddingLeft: 20 }}>
+        <li>Vehicle repair status updates</li>
+        <li>Parts arrival notifications</li>
+        <li>Vehicle ready for pickup alerts</li>
+        <li>Rental vehicle reminders and updates</li>
+        <li>Responses to customer inquiries via two-way SMS</li>
+      </ul>
+      <h2 style={{ fontSize: '1.1rem', marginTop: 32, color: '#0ea5e9' }}>Opt-Out Instructions</h2>
+      <p style={{ color: '#334155' }}>Customers can opt out of SMS messages at any time by replying <strong>STOP</strong> to any message. No further messages will be sent after opting out.</p>
+      <h2 style={{ fontSize: '1.1rem', marginTop: 32, color: '#0ea5e9' }}>Message Frequency &amp; Costs</h2>
+      <p style={{ color: '#334155' }}>Message frequency varies depending on repair or rental status. Standard message and data rates may apply.</p>
+      <h2 style={{ fontSize: '1.1rem', marginTop: 32, color: '#0ea5e9' }}>Contact Us</h2>
+      <p style={{ color: '#334155' }}>Towne Body Shop, Linden, NJ. Reply STOP to opt out at any time.</p>
+      <div style={{ marginTop: 48, fontSize: '0.82rem', color: '#94a3b8', borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
+        This page describes Towne Body Shop's SMS customer communication opt-in practices as required by US carrier A2P 10DLC registration guidelines.
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   return (
     <AnimatePresence mode="wait">
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/src/public" element={<PublicReturns />} />
+        <Route path="/sms-policy" element={<SMSPolicy />} />
 
         <Route path="/" element={
           <ProtectedRoute><AppLayout><Dashboard /></AppLayout></ProtectedRoute>
