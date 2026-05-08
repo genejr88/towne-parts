@@ -23,7 +23,7 @@ function requireConnectKey(req, res, next) {
 router.get('/ros', requireConnectKey, async (req, res) => {
   try {
     const { search } = req.query
-    const where = { archived: false }
+    const where = { isArchived: false }
 
     if (search?.trim()) {
       const term = search.trim()
