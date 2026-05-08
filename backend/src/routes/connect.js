@@ -48,7 +48,7 @@ router.get('/ros', requireConnectKey, async (req, res) => {
         vehicleMake: true,
         vehicleModel: true,
         vehicleColor: true,
-        stage: true,
+        productionStage: true,
         updatedAt: true,
       },
       orderBy: { updatedAt: 'desc' },
