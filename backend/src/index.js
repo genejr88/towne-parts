@@ -119,5 +119,68 @@ app.get('/sms-policy', (req, res) => {
 </html>`)
 })
 
+// SMS Terms & Conditions (separate page required for A2P 10DLC campaign registration)
+app.get('/terms', (req, res) => {
+  res.setHeader('Content-Type', 'text/html')
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SMS Terms &amp; Conditions — Towne Body Shop</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 680px; margin: 60px auto; padding: 0 24px; color: #1e293b; line-height: 1.7; }
+    h1 { font-size: 1.6rem; margin-bottom: 4px; }
+    h2 { font-size: 1.1rem; margin-top: 32px; color: #0ea5e9; }
+    p, li { font-size: 0.97rem; color: #334155; }
+    ul { padding-left: 20px; }
+    .badge { display: inline-block; background: #f0f9ff; border: 1px solid #bae6fd; color: #0284c7; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; margin-bottom: 24px; }
+    footer { margin-top: 48px; font-size: 0.82rem; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 16px; }
+  </style>
+</head>
+<body>
+  <h1>SMS Terms &amp; Conditions</h1>
+  <div class="badge">Towne Body Shop — Linden, NJ</div>
+
+  <h2>Program Description</h2>
+  <p>Towne Body Shop operates an SMS notification program ("Program") to send customers transactional text message updates regarding their vehicle repair status, parts arrival, vehicle readiness for pickup, loaner/rental vehicle reminders, and responses to customer inquiries.</p>
+
+  <h2>How to Opt In</h2>
+  <p>Customers opt in to the Program at the time of vehicle drop-off. A Towne Body Shop staff member verbally explains the Program and asks the customer if they consent to receive SMS updates. By providing their mobile phone number and verbally agreeing, the customer consents to receive text messages from Towne Body Shop. An enrollment confirmation SMS is sent at the time of opt-in.</p>
+
+  <h2>How to Opt Out</h2>
+  <p>You may opt out of the Program at any time by replying <strong>STOP</strong> to any message. After texting STOP, you will receive one final confirmation message and no further messages will be sent. To re-enroll, contact us directly at the shop.</p>
+
+  <h2>Help</h2>
+  <p>For assistance, reply <strong>HELP</strong> to any message or contact Towne Body Shop directly.</p>
+
+  <h2>Message Frequency</h2>
+  <p>Message frequency varies and depends on the status of your vehicle repair or rental. You may receive multiple messages per visit during active repair or rental periods.</p>
+
+  <h2>Message &amp; Data Rates</h2>
+  <p>Standard message and data rates may apply depending on your mobile carrier plan. Towne Body Shop does not charge for SMS messages.</p>
+
+  <h2>Types of Messages</h2>
+  <ul>
+    <li>Vehicle repair status updates</li>
+    <li>Parts arrival notifications</li>
+    <li>Vehicle ready for pickup alerts</li>
+    <li>Loaner/rental vehicle reminders and updates</li>
+    <li>Responses to customer inquiries (two-way SMS)</li>
+  </ul>
+
+  <h2>Privacy</h2>
+  <p>Customer mobile phone numbers collected for this Program are used solely for SMS communications related to vehicle repair and rental services. Phone numbers are never sold, shared with third parties, or used for marketing purposes. View our full SMS opt-in policy at <a href="https://parts.towneapps.com/sms-policy">parts.towneapps.com/sms-policy</a>.</p>
+
+  <h2>Contact</h2>
+  <p>Towne Body Shop<br/>
+  Linden, NJ<br/>
+  Reply STOP to opt out or HELP for assistance at any time.</p>
+
+  <footer>These Terms &amp; Conditions govern Towne Body Shop's A2P 10DLC SMS messaging program as required by US carrier registration guidelines.</footer>
+</body>
+</html>`)
+})
+
 const PORT = process.env.PORT || 3001
 app.listen(PORT, () => console.log(`Towne Parts API running on port ${PORT}`))
