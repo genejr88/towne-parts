@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Search, Plus, X, ChevronRight, Car, Package, Archive, RefreshCw, Upload, Camera, ArchiveRestore, CheckCircle2 } from 'lucide-react'
+import { Search, Plus, X, ChevronRight, Car, Package, Archive, RefreshCw, Upload, Camera, ArchiveRestore, CheckCircle2, PackageX } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { rosApi, vendorsApi } from '@/lib/api'
 import { formatDate, STAGE_COLORS } from '@/lib/utils'
@@ -20,6 +20,7 @@ const FILTER_TABS = [
   { key: 'missing', label: 'Missing' },
   { key: 'acknowledged', label: 'Ack\'d' },
   { key: 'all_here', label: 'All Here' },
+  { key: 'no_parts', label: 'No Parts' },
   { key: 'archived', label: 'Archived' },
 ]
 
@@ -39,19 +40,29 @@ function BmwRoundel({ size = 14 }) {
 }
 
 function ROCard({ ro, onClick, onUnarchive }) {
+  const hasNoParts = !ro.parts || ro.parts.length === 0
+
   const statusBg = ro.isBmw
     ? 'border-l-blue-500'
+    : hasNoParts
+    ? 'border-l-violet-500'
     : ({
         MISSING: 'border-l-red-500',
         ACKNOWLEDGED: 'border-l-amber-500',
         ALL_HERE: 'border-l-emerald-500',
       }[ro.partsStatus] || 'border-l-gray-600')
 
+  const cardBg = ro.isBmw
+    ? 'bg-blue-950/30'
+    : hasNoParts
+    ? 'bg-violet-950/20'
+    : 'bg-gray-800/80'
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`border border-gray-700/60 rounded-xl border-l-4 overflow-hidden ${statusBg} ${ro.isBmw ? 'bg-blue-950/30' : 'bg-gray-800/80'}`}
+      className={`border border-gray-700/60 rounded-xl border-l-4 overflow-hidden ${statusBg} ${cardBg}`}
     >
       <div
         onClick={onClick}
@@ -63,7 +74,14 @@ function ROCard({ ro, onClick, onUnarchive }) {
               <span className="text-sm font-bold text-gray-100 font-mono">
                 {ro.roNumber}
               </span>
-              <PartsBadge status={ro.partsStatus} />
+              {hasNoParts ? (
+                <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-violet-600/20 border border-violet-500/40 text-violet-300">
+                  <PackageX size={11} />
+                  No Parts
+                </span>
+              ) : (
+                <PartsBadge status={ro.partsStatus} />
+              )}
               {ro.isBmw && (
                 <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-blue-600/20 border border-blue-500/40 text-blue-300">
                   <BmwRoundel size={11} />
@@ -295,7 +313,7 @@ export default function ROList() {
   // Read filter from URL or default to 'active'
   const urlStatus = searchParams.get('status')
   const [activeFilter, setActiveFilter] = useState(
-    urlStatus && ['missing', 'acknowledged', 'all_here', 'archived'].includes(urlStatus)
+    urlStatus && ['missing', 'acknowledged', 'all_here', 'no_parts', 'archived'].includes(urlStatus)
       ? urlStatus
       : 'active'
   )
@@ -304,6 +322,9 @@ export default function ROList() {
   const queryParams = {}
   if (activeFilter === 'archived') {
     queryParams.archived = true
+  } else if (activeFilter === 'no_parts') {
+    queryParams.archived = false
+    queryParams.missingPartsList = true
   } else {
     queryParams.archived = false
     if (activeFilter !== 'active') {
