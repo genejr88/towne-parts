@@ -57,9 +57,9 @@ router.get('/', requireAuth, async (req, res) => {
       where.partsStatus = partsStatus
     }
 
-    // Filter ROs that have no parts added yet
+    // Filter ROs explicitly marked as no parts required
     if (missingPartsList === 'true') {
-      where.parts = { none: {} }
+      where.noPartsRequired = true
     }
 
     if (search && search.trim()) {
@@ -190,6 +190,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     productionFinalSupplement,
     productionSupplementNote,
     isBmw,
+    noPartsRequired,
     prestorageActive,
     prestorageStartDate,
     isTotalLoss,
@@ -239,6 +240,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     if (productionFinalSupplement !== undefined) updateData.productionFinalSupplement = Boolean(productionFinalSupplement)
     if (productionSupplementNote !== undefined) updateData.productionSupplementNote = productionSupplementNote
     if (isBmw !== undefined) updateData.isBmw = Boolean(isBmw)
+    if (noPartsRequired !== undefined) updateData.noPartsRequired = Boolean(noPartsRequired)
     if (prestorageActive !== undefined) updateData.prestorageActive = Boolean(prestorageActive)
     if (prestorageStartDate !== undefined) updateData.prestorageStartDate = prestorageStartDate ? new Date(prestorageStartDate) : null
     if (isTotalLoss !== undefined) updateData.isTotalLoss = Boolean(isTotalLoss)

@@ -19,7 +19,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Edit2, Check, X, Plus, Trash2, Upload, FileText,
-  Package, RotateCcw, Archive, ArchiveRestore, ChevronDown, ChevronUp,
+  Package, PackageX, RotateCcw, Archive, ArchiveRestore, ChevronDown, ChevronUp,
   ExternalLink, Clock, Send, Camera, Loader2, CheckCheck,
   User, Phone, Mail, Shield, FileSearch
 } from 'lucide-react'
@@ -844,6 +844,16 @@ export default function RODetail() {
     onError: (err) => toast.error(err.message || 'Failed to mark parts received'),
   })
 
+  const noPartsRequiredMutation = useMutation({
+    mutationFn: (val) => rosApi.update(id, { noPartsRequired: val }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['ro', id] })
+      queryClient.invalidateQueries({ queryKey: ['ros'] })
+      toast.success(data.noPartsRequired ? 'Marked as No Parts Required' : 'No Parts Required removed')
+    },
+    onError: (err) => toast.error(err.message || 'Failed to update'),
+  })
+
   const aphMutation = useMutation({
     mutationFn: () => telegramApi.sendAPH(id),
     onSuccess: () => toast.success('Telegram sent to Billy ✅'),
@@ -1217,11 +1227,29 @@ export default function RODetail() {
           }
         >
           {parts.length === 0 ? (
-            <p className="text-sm text-gray-600 py-2 text-center">No parts yet — tap Add to get started</p>
+            <div className="py-2 space-y-3">
+              {!ro.noPartsRequired && (
+                <p className="text-sm text-gray-600 text-center">No parts yet — tap Add to get started</p>
+              )}
+              <button
+                onClick={() => noPartsRequiredMutation.mutate(!ro.noPartsRequired)}
+                disabled={noPartsRequiredMutation.isPending}
+                className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border transition-colors text-sm font-semibold disabled:opacity-50 ${
+                  ro.noPartsRequired
+                    ? 'bg-violet-600/20 border-violet-500/50 text-violet-300'
+                    : 'bg-gray-800/60 border-gray-700/50 text-gray-500 hover:text-gray-300 hover:border-gray-600'
+                }`}
+              >
+                <PackageX size={16} />
+                {ro.noPartsRequired ? 'No Parts Required ✓ (tap to undo)' : 'Mark as No Parts Required'}
+              </button>
+            </div>
           ) : (
-            parts.map((p) => (
-              <PartRow key={p.id} part={p} roId={id} inventoryMatch={findInventoryMatch(p)} />
-            ))
+            <div className="space-y-0">
+              {parts.map((p) => (
+                <PartRow key={p.id} part={p} roId={id} inventoryMatch={findInventoryMatch(p)} />
+              ))}
+            </div>
           )}
         </Section>
 

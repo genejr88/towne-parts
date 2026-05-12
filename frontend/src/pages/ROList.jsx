@@ -40,11 +40,9 @@ function BmwRoundel({ size = 14 }) {
 }
 
 function ROCard({ ro, onClick, onUnarchive }) {
-  const hasNoParts = !ro.parts || ro.parts.length === 0
-
   const statusBg = ro.isBmw
     ? 'border-l-blue-500'
-    : hasNoParts
+    : ro.noPartsRequired
     ? 'border-l-violet-500'
     : ({
         MISSING: 'border-l-red-500',
@@ -54,7 +52,7 @@ function ROCard({ ro, onClick, onUnarchive }) {
 
   const cardBg = ro.isBmw
     ? 'bg-blue-950/30'
-    : hasNoParts
+    : ro.noPartsRequired
     ? 'bg-violet-950/20'
     : 'bg-gray-800/80'
 
@@ -74,7 +72,7 @@ function ROCard({ ro, onClick, onUnarchive }) {
               <span className="text-sm font-bold text-gray-100 font-mono">
                 {ro.roNumber}
               </span>
-              {hasNoParts ? (
+              {ro.noPartsRequired ? (
                 <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-violet-600/20 border border-violet-500/40 text-violet-300">
                   <PackageX size={11} />
                   No Parts
