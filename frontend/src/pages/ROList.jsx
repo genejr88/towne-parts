@@ -14,6 +14,7 @@ import Modal from '@/components/ui/Modal'
 import Spinner from '@/components/ui/Spinner'
 import EmptyState from '@/components/ui/EmptyState'
 import ImportPartsModal from '@/components/ImportPartsModal'
+import CustomerInsuranceFields from '@/components/CustomerInsuranceFields'
 
 const FILTER_TABS = [
   { key: 'active', label: 'Active' },
@@ -135,7 +136,11 @@ function ROCard({ ro, onClick, onUnarchive }) {
 const EMPTY_FORM = {
   roNumber: '', vehicleYear: '', vehicleMake: '', vehicleModel: '',
   vehicleColor: '', vin: '', vendorId: '',
-  ownerName: '', insuranceCompany: '', claimNumber: '',
+  // Customer / Owner
+  ownerName: '', ownerPhone: '', ownerPhone2: '', ownerEmail: '',
+  // Insurance
+  insuranceCompany: '', claimNumber: '', policyNumber: '',
+  adjusterName: '', adjusterPhone: '', deductible: '', dateOfLoss: '',
   isBmw: false,
 }
 
@@ -211,9 +216,19 @@ function CreateROModal({ open, onClose }) {
       vehicleColor:     form.vehicleColor     || null,
       vin:              form.vin              || null,
       vendorId:         form.vendorId         || null,
+      // Customer / Owner
       ownerName:        form.ownerName        || null,
+      ownerPhone:       form.ownerPhone       || null,
+      ownerPhone2:      form.ownerPhone2      || null,
+      ownerEmail:       form.ownerEmail       || null,
+      // Insurance
       insuranceCompany: form.insuranceCompany || null,
       claimNumber:      form.claimNumber      || null,
+      policyNumber:     form.policyNumber     || null,
+      adjusterName:     form.adjusterName     || null,
+      adjusterPhone:    form.adjusterPhone    || null,
+      deductible:       form.deductible !== '' ? parseFloat(form.deductible) || null : null,
+      dateOfLoss:       form.dateOfLoss       || null,
       isBmw:            form.isBmw,
     })
   }
@@ -260,13 +275,13 @@ function CreateROModal({ open, onClose }) {
           <Input label="VIN (optional)" value={form.vin} onChange={set('vin')} placeholder="17 chars" maxLength={17} />
         </div>
 
-        {/* Customer / Insurance */}
-        <div className="border-t border-gray-700/40 pt-3 space-y-3">
-          <Input label="Customer Name" value={form.ownerName} onChange={set('ownerName')} placeholder="Jane Smith" />
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Insurance Co." value={form.insuranceCompany} onChange={set('insuranceCompany')} placeholder="State Farm" />
-            <Input label="Claim #" value={form.claimNumber} onChange={set('claimNumber')} placeholder="CLM-00123" />
-          </div>
+        {/* Customer / Insurance — shared component for uniformity across all RO modals */}
+        <div className="border-t border-gray-700/40 pt-3">
+          <CustomerInsuranceFields
+            form={form}
+            onChange={(field, value) => setForm((f) => ({ ...f, [field]: value }))}
+            showHeaders={true}
+          />
         </div>
 
         <Select label="Vendor" value={form.vendorId} onChange={set('vendorId')}>

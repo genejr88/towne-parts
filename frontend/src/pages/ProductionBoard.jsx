@@ -13,6 +13,7 @@ import { STAGES, STAGE_COLORS, formatTimeAgo } from '@/lib/utils'
 import Spinner from '@/components/ui/Spinner'
 import EmptyState from '@/components/ui/EmptyState'
 import Textarea from '@/components/ui/Textarea'
+import CustomerInsuranceFields from '@/components/CustomerInsuranceFields'
 
 // Card gradient based on total loss or parts status
 function cardBg(partsStatus, isTotalLoss, totalLossReleased, prestorageActive) {
@@ -228,21 +229,6 @@ function TotalsJobBadge({ jobId }) {
 }
 
 // ── Customer / Insurance Edit Sheet ──────────────────────────────────────────
-function EditField({ label, field, form, onChange, type = 'text', placeholder }) {
-  return (
-    <div>
-      <label className="block text-xs font-semibold text-gray-400 mb-1">{label}</label>
-      <input
-        type={type}
-        value={form[field] ?? ''}
-        onChange={(e) => onChange(field, e.target.value)}
-        placeholder={placeholder}
-        className="w-full bg-gray-900/60 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-blue-500/60"
-      />
-    </div>
-  )
-}
-
 function CustomerEditSheet({ open, onClose, ro }) {
   const queryClient = useQueryClient()
   const [form, setForm] = useState({})
@@ -250,14 +236,19 @@ function CustomerEditSheet({ open, onClose, ro }) {
   useEffect(() => {
     if (open && ro) {
       setForm({
+        // Customer / Owner
         ownerName:        ro.ownerName        || '',
         ownerPhone:       ro.ownerPhone       || '',
         ownerPhone2:      ro.ownerPhone2      || '',
+        ownerEmail:       ro.ownerEmail       || '',
+        // Insurance
         insuranceCompany: ro.insuranceCompany || '',
         claimNumber:      ro.claimNumber      || '',
+        policyNumber:     ro.policyNumber     || '',
         adjusterName:     ro.adjusterName     || '',
         adjusterPhone:    ro.adjusterPhone    || '',
         deductible:       ro.deductible != null ? String(ro.deductible) : '',
+        dateOfLoss:       ro.dateOfLoss ? new Date(ro.dateOfLoss).toISOString().slice(0, 10) : '',
       })
     }
   }, [open, ro])
@@ -278,10 +269,10 @@ function CustomerEditSheet({ open, onClose, ro }) {
     const data = { ...form }
     if (data.deductible !== '') data.deductible = parseFloat(data.deductible) || 0
     else data.deductible = null
+    // Empty date strings → null on the backend
+    if (!data.dateOfLoss) data.dateOfLoss = null
     mutation.mutate(data)
   }
-
-  const fieldProps = { form, onChange: handleChange }
 
   return (
     <AnimatePresence>
@@ -307,18 +298,13 @@ function CustomerEditSheet({ open, onClose, ro }) {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Owner</p>
-              <EditField {...fieldProps} label="Name"    field="ownerName"   placeholder="John Smith" />
-              <EditField {...fieldProps} label="Phone"   field="ownerPhone"  type="tel" placeholder="(555) 000-0000" />
-              <EditField {...fieldProps} label="Phone 2" field="ownerPhone2" type="tel" placeholder="(555) 000-0000" />
-
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider pt-2">Insurance</p>
-              <EditField {...fieldProps} label="Insurance Company" field="insuranceCompany" placeholder="Progressive, State Farm…" />
-              <EditField {...fieldProps} label="Claim #"           field="claimNumber"      placeholder="Claim number" />
-              <EditField {...fieldProps} label="Adjuster Name"     field="adjusterName"     placeholder="Jane Doe" />
-              <EditField {...fieldProps} label="Adjuster Phone"    field="adjusterPhone"    type="tel" placeholder="(555) 000-0000" />
-              <EditField {...fieldProps} label="Deductible ($)"    field="deductible"       type="number" placeholder="500" />
+            <div className="flex-1 overflow-y-auto p-4">
+              <CustomerInsuranceFields
+                form={form}
+                onChange={handleChange}
+                showHeaders={true}
+                density="compact"
+              />
             </div>
 
             <div className="shrink-0 p-4 border-t border-gray-800/60">

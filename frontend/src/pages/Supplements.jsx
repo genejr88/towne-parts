@@ -129,10 +129,10 @@ function getMissingFields(ro) {
 }
 
 const FIELD_LABELS = {
-  ownerName:        'Customer Name',
+  ownerName:        'Owner Name',
   vehicle:          'Year & Make',
   insuranceCompany: 'Insurance Company',
-  claimNumber:      'Claim #',
+  claimNumber:      'Claim Number',
 }
 
 const METHODS = ['EMAIL', 'PORTAL', 'FAX', 'PHONE', 'MAIL']
@@ -439,7 +439,7 @@ function PreStorageModal({ open, onClose, ro: initialRo }) {
             <div className="space-y-2 pt-1">
               {missingFields.includes('ownerName') && (
                 <Input
-                  label="Customer Name *"
+                  label="Owner Name *"
                   value={editForm.ownerName}
                   onChange={setField('ownerName')}
                   placeholder="Jane Smith"
@@ -463,7 +463,7 @@ function PreStorageModal({ open, onClose, ro: initialRo }) {
               )}
               {missingFields.includes('claimNumber') && (
                 <Input
-                  label="Claim # *"
+                  label="Claim Number *"
                   value={editForm.claimNumber}
                   onChange={setField('claimNumber')}
                   placeholder="CLM-00123"
