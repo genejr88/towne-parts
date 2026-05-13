@@ -1208,6 +1208,96 @@ function sauvolaBinarize(gray, w, h, windowSize = 25, k = 0.34, R = 128, offset 
   return out
 }
 
+/* ── Sharpening (Unsharp Mask) ───────────────────────────────────────────────
+ *  Adds local contrast at edges. Blur the image, then push every pixel away
+ *  from the blur value by `amount`.  Result = src + amount * (src - blur).
+ *  Cheap separable 1-2-1 Gaussian as the low-pass.  amount ≈ 0.5–0.8 keeps
+ *  things crisp without ringing on document text.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+// Separable 1-2-1 Gaussian on a single-channel buffer.
+function gaussian3Gray(src, w, h) {
+  const tmp = new Uint8ClampedArray(src.length)
+  const out = new Uint8ClampedArray(src.length)
+  for (let y = 0; y < h; y++) {
+    const off = y * w
+    for (let x = 0; x < w; x++) {
+      const x0 = x > 0 ? x - 1 : 0
+      const x1 = x < w - 1 ? x + 1 : w - 1
+      tmp[off + x] = (src[off + x0] + src[off + x] * 2 + src[off + x1]) >> 2
+    }
+  }
+  for (let y = 0; y < h; y++) {
+    const y0 = y > 0 ? y - 1 : 0
+    const y1 = y < h - 1 ? y + 1 : h - 1
+    for (let x = 0; x < w; x++) {
+      out[y * w + x] = (tmp[y0 * w + x] + tmp[y * w + x] * 2 + tmp[y1 * w + x]) >> 2
+    }
+  }
+  return out
+}
+
+// Unsharp mask on a grayscale buffer — returns a new buffer.
+function unsharpMaskGray(src, w, h, amount = 0.7) {
+  const blur = gaussian3Gray(src, w, h)
+  const out = new Uint8ClampedArray(src.length)
+  for (let i = 0; i < src.length; i++) {
+    const v = src[i] + amount * (src[i] - blur[i])
+    out[i] = v > 255 ? 255 : v < 0 ? 0 : v
+  }
+  return out
+}
+
+// Unsharp mask in-place on RGBA buffer — operates per-channel.
+function unsharpMaskRGBA(data, w, h, amount = 0.65) {
+  const len = w * h
+  // Pull each channel into its own typed array, blur, then write back.
+  const r = new Uint8ClampedArray(len)
+  const g = new Uint8ClampedArray(len)
+  const b = new Uint8ClampedArray(len)
+  for (let i = 0; i < len; i++) {
+    const p = i * 4
+    r[i] = data[p]; g[i] = data[p + 1]; b[i] = data[p + 2]
+  }
+  const rb = gaussian3Gray(r, w, h)
+  const gb = gaussian3Gray(g, w, h)
+  const bb = gaussian3Gray(b, w, h)
+  for (let i = 0; i < len; i++) {
+    const p = i * 4
+    const vr = r[i] + amount * (r[i] - rb[i])
+    const vg = g[i] + amount * (g[i] - gb[i])
+    const vb = b[i] + amount * (b[i] - bb[i])
+    data[p]     = vr > 255 ? 255 : vr < 0 ? 0 : vr
+    data[p + 1] = vg > 255 ? 255 : vg < 0 ? 0 : vg
+    data[p + 2] = vb > 255 ? 255 : vb < 0 ? 0 : vb
+  }
+}
+
+/* ── Contrast stretch ────────────────────────────────────────────────────────
+ *  Maps the 1st/99th-percentile range of the input to 0..255 (or 5..250 with
+ *  a small headroom). Makes paper truly white and text truly dark without
+ *  blowing out the rare bright/dark outlier (a logo, a saturated region).
+ * ────────────────────────────────────────────────────────────────────────── */
+function autoContrastStretchGray(src) {
+  const hist = new Int32Array(256)
+  for (let i = 0; i < src.length; i++) hist[src[i]]++
+  const total = src.length
+  const loCount = total * 0.005   // 0.5% cut on the dark side
+  const hiCount = total * 0.005   // 0.5% cut on the bright side
+  let lo = 0, hi = 255, acc = 0
+  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= loCount) { lo = v; break } }
+  acc = 0
+  for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc >= hiCount) { hi = v; break } }
+  if (hi <= lo + 4) return src   // not enough range — leave it alone
+  const out = new Uint8ClampedArray(src.length)
+  const scale = 255 / (hi - lo)
+  for (let i = 0; i < src.length; i++) {
+    const v = (src[i] - lo) * scale
+    out[i] = v > 255 ? 255 : v < 0 ? 0 : v
+  }
+  return out
+}
+
 // ── Simple linear brightness / contrast adjustment ──────────────────────────
 function applyBrightnessContrast(data, len, brightness, contrast) {
   // brightness: -100..+100,  contrast: -100..+100
@@ -1245,13 +1335,16 @@ function scaleForWork(srcCanvas, maxW) {
 function runPipeline(srcCanvas, settings) {
   const { mode, brightness, contrast, thresholdOffset } = settings
 
-  // Photo mode is a pass-through
+  // Photo mode is a pass-through (a slight unsharp mask is still applied so
+  // photos taken with the scanner look as crisp as the camera roll)
   if (mode === 'photo') {
-    return { canvas: srcCanvas, type: 'image/jpeg', quality: 0.9 }
+    return { canvas: srcCanvas, type: 'image/jpeg', quality: 0.92 }
   }
 
-  // Working resolution — 1800px max = very sharp text, still fast
-  const work = scaleForWork(srcCanvas, 1800)
+  // Working resolution — 2400px gives sharper detail at very small extra cost.
+  // Most modern phone cameras shoot 3000-4000px wide, so this keeps text
+  // information that 1800px would have downsampled away.
+  const work = scaleForWork(srcCanvas, 2400)
   const ctx = work.getContext('2d', { willReadFrequently: true })
   const imageData = ctx.getImageData(0, 0, work.width, work.height)
   const data = imageData.data
@@ -1266,11 +1359,16 @@ function runPipeline(srcCanvas, settings) {
   const illum = estimateIllumination(gray, w, h)
 
   if (mode === 'bw') {
-    // Step 3a: flat-field correct the grayscale
+    // 3a: flat-field correct grayscale
     const corrected = correctGray(gray, illum, len, 240)
 
-    // Step 3b: Sauvola binarize the corrected grayscale
-    const bw = sauvolaBinarize(corrected, w, h, 25, 0.34, 128, thresholdOffset)
+    // 3b: sharpen FIRST — Sauvola is sensitive to edge contrast so unsharp
+    //     before binarize crispens thin strokes (5pt fine print stays legible)
+    const sharpened = unsharpMaskGray(corrected, w, h, 0.55)
+
+    // 3c: Sauvola binarize. Tighter window (19) + slightly lower k (0.30)
+    //     gives sharper edges and darker fills than the old 25/0.34.
+    const bw = sauvolaBinarize(sharpened, w, h, 19, 0.30, 128, thresholdOffset)
 
     // Write back as RGBA
     for (let i = 0; i < len; i++) {
@@ -1285,9 +1383,12 @@ function runPipeline(srcCanvas, settings) {
   }
 
   if (mode === 'gray') {
-    const corrected = correctGray(gray, illum, len, 240)
+    let corrected = correctGray(gray, illum, len, 240)
+    // Contrast stretch: paper → near-white, text → near-black
+    corrected = autoContrastStretchGray(corrected)
+    // Sharpen for clean text rendering
+    corrected = unsharpMaskGray(corrected, w, h, 0.55)
 
-    // Write back, then apply brightness/contrast
     for (let i = 0; i < len; i++) {
       const v = corrected[i]
       const p = i * 4
@@ -1296,14 +1397,16 @@ function runPipeline(srcCanvas, settings) {
     }
     if (brightness !== 0 || contrast !== 0) applyBrightnessContrast(data, len, brightness, contrast)
     ctx.putImageData(imageData, 0, 0)
-    return { canvas: work, type: 'image/jpeg', quality: 0.92 }
+    return { canvas: work, type: 'image/jpeg', quality: 0.94 }
   }
 
   // mode === 'color'
   correctColor(data, illum, len, 240)
+  // Sharpen each channel — makes text in colour scans noticeably crisper
+  unsharpMaskRGBA(data, w, h, 0.55)
   if (brightness !== 0 || contrast !== 0) applyBrightnessContrast(data, len, brightness, contrast)
   ctx.putImageData(imageData, 0, 0)
-  return { canvas: work, type: 'image/jpeg', quality: 0.92 }
+  return { canvas: work, type: 'image/jpeg', quality: 0.94 }
 }
 
 // ── Canvas → Blob URL ────────────────────────────────────────────────────────
@@ -1517,8 +1620,10 @@ export default function InvoiceScanner({ onCapture, onClose }) {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: 'environment' },
-          width:  { ideal: 2560 },
-          height: { ideal: 1440 },
+          // Request 4K. Phones that can't hit this fall back to their max
+          // supported resolution; older devices still get ≥ 1080p.
+          width:  { ideal: 3840 },
+          height: { ideal: 2160 },
         },
       })
       streamRef.current = stream
