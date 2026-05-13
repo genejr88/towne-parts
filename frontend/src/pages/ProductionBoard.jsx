@@ -1324,10 +1324,16 @@ export default function ProductionBoard() {
                   <div className="w-2 h-2 rounded-full bg-orange-400 animate-pulse shrink-0" />
                   <span className="text-xs font-black uppercase tracking-widest text-orange-300">Pre-Storage Accruing</span>
                   {ro.prestorageStartDate && (
-                    <span className="text-[10px] text-orange-500 ml-auto">
+                    <span className="text-[10px] text-orange-500">
                       Since {new Date(ro.prestorageStartDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                     </span>
                   )}
+                  <button
+                    onClick={() => updateField('prestorageActive', false)}
+                    className="ml-auto flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md bg-orange-500/20 border border-orange-500/40 text-orange-300 hover:bg-orange-500/30 hover:text-orange-200 transition-colors"
+                  >
+                    <X size={10} /> Satisfied / Waived
+                  </button>
                 </div>
               )}
 
