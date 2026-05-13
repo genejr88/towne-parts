@@ -7,35 +7,59 @@ import {
 } from 'lucide-react'
 
 /* ═══════════════════════════════════════════════════════════════════════════
- *  CROP OVERLAY
+ *  CROP OVERLAY — Quadrilateral edition
  *  ─────────────
  *  High-performance crop UI:
- *    • Box stored in a ref (NOT React state) — no re-renders during drag
- *    • DOM styles written directly via selectionRef on each move
+ *    • Four corners stored as independent (x, y) — full quadrilateral, not
+ *      a rectangle. Enables perspective skew correction.
+ *    • Corners + 4 edge midpoints = 8 handles for precise adjustment
+ *    • Edge midpoints translate the edge perpendicular to itself (both
+ *      adjacent corners move together)
+ *    • SVG-based overlay: polygon + grid + dim mask all in one vector layer
+ *    • All hot-path updates written directly to DOM (no React re-renders)
  *    • requestAnimationFrame batches updates to one per frame
- *    • Pointer capture on the image-area wrapper so drags never get "lost"
- *      when the pointer slips outside a handle
- *    • Crop area is sized to the image's actual rendered region (not the
- *      whole container) — correct behaviour when the image is letter-boxed
- *      inside a non-matching aspect-ratio viewport
- *    • 4 corner + 4 edge handles for precise adjustment
- *    • Rotate L / R and Reset buttons wired to parent
+ *    • Pointer capture so drags stick when the pointer leaves a handle
+ *    • Crop area sized to the image's actual rendered region (letter-box-safe)
+ *    • Quadrilateral kept CONVEX during drag — corners cannot cross
  * ═══════════════════════════════════════════════════════════════════════════ */
+
+// Default quadrilateral — slight inset from full frame
+const DEFAULT_CORNERS = () => ({
+  tl: { x: 0.04, y: 0.04 },
+  tr: { x: 0.96, y: 0.04 },
+  br: { x: 0.96, y: 0.96 },
+  bl: { x: 0.04, y: 0.96 },
+})
+
+// Convert a rectangular box {x,y,x2,y2} to a quadrilateral
+const boxToCorners = (b) => ({
+  tl: { x: b.x,  y: b.y  },
+  tr: { x: b.x2, y: b.y  },
+  br: { x: b.x2, y: b.y2 },
+  bl: { x: b.x,  y: b.y2 },
+})
+
+// Sign of cross product for vectors AB and AC — determines which side of
+// line AB the point C lies on. Used to keep the quad convex during drags.
+const cross = (ax, ay, bx, by, cx, cy) => (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
 
 function CropOverlay({ imageUrl, onApply, onSkip, onRotate, onDetect }) {
   const wrapRef = useRef(null)          // fills viewport, measures for letterbox math
   const imageAreaRef = useRef(null)     // sized to image's rendered area; receives pointer capture
-  const selectionRef = useRef(null)     // crop rectangle DOM node
+  const polyRef = useRef(null)          // <polygon> outline
+  const maskRef = useRef(null)          // <path> creating the dim-outside mask
+  const gridRef = useRef(null)          // <g> rule-of-thirds lines clipped to polygon
+  const handleRefs = useRef({})         // { tl, tr, br, bl, t, r, b, l } → DOM nodes
   const imgRef = useRef(null)
-  const boxRef = useRef({ x: 0.04, y: 0.04, x2: 0.96, y2: 0.96 })
-  const dragStateRef = useRef(null)     // { handle, start, startBox }
+  const cornersRef = useRef(DEFAULT_CORNERS())
+  const dragStateRef = useRef(null)     // { handle, start, startCorners }
   const rafRef = useRef(null)
 
   const [imgSize, setImgSize] = useState({ w: 0, h: 0 })
   const [wrapSize, setWrapSize] = useState({ w: 0, h: 0 })
 
   const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v)
-  const MIN = 0.05
+  const MIN_DIM = 0.05  // min distance between adjacent corners
 
   // ── Compute visible image rect inside the wrap (object-contain math) ──────
   const area = (() => {
@@ -49,29 +73,70 @@ function CropOverlay({ imageUrl, onApply, onSkip, onRotate, onDetect }) {
     return { x: (W - dw) / 2, y: (H - dh) / 2, w: dw, h: dh }
   })()
 
-  // ── Direct-to-DOM box writer (no React involvement) ───────────────────────
-  const applyBoxToDOM = () => {
-    const el = selectionRef.current
-    if (!el) return
-    const b = boxRef.current
-    el.style.left   = (b.x  * 100) + '%'
-    el.style.top    = (b.y  * 100) + '%'
-    el.style.width  = ((b.x2 - b.x) * 100) + '%'
-    el.style.height = ((b.y2 - b.y) * 100) + '%'
+  // ── Direct-to-DOM writer ──────────────────────────────────────────────────
+  // Writes polygon points, mask path, grid lines, and handle positions.
+  // Coordinates expressed in 0-100 (percent of imageArea) for the SVG, which
+  // uses viewBox="0 0 100 100" so SVG units == percent of the image rect.
+  const applyToDOM = () => {
+    const c = cornersRef.current
+    const pts = `${c.tl.x * 100},${c.tl.y * 100} ${c.tr.x * 100},${c.tr.y * 100} ${c.br.x * 100},${c.br.y * 100} ${c.bl.x * 100},${c.bl.y * 100}`
+
+    if (polyRef.current) {
+      polyRef.current.setAttribute('points', pts)
+    }
+    if (maskRef.current) {
+      // Outer rect minus inner polygon (even-odd fill)
+      const d =
+        `M0,0 L100,0 L100,100 L0,100 Z ` +
+        `M${c.tl.x * 100},${c.tl.y * 100} ` +
+        `L${c.bl.x * 100},${c.bl.y * 100} ` +
+        `L${c.br.x * 100},${c.br.y * 100} ` +
+        `L${c.tr.x * 100},${c.tr.y * 100} Z`
+      maskRef.current.setAttribute('d', d)
+    }
+    // Rule-of-thirds: 2 lines along each pair of opposing edges
+    if (gridRef.current) {
+      const lerp = (a, b, t) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t })
+      const lines = []
+      for (const t of [1/3, 2/3]) {
+        // horizontal-ish: from lerp(tl,bl,t) to lerp(tr,br,t)
+        const a = lerp(c.tl, c.bl, t)
+        const b = lerp(c.tr, c.br, t)
+        lines.push(`M${a.x * 100},${a.y * 100} L${b.x * 100},${b.y * 100}`)
+        // vertical-ish: from lerp(tl,tr,t) to lerp(bl,br,t)
+        const c1 = lerp(c.tl, c.tr, t)
+        const d1 = lerp(c.bl, c.br, t)
+        lines.push(`M${c1.x * 100},${c1.y * 100} L${d1.x * 100},${d1.y * 100}`)
+      }
+      gridRef.current.setAttribute('d', lines.join(' '))
+    }
+    // Position handles (in % of imageArea)
+    const writeHandle = (key, x, y) => {
+      const el = handleRefs.current[key]
+      if (!el) return
+      el.style.left = (x * 100) + '%'
+      el.style.top  = (y * 100) + '%'
+    }
+    writeHandle('tl', c.tl.x, c.tl.y)
+    writeHandle('tr', c.tr.x, c.tr.y)
+    writeHandle('br', c.br.x, c.br.y)
+    writeHandle('bl', c.bl.x, c.bl.y)
+    writeHandle('t',  (c.tl.x + c.tr.x) / 2, (c.tl.y + c.tr.y) / 2)
+    writeHandle('r',  (c.tr.x + c.br.x) / 2, (c.tr.y + c.br.y) / 2)
+    writeHandle('b',  (c.bl.x + c.br.x) / 2, (c.bl.y + c.br.y) / 2)
+    writeHandle('l',  (c.tl.x + c.bl.x) / 2, (c.tl.y + c.bl.y) / 2)
   }
 
   const scheduleUpdate = () => {
     if (rafRef.current) return
     rafRef.current = requestAnimationFrame(() => {
       rafRef.current = null
-      applyBoxToDOM()
+      applyToDOM()
     })
   }
 
-  // Re-apply after every render (cheap; only sets 4 inline styles)
-  useLayoutEffect(() => { applyBoxToDOM() })
+  useLayoutEffect(() => { applyToDOM() })
 
-  // Measure wrap container & observe resize (orientation changes, etc.)
   useLayoutEffect(() => {
     const el = wrapRef.current
     if (!el) return
@@ -87,21 +152,36 @@ function CropOverlay({ imageUrl, onApply, onSkip, onRotate, onDetect }) {
 
   useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }, [])
 
-  // Animate selection to a new box (used by auto-detect)
-  const animateToBox = (target) => {
-    const el = selectionRef.current
-    boxRef.current = target
-    if (!el) { applyBoxToDOM(); return }
-    el.style.transition = 'left 220ms ease-out, top 220ms ease-out, width 220ms ease-out, height 220ms ease-out'
-    applyBoxToDOM()
-    window.setTimeout(() => { if (el) el.style.transition = '' }, 240)
+  // ── Animate corners to a new quad (used by auto-detect) ──────────────────
+  const animateTo = (target) => {
+    const start = cornersRef.current
+    const startT = performance.now()
+    const dur = 220
+    const ease = (t) => 1 - Math.pow(1 - t, 3)
+    const step = () => {
+      const t = Math.min(1, (performance.now() - startT) / dur)
+      const k = ease(t)
+      const lerp = (a, b) => a + (b - a) * k
+      cornersRef.current = {
+        tl: { x: lerp(start.tl.x, target.tl.x), y: lerp(start.tl.y, target.tl.y) },
+        tr: { x: lerp(start.tr.x, target.tr.x), y: lerp(start.tr.y, target.tr.y) },
+        br: { x: lerp(start.br.x, target.br.x), y: lerp(start.br.y, target.br.y) },
+        bl: { x: lerp(start.bl.x, target.bl.x), y: lerp(start.bl.y, target.bl.y) },
+      }
+      applyToDOM()
+      if (t < 1) requestAnimationFrame(step)
+    }
+    requestAnimationFrame(step)
   }
 
+  // Auto-detect — returns boolean for whether anything was found
   const runAutoDetect = () => {
     if (!onDetect) return false
     const detected = onDetect()
     if (!detected) return false
-    animateToBox(detected)
+    // Detector may return either a rectangle {x,y,x2,y2} OR a quad {tl,tr,br,bl}
+    const target = detected.tl ? detected : boxToCorners(detected)
+    animateTo(target)
     return true
   }
 
@@ -109,18 +189,16 @@ function CropOverlay({ imageUrl, onApply, onSkip, onRotate, onDetect }) {
     const img = imgRef.current
     if (!img) return
     setImgSize({ w: img.naturalWidth, h: img.naturalHeight })
-
-    // Try automatic detection first — fall back to default box if nothing found
     const detected = onDetect ? onDetect() : null
     if (detected) {
-      boxRef.current = detected
+      cornersRef.current = detected.tl ? detected : boxToCorners(detected)
     } else {
-      boxRef.current = { x: 0.04, y: 0.04, x2: 0.96, y2: 0.96 }
+      cornersRef.current = DEFAULT_CORNERS()
     }
-    applyBoxToDOM()
+    applyToDOM()
   }
 
-  // ── Pointer helpers — always relative to imageAreaRef (the real image box) ─
+  // ── Pointer helpers ───────────────────────────────────────────────────────
   const getRel = (e) => {
     const rect = imageAreaRef.current.getBoundingClientRect()
     return {
@@ -136,10 +214,82 @@ function CropOverlay({ imageUrl, onApply, onSkip, onRotate, onDetect }) {
     dragStateRef.current = {
       handle,
       start: getRel(e),
-      startBox: { ...boxRef.current },
+      startCorners: JSON.parse(JSON.stringify(cornersRef.current)),
       pointerId: e.pointerId,
     }
     try { imageAreaRef.current?.setPointerCapture(e.pointerId) } catch {}
+  }
+
+  // Set one corner subject to:
+  //  (a) it stays in [0, 1]
+  //  (b) minimum spacing from each neighbour
+  //  (c) the quadrilateral stays simple (non-self-intersecting). Achieved by
+  //      keeping the new corner on the opposite side of the diagonal between
+  //      its two neighbours from the opposite-corner — i.e. the polygon
+  //      remains convex at this vertex.
+  const setCorner = (key, nx, ny) => {
+    const c = cornersRef.current
+    const order = ['tl', 'tr', 'br', 'bl']  // CW
+    const i = order.indexOf(key)
+    const prev = c[order[(i + 3) % 4]] // CCW neighbour
+    const next = c[order[(i + 1) % 4]] // CW  neighbour
+    const opp  = c[order[(i + 2) % 4]] // diagonal corner
+
+    // Reference sign: the OLD corner is on a specific side of line prev→next.
+    // That's the side opposite from `opp` for a convex quad. We require the
+    // NEW position to be on the same side.
+    const refSign = Math.sign(cross(prev.x, prev.y, next.x, next.y, c[key].x, c[key].y))
+    const oppSign = Math.sign(cross(prev.x, prev.y, next.x, next.y, opp.x, opp.y))
+
+    let x = clamp(nx, 0, 1)
+    let y = clamp(ny, 0, 1)
+
+    // Convexity: walk toward `opp`'s reflection if the new point crossed the
+    // diagonal. (A tiny inward step a few times converges quickly.)
+    let tries = 0
+    while (tries < 12) {
+      const sNew = Math.sign(cross(prev.x, prev.y, next.x, next.y, x, y))
+      // If signs agree with refSign (or zero), we're good. Otherwise nudge
+      // perpendicular to the diagonal back toward the correct side.
+      if (sNew === 0 || sNew === refSign || refSign === 0) break
+      // Nudge: project current point onto the diagonal then push 2% further
+      // back toward refSign-side.
+      const ex = next.x - prev.x, ey = next.y - prev.y
+      const len2 = ex * ex + ey * ey || 1e-9
+      const t = ((x - prev.x) * ex + (y - prev.y) * ey) / len2
+      const fx = prev.x + ex * t
+      const fy = prev.y + ey * t
+      // The diagonal is between fx,fy and our point. Move past fx,fy in the
+      // direction of refSign:
+      const nrmx = -ey, nrmy = ex
+      const sgn = refSign * Math.sign(cross(prev.x, prev.y, next.x, next.y, fx + nrmx, fy + nrmy))
+      const dir = sgn >= 0 ? 1 : -1
+      x = fx + nrmx * 0.02 * dir
+      y = fy + nrmy * 0.02 * dir
+      x = clamp(x, 0, 1); y = clamp(y, 0, 1)
+      tries++
+    }
+
+    // Minimum spacing from each neighbour
+    const distSq = (ax, ay, bx, by) => (ax - bx) ** 2 + (ay - by) ** 2
+    if (distSq(x, y, prev.x, prev.y) < MIN_DIM * MIN_DIM) {
+      const d = Math.sqrt(distSq(x, y, prev.x, prev.y)) || 1e-6
+      const k = MIN_DIM / d
+      x = prev.x + (x - prev.x) * k
+      y = prev.y + (y - prev.y) * k
+    }
+    if (distSq(x, y, next.x, next.y) < MIN_DIM * MIN_DIM) {
+      const d = Math.sqrt(distSq(x, y, next.x, next.y)) || 1e-6
+      const k = MIN_DIM / d
+      x = next.x + (x - next.x) * k
+      y = next.y + (y - next.y) * k
+    }
+
+    c[key].x = x
+    c[key].y = y
+    // Mark `oppSign` used so the linter doesn't complain — it's intentionally
+    // captured for clarity but the algorithm uses `refSign`.
+    void oppSign
   }
 
   const onPointerMove = (e) => {
@@ -149,44 +299,48 @@ function CropOverlay({ imageUrl, onApply, onSkip, onRotate, onDetect }) {
     const pos = getRel(e)
     const dx = pos.x - d.start.x
     const dy = pos.y - d.start.y
-    const sb = d.startBox
-    const b  = boxRef.current
+    const sc = d.startCorners
 
     switch (d.handle) {
-      case 'tl':
-        b.x  = clamp(sb.x  + dx, 0, sb.x2 - MIN)
-        b.y  = clamp(sb.y  + dy, 0, sb.y2 - MIN)
-        b.x2 = sb.x2; b.y2 = sb.y2; break
-      case 'tr':
-        b.x2 = clamp(sb.x2 + dx, sb.x + MIN, 1)
-        b.y  = clamp(sb.y  + dy, 0, sb.y2 - MIN)
-        b.x  = sb.x;  b.y2 = sb.y2; break
-      case 'bl':
-        b.x  = clamp(sb.x  + dx, 0, sb.x2 - MIN)
-        b.y2 = clamp(sb.y2 + dy, sb.y + MIN, 1)
-        b.x2 = sb.x2; b.y  = sb.y; break
-      case 'br':
-        b.x2 = clamp(sb.x2 + dx, sb.x + MIN, 1)
-        b.y2 = clamp(sb.y2 + dy, sb.y + MIN, 1)
-        b.x  = sb.x;  b.y  = sb.y; break
-      case 't':
-        b.y  = clamp(sb.y  + dy, 0, sb.y2 - MIN)
-        b.x  = sb.x; b.x2 = sb.x2; b.y2 = sb.y2; break
-      case 'r':
-        b.x2 = clamp(sb.x2 + dx, sb.x + MIN, 1)
-        b.x  = sb.x; b.y = sb.y; b.y2 = sb.y2; break
-      case 'bt':
-        b.y2 = clamp(sb.y2 + dy, sb.y + MIN, 1)
-        b.x  = sb.x; b.x2 = sb.x2; b.y = sb.y; break
-      case 'l':
-        b.x  = clamp(sb.x  + dx, 0, sb.x2 - MIN)
-        b.x2 = sb.x2; b.y = sb.y; b.y2 = sb.y2; break
+      case 'tl': setCorner('tl', sc.tl.x + dx, sc.tl.y + dy); break
+      case 'tr': setCorner('tr', sc.tr.x + dx, sc.tr.y + dy); break
+      case 'br': setCorner('br', sc.br.x + dx, sc.br.y + dy); break
+      case 'bl': setCorner('bl', sc.bl.x + dx, sc.bl.y + dy); break
+
+      // Edge midpoints: translate both adjacent corners perpendicular to the
+      // edge. Project drag onto the edge normal so the edge moves rigidly.
+      case 't': case 'r': case 'b': case 'l': {
+        const pairMap = { t: ['tl', 'tr'], r: ['tr', 'br'], b: ['bl', 'br'], l: ['tl', 'bl'] }
+        const [a, bk] = pairMap[d.handle]
+        const ax = sc[a].x, ay = sc[a].y
+        const bx = sc[bk].x, by = sc[bk].y
+        // Edge direction (normalised)
+        const ex = bx - ax, ey = by - ay
+        const len = Math.sqrt(ex * ex + ey * ey) || 1e-6
+        const tx = ex / len, ty = ey / len
+        // Project drag (dx, dy) onto edge normal (-ty, tx)
+        const nx = -ty, ny = tx
+        const dot = dx * nx + dy * ny
+        const mx = nx * dot
+        const my = ny * dot
+        setCorner(a,  sc[a].x  + mx, sc[a].y  + my)
+        setCorner(bk, sc[bk].x + mx, sc[bk].y + my)
+        break
+      }
+
       case 'body': {
-        const w = sb.x2 - sb.x
-        const h = sb.y2 - sb.y
-        const nx = clamp(sb.x + dx, 0, 1 - w)
-        const ny = clamp(sb.y + dy, 0, 1 - h)
-        b.x = nx; b.y = ny; b.x2 = nx + w; b.y2 = ny + h
+        // Translate all 4 corners, clamping so the whole quad stays in [0,1]
+        const minX = Math.min(sc.tl.x, sc.tr.x, sc.br.x, sc.bl.x)
+        const minY = Math.min(sc.tl.y, sc.tr.y, sc.br.y, sc.bl.y)
+        const maxX = Math.max(sc.tl.x, sc.tr.x, sc.br.x, sc.bl.x)
+        const maxY = Math.max(sc.tl.y, sc.tr.y, sc.br.y, sc.bl.y)
+        const cx = clamp(dx, -minX, 1 - maxX)
+        const cy = clamp(dy, -minY, 1 - maxY)
+        const c = cornersRef.current
+        c.tl.x = sc.tl.x + cx; c.tl.y = sc.tl.y + cy
+        c.tr.x = sc.tr.x + cx; c.tr.y = sc.tr.y + cy
+        c.br.x = sc.br.x + cx; c.br.y = sc.br.y + cy
+        c.bl.x = sc.bl.x + cx; c.bl.y = sc.bl.y + cy
         break
       }
       default: return
@@ -203,14 +357,12 @@ function CropOverlay({ imageUrl, onApply, onSkip, onRotate, onDetect }) {
   }
 
   const reset = () => {
-    boxRef.current = { x: 0.04, y: 0.04, x2: 0.96, y2: 0.96 }
-    applyBoxToDOM()
+    animateTo(DEFAULT_CORNERS())
   }
 
   return (
     <div className="absolute inset-0 flex flex-col">
       <div ref={wrapRef} className="flex-1 relative overflow-hidden bg-black select-none">
-        {/* The image itself — draws the full letter-boxed view */}
         <img
           ref={imgRef}
           src={imageUrl}
@@ -220,7 +372,6 @@ function CropOverlay({ imageUrl, onApply, onSkip, onRotate, onDetect }) {
           className="absolute inset-0 w-full h-full object-contain pointer-events-none"
         />
 
-        {/* Interaction layer: sized exactly to the visible image rect */}
         <div
           ref={imageAreaRef}
           className="absolute"
@@ -232,41 +383,64 @@ function CropOverlay({ imageUrl, onApply, onSkip, onRotate, onDetect }) {
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
         >
-          {/* Selection rectangle */}
-          <div
-            ref={selectionRef}
-            className="absolute border border-white/95 cursor-move"
-            style={{
-              boxShadow: '0 0 0 4000px rgba(0,0,0,0.6)',
-              willChange: 'left, top, width, height',
-            }}
-            onPointerDown={onPointerDown('body')}
+          {/* SVG overlay: mask (dim outside), polygon (body drag + stroke), grid */}
+          <svg
+            className="absolute inset-0 w-full h-full"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            style={{ touchAction: 'none' }}
           >
-            {/* Rule-of-thirds grid */}
-            <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none">
-              {[...Array(9)].map((_, i) => (
-                <div key={i} className="border border-white/15" />
-              ))}
-            </div>
+            <path
+              ref={maskRef}
+              d=""
+              fill="rgba(0,0,0,0.55)"
+              fillRule="evenodd"
+              style={{ pointerEvents: 'none' }}
+            />
+            <polygon
+              ref={polyRef}
+              points=""
+              fill="rgba(0,0,0,0.001)"
+              stroke="rgba(255,255,255,0.95)"
+              strokeWidth="2"
+              vectorEffect="non-scaling-stroke"
+              style={{ cursor: 'move', pointerEvents: 'all' }}
+              onPointerDown={onPointerDown('body')}
+            />
+            <path
+              ref={gridRef}
+              d=""
+              stroke="rgba(255,255,255,0.20)"
+              strokeWidth="1"
+              fill="none"
+              vectorEffect="non-scaling-stroke"
+              style={{ pointerEvents: 'none' }}
+            />
+          </svg>
 
-            {/* Corner handles */}
-            <CornerHandle pos="tl" onPointerDown={onPointerDown('tl')} />
-            <CornerHandle pos="tr" onPointerDown={onPointerDown('tr')} />
-            <CornerHandle pos="bl" onPointerDown={onPointerDown('bl')} />
-            <CornerHandle pos="br" onPointerDown={onPointerDown('br')} />
-
-            {/* Edge handles */}
-            <EdgeHandle pos="t"  onPointerDown={onPointerDown('t')} />
-            <EdgeHandle pos="r"  onPointerDown={onPointerDown('r')} />
-            <EdgeHandle pos="bt" onPointerDown={onPointerDown('bt')} />
-            <EdgeHandle pos="l"  onPointerDown={onPointerDown('l')} />
-          </div>
+          {/* Corner handles */}
+          {['tl', 'tr', 'br', 'bl'].map((key) => (
+            <DraggableDot
+              key={key}
+              variant="corner"
+              setRef={(el) => { handleRefs.current[key] = el }}
+              onPointerDown={onPointerDown(key)}
+            />
+          ))}
+          {/* Edge midpoint handles */}
+          {['t', 'r', 'b', 'l'].map((key) => (
+            <DraggableDot
+              key={key}
+              variant="edge"
+              setRef={(el) => { handleRefs.current[key] = el }}
+              onPointerDown={onPointerDown(key)}
+            />
+          ))}
         </div>
       </div>
 
       {/* Controls */}
       <div className="shrink-0 bg-black/90 px-4 pb-8 pt-3 border-t border-white/5">
-        {/* Rotate / Auto / Reset row */}
         <div className="flex items-center justify-center gap-7 mb-3">
           <button
             onClick={() => onRotate(-90)}
@@ -314,7 +488,7 @@ function CropOverlay({ imageUrl, onApply, onSkip, onRotate, onDetect }) {
             Skip
           </button>
           <button
-            onClick={() => onApply({ ...boxRef.current })}
+            onClick={() => onApply({ ...cornersRef.current })}
             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-sm font-semibold text-white active:scale-95 transition-transform"
           >
             <Crop size={15} />
@@ -326,55 +500,35 @@ function CropOverlay({ imageUrl, onApply, onSkip, onRotate, onDetect }) {
   )
 }
 
-// Corner handle: transparent 40×40 touch target with white L-shape inside
-function CornerHandle({ pos, onPointerDown }) {
-  const posClass = {
-    tl: '-top-5 -left-5  cursor-nwse-resize',
-    tr: '-top-5 -right-5 cursor-nesw-resize',
-    bl: '-bottom-5 -left-5  cursor-nesw-resize',
-    br: '-bottom-5 -right-5 cursor-nwse-resize',
-  }[pos]
-  const corner = {
-    tl: { top: 10, left: 10, borderTop: '3px solid white', borderLeft: '3px solid white', borderTopLeftRadius: 4 },
-    tr: { top: 10, right: 10, borderTop: '3px solid white', borderRight: '3px solid white', borderTopRightRadius: 4 },
-    bl: { bottom: 10, left: 10, borderBottom: '3px solid white', borderLeft: '3px solid white', borderBottomLeftRadius: 4 },
-    br: { bottom: 10, right: 10, borderBottom: '3px solid white', borderRight: '3px solid white', borderBottomRightRadius: 4 },
-  }[pos]
-  return (
-    <div
-      onPointerDown={onPointerDown}
-      className={`absolute ${posClass} z-10`}
-      style={{ width: 40, height: 40, touchAction: 'none' }}
-    >
-      <div className="absolute" style={{ width: 18, height: 18, ...corner }} />
-    </div>
-  )
-}
+// One draggable dot — used for all 8 handles. Centered on its (left, top)
+// position; corners and midpoints just differ visually (size / fill).
+function DraggableDot({ variant, setRef, onPointerDown }) {
+  const isCorner = variant === 'corner'
+  const touchSize = isCorner ? 44 : 36
+  const dotSize   = isCorner ? 18 : 12
 
-// Edge handle: transparent touch target with small white bar centered
-function EdgeHandle({ pos, onPointerDown }) {
-  const wrap = {
-    t:  'left-1/2 -top-5    -translate-x-1/2 cursor-ns-resize',
-    bt: 'left-1/2 -bottom-5 -translate-x-1/2 cursor-ns-resize',
-    l:  'top-1/2 -left-5    -translate-y-1/2 cursor-ew-resize',
-    r:  'top-1/2 -right-5   -translate-y-1/2 cursor-ew-resize',
-  }[pos]
-  const horizontal = pos === 't' || pos === 'bt'
   return (
     <div
+      ref={setRef}
       onPointerDown={onPointerDown}
-      className={`absolute ${wrap} z-10 flex items-center justify-center`}
+      className="absolute z-10 flex items-center justify-center"
       style={{
-        width:  horizontal ? 56 : 40,
-        height: horizontal ? 40 : 56,
+        width: touchSize,
+        height: touchSize,
+        marginLeft: -touchSize / 2,
+        marginTop:  -touchSize / 2,
         touchAction: 'none',
+        cursor: isCorner ? 'grab' : 'grab',
       }}
     >
       <div
-        className="bg-white rounded-full"
+        className="rounded-full bg-white"
         style={{
-          width:  horizontal ? 24 : 3,
-          height: horizontal ? 3  : 24,
+          width: dotSize,
+          height: dotSize,
+          boxShadow: '0 0 0 2px rgba(0,0,0,0.45), 0 1px 4px rgba(0,0,0,0.4)',
+          border: isCorner ? '2px solid rgba(59,130,246,0.95)' : '2px solid rgba(255,255,255,0.85)',
+          opacity: isCorner ? 1 : 0.92,
         }}
       />
     </div>
@@ -868,11 +1022,146 @@ function detectDocument(srcCanvas) {
       best.name, best.score,
       candidates.map(c => `${c.name}=${c.score.toFixed(3)}`).join(', ')
     )
+    // ── Refinement: fit lines to the actual document edges around the bbox
+    //    and return a true quadrilateral (handles skewed documents).
+    const refined = refineCorners(best.box, grad, w, h)
+    if (refined) {
+      console.debug('[Scanner] edge: refined to quadrilateral')
+      return refined
+    }
     return best.box
   }
 
   console.debug('[Scanner] edge: no valid candidate (bgMedian=%d, MAD=%.1f, gradT=%d)', bgMedian, bgMAD, gradT)
   return null
+}
+
+/* ── Refine rectangular bbox into a tighter quadrilateral by fitting lines
+ *  to the actual document edges. Returns {tl, tr, br, bl} in 0..1 coords,
+ *  or null if the refinement is unreliable.
+ *
+ *  For each side, walk along the long axis and find the pixel-column with
+ *  the strongest gradient peak in a narrow strip around the rough edge.
+ *  Fit a line through those peaks via weighted least squares (after a
+ *  10-90 percentile filter to drop text-induced outliers). The 4 lines'
+ *  pairwise intersections are the refined corners.
+ *  ────────────────────────────────────────────────────────────────────── */
+function refineCorners(box, grad, w, h) {
+  const x0 = Math.max(0, Math.floor(box.x * w))
+  const y0 = Math.max(0, Math.floor(box.y * h))
+  const x1 = Math.min(w - 1, Math.ceil(box.x2 * w))
+  const y1 = Math.min(h - 1, Math.ceil(box.y2 * h))
+  const bw = x1 - x0
+  const bh = y1 - y0
+  if (bw < 30 || bh < 30) return null
+
+  // Look ±8% of the bbox dimension perpendicular to each edge
+  const marginY = Math.max(6, Math.round(bh * 0.08))
+  const marginX = Math.max(6, Math.round(bw * 0.08))
+
+  // Walk along the edge; per column/row find the row/column with max gradient
+  // in a narrow strip around the rough edge. Returns [{a, b, w}].
+  const peakRow = (xLo, xHi, yCenter) => {
+    const pts = []
+    const ys0 = Math.max(0, yCenter - marginY)
+    const ys1 = Math.min(h - 1, yCenter + marginY)
+    for (let x = xLo; x <= xHi; x++) {
+      let best = 0, bestY = -1
+      for (let y = ys0; y <= ys1; y++) {
+        const v = grad[y * w + x]
+        if (v > best) { best = v; bestY = y }
+      }
+      if (bestY >= 0 && best > 40) pts.push({ a: x, b: bestY, wt: best })
+    }
+    return pts
+  }
+  const peakCol = (yLo, yHi, xCenter) => {
+    const pts = []
+    const xs0 = Math.max(0, xCenter - marginX)
+    const xs1 = Math.min(w - 1, xCenter + marginX)
+    for (let y = yLo; y <= yHi; y++) {
+      let best = 0, bestX = -1
+      for (let x = xs0; x <= xs1; x++) {
+        const v = grad[y * w + x]
+        if (v > best) { best = v; bestX = x }
+      }
+      if (bestX >= 0 && best > 40) pts.push({ a: y, b: bestX, wt: best })
+    }
+    return pts
+  }
+
+  // Weighted least-squares line fit after percentile outlier filter.
+  // Returns { slope, intercept } where b = slope*a + intercept, or null.
+  const fitLine = (pts) => {
+    if (pts.length < 8) return null
+    const sorted = [...pts].sort((p, q) => p.b - q.b)
+    const lo = sorted[Math.floor(sorted.length * 0.10)].b
+    const hi = sorted[Math.floor(sorted.length * 0.90)].b
+    const filt = pts.filter(p => p.b >= lo && p.b <= hi)
+    if (filt.length < 5) return null
+    let SW = 0, SA = 0, SB = 0, SAA = 0, SAB = 0
+    for (const p of filt) {
+      SW  += p.wt
+      SA  += p.wt * p.a
+      SB  += p.wt * p.b
+      SAA += p.wt * p.a * p.a
+      SAB += p.wt * p.a * p.b
+    }
+    const denom = SW * SAA - SA * SA
+    if (Math.abs(denom) < 1e-9) return null
+    const slope = (SW * SAB - SA * SB) / denom
+    const intercept = (SB - slope * SA) / SW
+    return { slope, intercept }
+  }
+
+  // Sample edges — slight inset so we don't pick up the exact corner peaks
+  const inset = Math.max(2, Math.round(Math.min(bw, bh) * 0.04))
+  const topPts = peakRow(x0 + inset, x1 - inset, y0)
+  const botPts = peakRow(x0 + inset, x1 - inset, y1)
+  const lftPts = peakCol(y0 + inset, y1 - inset, x0)
+  const rgtPts = peakCol(y0 + inset, y1 - inset, x1)
+
+  const topL = fitLine(topPts)  // y = mT*x + iT
+  const botL = fitLine(botPts)
+  const lftL = fitLine(lftPts)  // x = mL*y + iL
+  const rgtL = fitLine(rgtPts)
+
+  if (!topL || !botL || !lftL || !rgtL) return null
+
+  // Reject if line slopes imply the edge is wildly off (e.g. >25° tilt)
+  const MAX_SLOPE = 0.47   // tan(25°)
+  if (Math.abs(topL.slope) > MAX_SLOPE || Math.abs(botL.slope) > MAX_SLOPE) return null
+  if (Math.abs(lftL.slope) > MAX_SLOPE || Math.abs(rgtL.slope) > MAX_SLOPE) return null
+
+  // Intersect horizontal-form (y = mh*x + ih) with vertical-form (x = mv*y + iv):
+  //   x = mv*(mh*x + ih) + iv = mv*mh*x + mv*ih + iv
+  //   x*(1 - mv*mh) = mv*ih + iv
+  const intersect = (horz, vert) => {
+    const denom = 1 - vert.slope * horz.slope
+    if (Math.abs(denom) < 1e-9) return null
+    const x = (vert.slope * horz.intercept + vert.intercept) / denom
+    const y = horz.slope * x + horz.intercept
+    return { x, y }
+  }
+
+  const tl = intersect(topL, lftL)
+  const tr = intersect(topL, rgtL)
+  const br = intersect(botL, rgtL)
+  const bl = intersect(botL, lftL)
+  if (!tl || !tr || !br || !bl) return null
+
+  // Sanity: each corner must be within the bbox expanded by margin
+  const okPx = (p) =>
+    p.x >= x0 - marginX && p.x <= x1 + marginX &&
+    p.y >= y0 - marginY && p.y <= y1 + marginY
+  if (!okPx(tl) || !okPx(tr) || !okPx(br) || !okPx(bl)) return null
+
+  // Normalise to 0..1 and clamp
+  const norm = (p) => ({
+    x: Math.max(0, Math.min(1, p.x / w)),
+    y: Math.max(0, Math.min(1, p.y / h)),
+  })
+  return { tl: norm(tl), tr: norm(tr), br: norm(br), bl: norm(bl) }
 }
 
 // ── Sauvola adaptive binarization ───────────────────────────────────────────
@@ -1026,6 +1315,156 @@ function canvasToBlob(canvas, type, quality) {
       quality
     )
   })
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  PERSPECTIVE WARP
+ *  ────────────────
+ *  Maps an arbitrary quadrilateral in the source image to a clean rectangle
+ *  on the output canvas — the classic "scan a skewed document" transform.
+ *
+ *  Math:
+ *    Compute the 3×3 homography H that maps the unit square [(0,0),(1,0),
+ *    (1,1),(0,1)] to source corners (TL, TR, BR, BL). For each output pixel
+ *    (u, v) we apply H to (u/W, v/H, 1) → (sx, sy, sw) and sample the source
+ *    at (sx/sw, sy/sw) with bilinear interpolation.
+ *
+ *  Output size:
+ *    The output rectangle's width is the average of the top & bottom edge
+ *    lengths in source pixels; the height is the average of the left & right
+ *    edges. This preserves the "real-world" document aspect as well as we
+ *    can without knowing the lens.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+// Computes the 3x3 homography that maps the unit square to the four points.
+// Returns a 9-element row-major matrix.
+// Reference: classic "Heckbert" derivation.
+function unitToQuadMatrix(p0, p1, p2, p3) {
+  // p0=TL→(0,0), p1=TR→(1,0), p2=BR→(1,1), p3=BL→(0,1)
+  const dx1 = p1.x - p2.x
+  const dx2 = p3.x - p2.x
+  const dy1 = p1.y - p2.y
+  const dy2 = p3.y - p2.y
+  const sx  = p0.x - p1.x + p2.x - p3.x
+  const sy  = p0.y - p1.y + p2.y - p3.y
+
+  if (Math.abs(sx) < 1e-12 && Math.abs(sy) < 1e-12) {
+    // Affine (parallelogram) — no perspective
+    return [
+      p1.x - p0.x, p3.x - p0.x, p0.x,
+      p1.y - p0.y, p3.y - p0.y, p0.y,
+      0,           0,           1,
+    ]
+  }
+
+  const det = dx1 * dy2 - dx2 * dy1
+  if (Math.abs(det) < 1e-12) {
+    // Degenerate — bail to affine
+    return [
+      p1.x - p0.x, p3.x - p0.x, p0.x,
+      p1.y - p0.y, p3.y - p0.y, p0.y,
+      0,           0,           1,
+    ]
+  }
+  const g = (sx * dy2 - dx2 * sy) / det
+  const h = (dx1 * sy - sx * dy1) / det
+
+  return [
+    p1.x - p0.x + g * p1.x, p3.x - p0.x + h * p3.x, p0.x,
+    p1.y - p0.y + g * p1.y, p3.y - p0.y + h * p3.y, p0.y,
+    g,                       h,                       1,
+  ]
+}
+
+// Pixel distance between two corners (normalised in 0..1 vs source dims)
+function cornerDistPx(a, b, sw, sh) {
+  const dx = (b.x - a.x) * sw
+  const dy = (b.y - a.y) * sh
+  return Math.sqrt(dx * dx + dy * dy)
+}
+
+// Perspective-crop the source canvas using normalised quad corners.
+function perspectiveWarp(srcCanvas, corners) {
+  const sw = srcCanvas.width
+  const sh = srcCanvas.height
+
+  // Output dims: average of opposing edge lengths
+  const topLen    = cornerDistPx(corners.tl, corners.tr, sw, sh)
+  const botLen    = cornerDistPx(corners.bl, corners.br, sw, sh)
+  const leftLen   = cornerDistPx(corners.tl, corners.bl, sw, sh)
+  const rightLen  = cornerDistPx(corners.tr, corners.br, sw, sh)
+  let outW = Math.max(50, Math.round((topLen + botLen)  / 2))
+  let outH = Math.max(50, Math.round((leftLen + rightLen) / 2))
+
+  // Sanity caps — don't let a tiny quad produce a huge upscale
+  const MAX_DIM = 3200
+  if (outW > MAX_DIM) { outH = Math.round(outH * MAX_DIM / outW); outW = MAX_DIM }
+  if (outH > MAX_DIM) { outW = Math.round(outW * MAX_DIM / outH); outH = MAX_DIM }
+
+  // Pull source pixels into a buffer for fast sampling
+  const sctx = srcCanvas.getContext('2d', { willReadFrequently: true })
+  const sImg = sctx.getImageData(0, 0, sw, sh)
+  const sData = sImg.data
+
+  const out = document.createElement('canvas')
+  out.width = outW
+  out.height = outH
+  const octx = out.getContext('2d', { willReadFrequently: true })
+  const oImg = octx.createImageData(outW, outH)
+  const oData = oImg.data
+
+  // Homography maps unit square (0..1, 0..1) to corners (still in 0..1 of src).
+  // So the matrix output is in normalised source coords — multiply by (sw, sh)
+  // to get pixel coords.
+  const H = unitToQuadMatrix(corners.tl, corners.tr, corners.br, corners.bl)
+  const m00 = H[0], m01 = H[1], m02 = H[2]
+  const m10 = H[3], m11 = H[4], m12 = H[5]
+  const m20 = H[6], m21 = H[7], m22 = H[8]
+
+  for (let y = 0; y < outH; y++) {
+    const v = y / outH
+    for (let x = 0; x < outW; x++) {
+      const u = x / outW
+      const denom = m20 * u + m21 * v + m22
+      if (denom === 0) continue
+      const sxN = (m00 * u + m01 * v + m02) / denom
+      const syN = (m10 * u + m11 * v + m12) / denom
+
+      const sxP = sxN * sw
+      const syP = syN * sh
+
+      // Bilinear sample
+      const x0 = Math.floor(sxP)
+      const y0 = Math.floor(syP)
+      const x1 = x0 + 1
+      const y1 = y0 + 1
+      if (x0 < 0 || y0 < 0 || x1 >= sw || y1 >= sh) {
+        const oi = (y * outW + x) * 4
+        oData[oi] = 0; oData[oi + 1] = 0; oData[oi + 2] = 0; oData[oi + 3] = 255
+        continue
+      }
+      const fx = sxP - x0
+      const fy = syP - y0
+      const w00 = (1 - fx) * (1 - fy)
+      const w01 = fx * (1 - fy)
+      const w10 = (1 - fx) * fy
+      const w11 = fx * fy
+
+      const i00 = (y0 * sw + x0) * 4
+      const i01 = (y0 * sw + x1) * 4
+      const i10 = (y1 * sw + x0) * 4
+      const i11 = (y1 * sw + x1) * 4
+
+      const oi = (y * outW + x) * 4
+      oData[oi]     = sData[i00]     * w00 + sData[i01]     * w01 + sData[i10]     * w10 + sData[i11]     * w11
+      oData[oi + 1] = sData[i00 + 1] * w00 + sData[i01 + 1] * w01 + sData[i10 + 1] * w10 + sData[i11 + 1] * w11
+      oData[oi + 2] = sData[i00 + 2] * w00 + sData[i01 + 2] * w01 + sData[i10 + 2] * w10 + sData[i11 + 2] * w11
+      oData[oi + 3] = 255
+    }
+  }
+
+  octx.putImageData(oImg, 0, 0)
+  return out
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1183,31 +1622,35 @@ export default function InvoiceScanner({ onCapture, onClose }) {
   }, [mode, brightness, contrast, thresholdOffset])
 
   // ─── Crop callbacks ─────────────────────────────────────────────────────────
-  const handleCropApply = useCallback((box) => {
+  // Accepts either a rectangle {x,y,x2,y2} or a quadrilateral {tl,tr,br,bl}.
+  // Rectangles are handled with a plain crop; quads go through perspective warp.
+  const handleCropApply = useCallback((shape) => {
     const raw = rawCanvasRef.current
     if (!raw) { processAndShow(); return }
 
-    // Compute pixel coords from normalised box
-    // The image is displayed with object-contain so the actual visible area
-    // may be letter-boxed. We stored the raw canvas at real pixel size so
-    // we just map 0-1 directly onto that.
-    const px = Math.round(box.x  * raw.width)
-    const py = Math.round(box.y  * raw.height)
-    const pw = Math.round((box.x2 - box.x) * raw.width)
-    const ph = Math.round((box.y2 - box.y) * raw.height)
+    try {
+      let cropped
+      if (shape.tl && shape.tr && shape.br && shape.bl) {
+        // Quadrilateral — perspective-warp into a clean rectangle
+        cropped = perspectiveWarp(raw, shape)
+      } else {
+        const px = Math.round(shape.x  * raw.width)
+        const py = Math.round(shape.y  * raw.height)
+        const pw = Math.round((shape.x2 - shape.x) * raw.width)
+        const ph = Math.round((shape.y2 - shape.y) * raw.height)
+        if (pw < 10 || ph < 10) { processAndShow(); return }
+        cropped = document.createElement('canvas')
+        cropped.width  = pw
+        cropped.height = ph
+        cropped.getContext('2d').drawImage(raw, px, py, pw, ph, 0, 0, pw, ph)
+      }
+      if (cropped.width < 10 || cropped.height < 10) { processAndShow(); return }
+      rawCanvasRef.current = cropped
+    } catch (err) {
+      console.warn('[Scanner] crop failed, falling back to skip:', err)
+    }
 
-    if (pw < 10 || ph < 10) { processAndShow(); return }
-
-    const cropped = document.createElement('canvas')
-    cropped.width  = pw
-    cropped.height = ph
-    const ctx = cropped.getContext('2d')
-    ctx.drawImage(raw, px, py, pw, ph, 0, 0, pw, ph)
-    rawCanvasRef.current = cropped
-
-    // Clean up raw preview URL — no longer needed
     setRawPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null })
-
     processAndShow()
   }, [processAndShow])
 
