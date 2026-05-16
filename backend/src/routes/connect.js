@@ -62,4 +62,29 @@ router.get('/ros', requireConnectKey, async (req, res) => {
   }
 })
 
+// GET /api/connect/ros/:id — single RO for Shop Manager
+router.get('/ros/:id', requireConnectKey, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id)
+    if (!Number.isFinite(id)) return res.status(400).json({ success: false, error: 'Invalid id' })
+
+    const ro = await prisma.rO.findUnique({
+      where: { id },
+      select: {
+        id: true, roNumber: true,
+        ownerName: true, ownerPhone: true, ownerEmail: true,
+        vehicleYear: true, vehicleMake: true, vehicleModel: true,
+        vehicleColor: true, vin: true,
+        insuranceCompany: true, claimNumber: true,
+        productionStage: true, isArchived: true, updatedAt: true,
+      },
+    })
+    if (!ro) return res.status(404).json({ success: false, error: 'RO not found' })
+    res.json({ success: true, data: ro })
+  } catch (err) {
+    console.error('Connect single-RO error:', err)
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
 module.exports = router
