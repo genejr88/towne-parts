@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChevronLeft, ChevronRight, ChevronDown, Car, FileText, Check, ClipboardList, X, Clock, Truck,
   Search, Package, CheckCircle2, XCircle, User, Shield, AlertTriangle, Wrench, Pencil,
-  ExternalLink, DollarSign, FilePlus, Warehouse, Activity, ListTodo, CheckSquare, Bell,
+  ExternalLink, DollarSign, FilePlus, Warehouse, Activity, ListTodo, CheckSquare, Bell, Sparkles,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { productionApi, rosApi, supplementsApi, tasksApi, techniciansApi } from '@/lib/api'
@@ -1533,6 +1533,14 @@ export default function ProductionBoard({ hbmOnly = false }) {
           >
             <Car size={13} />
             Home
+          </button>
+          <button
+            onClick={() => navigate('/board/v2')}
+            className="flex items-center gap-1.5 text-xs font-bold text-violet-200 hover:text-white px-2 py-1 rounded-lg bg-gradient-to-r from-violet-600/40 to-fuchsia-600/40 border border-violet-400/50 hover:border-violet-300/70 transition-colors shadow-md shadow-violet-900/30"
+            title="Preview the new stage-first design"
+          >
+            <Sparkles size={13} />
+            Try new design
           </button>
           {!hbmOnly && (
             <button

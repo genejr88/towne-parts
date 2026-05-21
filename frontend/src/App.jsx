@@ -10,6 +10,7 @@ import Dashboard from '@/pages/Dashboard'
 import ROList from '@/pages/ROList'
 import RODetail from '@/pages/RODetail'
 import ProductionBoard from '@/pages/ProductionBoard'
+import ProductionBoardV2 from '@/pages/ProductionBoardV2'
 import SRCTracker from '@/pages/SRCTracker'
 import Admin from '@/pages/Admin'
 import Inventory from '@/pages/Inventory'
@@ -149,6 +150,9 @@ export default function App() {
         } />
         <Route path="/board/hbm" element={
           <ProtectedRoute><AppLayout><ProductionBoard hbmOnly /></AppLayout></ProtectedRoute>
+        } />
+        <Route path="/board/v2" element={
+          <ProtectedRoute><AppLayout><ProductionBoardV2 /></AppLayout></ProtectedRoute>
         } />
         <Route path="/board/log" element={
           <ProtectedRoute><AppLayout><StatusLog /></AppLayout></ProtectedRoute>
