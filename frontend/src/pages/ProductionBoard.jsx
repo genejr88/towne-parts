@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChevronLeft, ChevronRight, ChevronDown, Car, FileText, Check, ClipboardList, X, Clock, Truck,
   Search, Package, CheckCircle2, XCircle, User, Shield, AlertTriangle, Wrench, Pencil,
-  ExternalLink, DollarSign, FilePlus, Warehouse, Activity, ListTodo, CheckSquare,
+  ExternalLink, DollarSign, FilePlus, Warehouse, Activity, ListTodo, CheckSquare, Bell,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { productionApi, rosApi, supplementsApi, tasksApi } from '@/lib/api'
@@ -686,6 +686,137 @@ function PartsActivitySheet({ open, onClose }) {
   )
 }
 
+// ── HBM Activity Feed Sheet ──────────────────────────────────────────────────
+function HbmFeedSheet({ open, onClose, onSeen }) {
+  const navigate = useNavigate()
+
+  const { data: updates, isLoading } = useQuery({
+    queryKey: ['hbm-feed'],
+    queryFn: () => productionApi.hbmFeed(30),
+    enabled: open,
+    refetchInterval: open ? 15_000 : false,
+  })
+
+  // Mark feed as seen whenever the sheet is open and data arrives
+  useEffect(() => {
+    if (open && updates?.length) {
+      const newest = updates[0]?.createdAt
+      if (newest) onSeen?.(newest)
+    }
+  }, [open, updates, onSeen])
+
+  // Group by date
+  const grouped = useMemo(() => {
+    if (!updates?.length) return []
+    const map = {}
+    for (const u of updates) {
+      const dateKey = new Date(u.createdAt).toLocaleDateString('en-US', {
+        weekday: 'long', month: 'short', day: 'numeric',
+      })
+      if (!map[dateKey]) map[dateKey] = []
+      map[dateKey].push(u)
+    }
+    return Object.entries(map)
+  }, [updates])
+
+  const handleClick = (u) => {
+    onClose()
+    if (u.ro?.id) navigate(`/ros/${u.ro.id}`)
+  }
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 z-40"
+            onClick={onClose}
+          />
+          <motion.div
+            initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+            transition={{ type: 'spring', stiffness: 300, damping: 35 }}
+            className="fixed bottom-0 left-0 right-0 z-50 bg-gray-900 border-t border-pink-700/40 rounded-t-2xl max-h-[80vh] flex flex-col"
+          >
+            <div className="flex items-center justify-between px-4 py-4 border-b border-gray-800/60 shrink-0">
+              <div className="flex items-center gap-2">
+                <Wrench size={17} className="text-pink-400" />
+                <h2 className="text-base font-bold text-gray-100">HBM Board Activity</h2>
+              </div>
+              <button onClick={onClose} className="text-gray-500 hover:text-gray-300 p-1">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-5">
+              {isLoading && (
+                <div className="flex justify-center py-10"><Spinner size="lg" /></div>
+              )}
+
+              {!isLoading && grouped.length === 0 && (
+                <div className="text-center py-10 text-gray-500">
+                  <Wrench size={32} className="mx-auto mb-3 opacity-30" />
+                  <p className="text-sm">No HBM activity yet</p>
+                  <p className="text-xs mt-1">Updates to HBM-flagged vehicles will appear here</p>
+                </div>
+              )}
+
+              {grouped.map(([date, entries]) => (
+                <div key={date}>
+                  <p className="text-xs font-bold text-pink-400/80 uppercase tracking-wider mb-2">{date}</p>
+                  <div className="space-y-2">
+                    {entries.map((u) => {
+                      const veh = [u.ro?.vehicleYear, u.ro?.vehicleMake, u.ro?.vehicleModel].filter(Boolean).join(' ')
+                      const fields = []
+                      if (u.stage) fields.push({ k: 'Stage', v: u.stage })
+                      if (u.statusNote) fields.push({ k: 'Note', v: u.statusNote })
+                      if (u.waitingParts) fields.push({ k: 'Waiting', v: u.waitingParts })
+                      if (u.nextStep) fields.push({ k: 'Next', v: u.nextStep })
+                      if (u.tech) fields.push({ k: 'Tech', v: u.tech })
+                      return (
+                        <button
+                          key={u.id}
+                          onClick={() => handleClick(u)}
+                          className="w-full text-left bg-gray-800/60 border border-pink-900/30 rounded-xl px-3.5 py-3 hover:bg-gray-700/60 active:bg-gray-700 transition-colors"
+                        >
+                          <div className="flex items-start justify-between gap-2 mb-1.5">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <Wrench size={12} className="text-pink-400 shrink-0" />
+                              <span className="text-sm font-bold text-gray-100 font-mono">{u.ro?.roNumber}</span>
+                              {veh && <span className="text-xs text-gray-400 truncate">{veh}</span>}
+                            </div>
+                            <span className="text-xs text-gray-500 shrink-0 flex items-center gap-1">
+                              <Clock size={10} />
+                              {formatTimeAgo(u.createdAt)}
+                            </span>
+                          </div>
+                          {fields.length > 0 && (
+                            <div className="pl-4 space-y-0.5">
+                              {fields.map((f, i) => (
+                                <p key={i} className="text-xs text-gray-400 truncate">
+                                  <span className="text-pink-400/80 font-semibold">{f.k}:</span>{' '}
+                                  <span className="text-gray-300">{f.v}</span>
+                                </p>
+                              ))}
+                            </div>
+                          )}
+                          {u.createdBy && (
+                            <p className="text-[10px] text-gray-600 pl-4 mt-1">by {u.createdBy}</p>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  )
+}
+
 // ── Daily Log Sheet ──────────────────────────────────────────────────────────
 function DailyLogSheet({ open, onClose }) {
   const { data: logs, isLoading } = useQuery({
@@ -997,6 +1128,10 @@ export default function ProductionBoard({ hbmOnly = false }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [partsOpen, setPartsOpen] = useState(false)
   const [partsActivityOpen, setPartsActivityOpen] = useState(false)
+  const [hbmFeedOpen, setHbmFeedOpen] = useState(false)
+  const [hbmLastSeen, setHbmLastSeen] = useState(() => {
+    try { return localStorage.getItem('hbmFeedLastSeen') || '' } catch { return '' }
+  })
   const [editOpen, setEditOpen] = useState(false)
   const [techPickerOpen, setTechPickerOpen] = useState(false)
   const [stagePickerOpen, setStagePickerOpen] = useState(false)
@@ -1016,6 +1151,7 @@ export default function ProductionBoard({ hbmOnly = false }) {
     mutationFn: ({ roId, data }) => productionApi.save(roId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['production'] })
+      queryClient.invalidateQueries({ queryKey: ['hbm-feed'] })
       setSaving(false)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
@@ -1025,6 +1161,27 @@ export default function ProductionBoard({ hbmOnly = false }) {
       toast.error(err.message || 'Failed to save')
     },
   })
+
+  // Background poll for HBM activity (only on main board) so the bell badge stays live
+  const { data: hbmFeedData } = useQuery({
+    queryKey: ['hbm-feed'],
+    queryFn: () => productionApi.hbmFeed(30),
+    enabled: !hbmOnly,
+    refetchInterval: hbmOnly ? false : 20_000,
+    refetchOnWindowFocus: true,
+  })
+
+  const hbmUnreadCount = useMemo(() => {
+    if (hbmOnly || !hbmFeedData?.length) return 0
+    if (!hbmLastSeen) return hbmFeedData.length
+    const last = new Date(hbmLastSeen).getTime()
+    return hbmFeedData.filter((u) => new Date(u.createdAt).getTime() > last).length
+  }, [hbmFeedData, hbmLastSeen, hbmOnly])
+
+  const markHbmSeen = useCallback((iso) => {
+    setHbmLastSeen(iso)
+    try { localStorage.setItem('hbmFeedLastSeen', iso) } catch {}
+  }, [])
 
   const requestSuppMutation = useMutation({
     mutationFn: (roId) => supplementsApi.create(roId, {
@@ -1281,6 +1438,20 @@ export default function ProductionBoard({ hbmOnly = false }) {
             >
               <Wrench size={13} />
               HBM{hbmCount > 0 ? ` (${hbmCount})` : ''}
+            </button>
+          )}
+          {!hbmOnly && (
+            <button
+              onClick={() => setHbmFeedOpen(true)}
+              className="relative flex items-center gap-1.5 text-xs text-pink-300 hover:text-pink-200 px-2 py-1 rounded-lg bg-pink-950/40 border border-pink-900/50 transition-colors"
+              title="HBM board activity feed"
+            >
+              <Bell size={13} />
+              {hbmUnreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-pink-500 text-[10px] font-bold text-white flex items-center justify-center shadow-lg shadow-pink-900/50 ring-2 ring-gray-950">
+                  {hbmUnreadCount > 99 ? '99+' : hbmUnreadCount}
+                </span>
+              )}
             </button>
           )}
           <button
@@ -1854,6 +2025,7 @@ export default function ProductionBoard({ hbmOnly = false }) {
       <DailyLogSheet open={logOpen} onClose={() => setLogOpen(false)} />
       <PartsSheet open={partsOpen} onClose={() => setPartsOpen(false)} parts={ro?.parts || []} roNumber={ro?.roNumber} />
       <PartsActivitySheet open={partsActivityOpen} onClose={() => setPartsActivityOpen(false)} />
+      <HbmFeedSheet open={hbmFeedOpen} onClose={() => setHbmFeedOpen(false)} onSeen={markHbmSeen} />
       <CustomerEditSheet open={editOpen} onClose={() => setEditOpen(false)} ro={ro} />
       <TaskSheet open={taskOpen} onClose={() => setTaskOpen(false)} ro={ro} />
     </div>

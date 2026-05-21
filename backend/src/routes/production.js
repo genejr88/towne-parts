@@ -182,6 +182,34 @@ router.get('/parts-activity', requireAuth, async (req, res) => {
   }
 })
 
+// GET /api/production/hbm-feed — recent activity on HBM-flagged ROs
+router.get('/hbm-feed', requireAuth, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 30, 100)
+    const updates = await prisma.productionStatusUpdate.findMany({
+      where: { ro: { isHBM: true, isArchived: false } },
+      include: {
+        ro: {
+          select: {
+            id: true,
+            roNumber: true,
+            vehicleYear: true,
+            vehicleMake: true,
+            vehicleModel: true,
+            ownerName: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    })
+    return res.json({ success: true, data: updates })
+  } catch (err) {
+    console.error('Get HBM feed error:', err)
+    return res.status(500).json({ success: false, error: err.message })
+  }
+})
+
 // POST /api/production/:roId — save production stage/notes for an RO
 router.post('/:roId', requireAuth, async (req, res) => {
   const roId = parseInt(req.params.roId)
