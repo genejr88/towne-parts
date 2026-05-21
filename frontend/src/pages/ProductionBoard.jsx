@@ -8,7 +8,7 @@ import {
   ExternalLink, DollarSign, FilePlus, Warehouse, Activity, ListTodo, CheckSquare, Bell,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { productionApi, rosApi, supplementsApi, tasksApi } from '@/lib/api'
+import { productionApi, rosApi, supplementsApi, tasksApi, techniciansApi } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { STAGES, STAGE_COLORS, formatTimeAgo } from '@/lib/utils'
 import Spinner from '@/components/ui/Spinner'
@@ -495,12 +495,23 @@ function SupplementBubbles({ value, onChange }) {
 }
 
 // ── Technician Bubbles ────────────────────────────────────────────────────────
-const TECHS = ['Stepan', 'Igor', 'Kiril', 'Kosta', 'Eugene', 'Andrii']
-
 function TechBubbles({ value, onChange }) {
+  const { data: techs } = useQuery({
+    queryKey: ['technicians'],
+    queryFn: () => techniciansApi.list(),
+    staleTime: 60_000,
+  })
+
+  // Always include the currently-assigned tech even if missing/inactive in the list
+  const names = (techs || []).map((t) => t.name)
+  if (value && !names.includes(value)) names.push(value)
+
   return (
     <div className="flex flex-wrap gap-2">
-      {TECHS.map((tech) => {
+      {names.length === 0 && (
+        <p className="text-xs text-gray-500 italic">No technicians configured — add some in Admin.</p>
+      )}
+      {names.map((tech) => {
         const active = value === tech
         return (
           <button
@@ -1527,7 +1538,7 @@ export default function ProductionBoard({ hbmOnly = false }) {
             <button
               onClick={() => navigate('/board/hbm')}
               className="flex items-center gap-1.5 text-xs text-pink-400 hover:text-pink-300 px-2 py-1 rounded-lg bg-pink-950/40 border border-pink-900/50 transition-colors"
-              title="HBM board — heavy body & metal vehicles"
+              title="HBM board — vehicles assigned to our sister shop"
             >
               <Wrench size={13} />
               HBM{hbmCount > 0 ? ` (${hbmCount})` : ''}
@@ -2143,7 +2154,7 @@ export default function ProductionBoard({ hbmOnly = false }) {
                   <p className={`text-sm font-semibold flex items-center gap-1.5 ${state.isHBM ? 'text-pink-300' : 'text-gray-200'}`}>
                     <Wrench size={14} /> HBM
                   </p>
-                  <p className="text-xs text-gray-500">Flag this vehicle for Heavy Body &amp; Metal — appears on the HBM board</p>
+                  <p className="text-xs text-gray-500">Flag this vehicle as assigned to HBM (sister shop) — appears on the HBM board</p>
                 </div>
               </label>
             </div>

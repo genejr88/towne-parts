@@ -37,6 +37,16 @@ model Vendor {
   @@map("vendors")
 }
 
+model Technician {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@map("technicians")
+}
+
 model RO {
   id                      Int           @id @default(autoincrement())
   roNumber                String        @unique

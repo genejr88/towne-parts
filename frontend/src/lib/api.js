@@ -133,6 +133,14 @@ export const vendorsApi = {
   remove: (id) => unwrap(api.delete(`/vendors/${id}`)),
 }
 
+// ── Technicians ───────────────────────────────────────────────────────────────
+export const techniciansApi = {
+  list: (params) => unwrap(api.get('/technicians', { params })),
+  create: (data) => unwrap(api.post('/technicians', data)),
+  update: (id, data) => unwrap(api.put(`/technicians/${id}`, data)),
+  remove: (id) => unwrap(api.delete(`/technicians/${id}`)),
+}
+
 // ── Users ─────────────────────────────────────────────────────────────────────
 export const usersApi = {
   list: () => unwrap(api.get('/users')),

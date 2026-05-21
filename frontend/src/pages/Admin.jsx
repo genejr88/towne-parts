@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Store, Users, Plus, Trash2, UserX, ToggleLeft, ToggleRight, Star, Pencil, KeyRound, Eye, EyeOff } from 'lucide-react'
+import { Store, Users, Plus, Trash2, UserX, ToggleLeft, ToggleRight, Star, Pencil, KeyRound, Eye, EyeOff, Wrench } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { vendorsApi, usersApi } from '@/lib/api'
+import { vendorsApi, usersApi, techniciansApi } from '@/lib/api'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
@@ -464,6 +464,185 @@ function UsersSection() {
   )
 }
 
+// ── Technicians ────────────────────────────────────────────────────────────────
+function TechnicianModal({ open, onClose, tech = null }) {
+  const queryClient = useQueryClient()
+  const isEdit = !!tech
+  const [name, setName] = useState(tech?.name || '')
+
+  // Sync if the prop changes
+  const prevId = tech?.id
+  if (tech?.id !== prevId) setName(tech?.name || '')
+
+  const mutation = useMutation({
+    mutationFn: isEdit
+      ? (data) => techniciansApi.update(tech.id, data)
+      : techniciansApi.create,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['technicians'] })
+      toast.success(isEdit ? 'Technician updated' : 'Technician added')
+      if (!isEdit) setName('')
+      onClose()
+    },
+    onError: (err) => toast.error(err.message || 'Failed to save'),
+  })
+
+  const handleSubmit = () => {
+    if (!name.trim()) { toast.error('Name is required'); return }
+    mutation.mutate({ name: name.trim() })
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Technician' : 'Add Technician'}>
+      <div className="space-y-4">
+        <Input
+          label="Technician Name *"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="First name or initials"
+          autoFocus
+        />
+        <div className="flex gap-3 pt-2">
+          <Button variant="secondary" onClick={onClose} className="flex-1">Cancel</Button>
+          <Button
+            variant="primary"
+            loading={mutation.isPending}
+            onClick={handleSubmit}
+            className="flex-1"
+          >
+            {isEdit ? 'Save Changes' : 'Add Technician'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function TechniciansSection() {
+  const queryClient = useQueryClient()
+  const [addOpen, setAddOpen] = useState(false)
+  const [editTech, setEditTech] = useState(null)
+
+  const { data: techs, isLoading } = useQuery({
+    queryKey: ['technicians-admin'],
+    queryFn: () => techniciansApi.list({ all: true }),
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, ...data }) => techniciansApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['technicians-admin'] })
+      queryClient.invalidateQueries({ queryKey: ['technicians'] })
+    },
+    onError: (err) => toast.error(err.message),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: techniciansApi.remove,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['technicians-admin'] })
+      queryClient.invalidateQueries({ queryKey: ['technicians'] })
+      toast.success('Technician removed')
+    },
+    onError: (err) => toast.error(err.message),
+  })
+
+  return (
+    <div className="mb-6">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Wrench size={18} className="text-blue-400" />
+          <h2 className="text-base font-bold text-gray-100">Technicians</h2>
+          {techs && <Badge variant="default">{techs.length}</Badge>}
+        </div>
+        <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>
+          <Plus size={15} /> Add
+        </Button>
+      </div>
+
+      <p className="text-xs text-gray-500 mb-3">
+        Names shown when assigning a tech on the production board
+      </p>
+
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Spinner /></div>
+      ) : techs?.length === 0 ? (
+        <EmptyState icon={Wrench} title="No technicians" description="Add your first technician" />
+      ) : (
+        <div className="space-y-2">
+          {techs.map((t) => (
+            <motion.div
+              key={t.id}
+              layout
+              className={`border rounded-xl px-4 py-3.5 flex items-center gap-3 transition-colors ${
+                t.isActive
+                  ? 'bg-gray-800/60 border-gray-700/50'
+                  : 'bg-gray-900/40 border-gray-800/50 opacity-60'
+              }`}
+            >
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-blue-400 flex items-center justify-center shrink-0">
+                <span className="text-sm font-bold text-white">
+                  {t.name?.[0]?.toUpperCase()}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-semibold text-gray-100 truncate">{t.name}</p>
+                  {!t.isActive && <Badge variant="gray">Inactive</Badge>}
+                </div>
+              </div>
+
+              <button
+                onClick={() => setEditTech(t)}
+                className="p-1.5 text-gray-600 hover:text-blue-400 transition-colors rounded-lg"
+                title="Edit"
+              >
+                <Pencil size={15} />
+              </button>
+
+              <button
+                onClick={() => updateMutation.mutate({ id: t.id, isActive: !t.isActive })}
+                className={`p-1.5 transition-colors rounded-lg ${
+                  t.isActive
+                    ? 'text-emerald-400 hover:text-emerald-300'
+                    : 'text-gray-600 hover:text-gray-400'
+                }`}
+                title={t.isActive ? 'Deactivate' : 'Activate'}
+              >
+                {t.isActive ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
+              </button>
+
+              <button
+                onClick={() => {
+                  if (window.confirm(`Remove technician "${t.name}"?`)) {
+                    deleteMutation.mutate(t.id)
+                  }
+                }}
+                className="p-1.5 text-gray-600 hover:text-red-400 transition-colors rounded-lg"
+              >
+                <Trash2 size={16} />
+              </button>
+            </motion.div>
+          ))}
+        </div>
+      )}
+
+      <TechnicianModal open={addOpen} onClose={() => setAddOpen(false)} />
+
+      <AnimatePresence>
+        {editTech && (
+          <TechnicianModal
+            key={editTech.id}
+            open={!!editTech}
+            tech={editTech}
+            onClose={() => setEditTech(null)}
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
 // ── Main Admin page ────────────────────────────────────────────────────────────
 export default function Admin() {
   return (
@@ -472,6 +651,10 @@ export default function Admin() {
         <h1 className="text-xl font-bold text-gray-100 mb-6">Admin</h1>
 
         <VendorSection />
+
+        <div className="border-t border-gray-700/50 pt-6 mb-6">
+          <TechniciansSection />
+        </div>
 
         <div className="border-t border-gray-700/50 pt-6">
           <UsersSection />
