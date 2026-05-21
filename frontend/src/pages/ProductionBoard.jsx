@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { productionApi, rosApi, supplementsApi, tasksApi } from '@/lib/api'
+import { useAuth } from '@/lib/auth'
 import { STAGES, STAGE_COLORS, formatTimeAgo } from '@/lib/utils'
 import Spinner from '@/components/ui/Spinner'
 import EmptyState from '@/components/ui/EmptyState'
@@ -1113,9 +1114,42 @@ function TaskSheet({ open, onClose, ro }) {
   )
 }
 
+// Parse a running status-note log into discrete entries (newest first).
+// Entries are separated by header lines like: [2026-05-21 10:30 AM — gene]
+function parseStatusNotes(text) {
+  if (!text || !text.trim()) return []
+  const headerRe = /^\[([^\]\n]+)\]\s*$/gm
+  const matches = [...text.matchAll(headerRe)]
+  if (matches.length === 0) {
+    return [{ header: null, body: text.trim() }]
+  }
+  const entries = []
+  if (matches[0].index > 0) {
+    const prefix = text.slice(0, matches[0].index).trim()
+    if (prefix) entries.push({ header: null, body: prefix })
+  }
+  for (let i = 0; i < matches.length; i++) {
+    const start = matches[i].index + matches[i][0].length
+    const end = i + 1 < matches.length ? matches[i + 1].index : text.length
+    const body = text.slice(start, end).trim()
+    entries.push({ header: matches[i][1].trim(), body })
+  }
+  return entries.reverse() // newest at top
+}
+
+// Build a header line for a new note: "[May 21, 2026 10:30 AM — gene]"
+function buildNoteHeader(username) {
+  const now = new Date()
+  const date = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  const time = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  const who = (username || '').trim()
+  return who ? `[${date} ${time} — ${who}]` : `[${date} ${time}]`
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function ProductionBoard({ hbmOnly = false }) {
   const queryClient = useQueryClient()
+  const { user } = useAuth()
   const navigate = useNavigate()
   const [index, setIndex] = useState(0)
   const [direction, setDirection] = useState(0) // -1 prev, 1 next
@@ -1129,6 +1163,8 @@ export default function ProductionBoard({ hbmOnly = false }) {
   const [partsOpen, setPartsOpen] = useState(false)
   const [partsActivityOpen, setPartsActivityOpen] = useState(false)
   const [hbmFeedOpen, setHbmFeedOpen] = useState(false)
+  const [notesOpen, setNotesOpen] = useState(false)
+  const [newNoteText, setNewNoteText] = useState('')
   const [hbmLastSeen, setHbmLastSeen] = useState(() => {
     try { return localStorage.getItem('hbmFeedLastSeen') || '' } catch { return '' }
   })
@@ -1213,6 +1249,12 @@ export default function ProductionBoard({ hbmOnly = false }) {
   const activeROs = hbmOnly ? allActiveROs.filter((r) => r.isHBM) : allActiveROs
   const hbmCount  = allActiveROs.filter((r) => r.isHBM).length
   const currentRO = activeROs[index]
+
+  // Reset per-RO transient note UI when switching cards
+  useEffect(() => {
+    setNewNoteText('')
+    setNotesOpen(false)
+  }, [currentRO?.id])
 
   // Search results
   const searchResults = useMemo(() => {
@@ -1785,17 +1827,114 @@ export default function ProductionBoard({ hbmOnly = false }) {
                   transition={{ duration: 0.2 }}
                   className="overflow-hidden"
                 >
-                  {/* Status note */}
-                  <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-3 mb-2">
-                    <Textarea
-                      label="Status Note"
-                      value={state.productionStatusNote}
-                      onChange={(e) => updateField('productionStatusNote', e.target.value)}
-                      rows={3}
-                      placeholder="Add a note about current status..."
-                      className="bg-gray-900/60"
-                    />
-                  </div>
+                  {/* Status notes — running dated log */}
+                  {(() => {
+                    const entries = parseStatusNotes(state.productionStatusNote)
+                    const addNote = () => {
+                      const text = newNoteText.trim()
+                      if (!text) return
+                      const header = buildNoteHeader(user?.username)
+                      const existing = (state.productionStatusNote || '').trim()
+                      const next = existing
+                        ? `${existing}\n\n${header}\n${text}`
+                        : `${header}\n${text}`
+                      updateField('productionStatusNote', next)
+                      setNewNoteText('')
+                      setNotesOpen(true)
+                    }
+                    return (
+                      <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-3 mb-2">
+                        {/* Header / dropdown toggle */}
+                        <button
+                          type="button"
+                          onClick={() => setNotesOpen((o) => !o)}
+                          className="w-full flex items-center justify-between gap-2 text-left"
+                        >
+                          <div className="flex items-center gap-2">
+                            <FileText size={14} className="text-blue-400" />
+                            <span className="text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                              Read Notes
+                            </span>
+                            <span className="text-[10px] font-bold text-gray-500 bg-gray-900/60 border border-gray-700/50 px-1.5 py-0.5 rounded-full">
+                              {entries.length}
+                            </span>
+                          </div>
+                          <ChevronDown
+                            size={16}
+                            className={`text-gray-500 transition-transform duration-200 ${notesOpen ? 'rotate-180' : ''}`}
+                          />
+                        </button>
+
+                        {/* Collapsible history */}
+                        <AnimatePresence initial={false}>
+                          {notesOpen && (
+                            <motion.div
+                              key="notes-history"
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="mt-3 space-y-2 max-h-64 overflow-y-auto pr-1">
+                                {entries.length === 0 && (
+                                  <p className="text-xs text-gray-500 italic py-2">No notes yet. Add the first one below.</p>
+                                )}
+                                {entries.map((e, i) => (
+                                  <div
+                                    key={i}
+                                    className="bg-gray-900/60 border border-gray-700/40 rounded-xl px-3 py-2"
+                                  >
+                                    {e.header && (
+                                      <p className="text-[10px] font-bold text-blue-400/80 uppercase tracking-wider mb-1">
+                                        {e.header}
+                                      </p>
+                                    )}
+                                    <p className="text-xs text-gray-200 whitespace-pre-wrap break-words">
+                                      {e.body}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+
+                        {/* Add new note */}
+                        <div className="mt-3 pt-3 border-t border-gray-700/40">
+                          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 block">
+                            Add a new note
+                          </label>
+                          <Textarea
+                            value={newNoteText}
+                            onChange={(e) => setNewNoteText(e.target.value)}
+                            onKeyDown={(e) => {
+                              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                                e.preventDefault()
+                                addNote()
+                              }
+                            }}
+                            rows={2}
+                            placeholder="Type a note — gets stamped with your name and time…"
+                            className="bg-gray-900/60"
+                          />
+                          <div className="flex items-center justify-between gap-2 mt-2">
+                            <span className="text-[10px] text-gray-600">
+                              {newNoteText.trim() ? 'Stamps with your name + time on add' : 'Ctrl/⌘+Enter to add'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={addNote}
+                              disabled={!newNoteText.trim()}
+                              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                            >
+                              Add Note
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })()}
 
                   {/* Final supplement toggle */}
                   <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-3 mb-2">
