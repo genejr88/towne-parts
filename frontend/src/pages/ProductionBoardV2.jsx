@@ -20,7 +20,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChevronLeft, ChevronRight, Check, ArrowRight, Plus, X, MoreHorizontal,
   Car, Wrench, AlertTriangle, Warehouse, FileText, Shield, User,
-  ExternalLink, Pencil, ListTodo, Activity, Sparkles, Home,
+  ExternalLink, Pencil, ListTodo, Activity, Sparkles, Home, Bell, Clock,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { productionApi, techniciansApi } from '@/lib/api'
@@ -330,8 +330,123 @@ function ToggleRow({ label, icon: Icon, tone, on, onClick }) {
   )
 }
 
+// ─── HBM Activity Feed Sheet ─────────────────────────────────────────────────
+function HbmFeedSheet({ open, onClose, onSeen }) {
+  const navigate = useNavigate()
+  const { data: updates, isLoading } = useQuery({
+    queryKey: ['hbm-feed'],
+    queryFn: () => productionApi.hbmFeed(30),
+    enabled: open,
+    refetchInterval: open ? 15_000 : false,
+  })
+
+  useEffect(() => {
+    if (open && updates?.length) {
+      const newest = updates[0]?.createdAt
+      if (newest) onSeen?.(newest)
+    }
+  }, [open, updates, onSeen])
+
+  const grouped = useMemo(() => {
+    if (!updates?.length) return []
+    const map = {}
+    for (const u of updates) {
+      const k = new Date(u.createdAt).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+      if (!map[k]) map[k] = []
+      map[k].push(u)
+    }
+    return Object.entries(map)
+  }, [updates])
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 z-40"
+            onClick={onClose}
+          />
+          <motion.div
+            initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+            transition={{ type: 'spring', stiffness: 300, damping: 32 }}
+            className="fixed bottom-0 left-0 right-0 z-50 bg-gray-900 border-t border-pink-700/40 rounded-t-2xl max-h-[80vh] flex flex-col"
+          >
+            <div className="flex items-center justify-between px-4 py-4 border-b border-gray-800/60">
+              <div className="flex items-center gap-2">
+                <Wrench size={16} className="text-pink-400" />
+                <h2 className="text-base font-bold text-gray-100">HBM Board Activity</h2>
+              </div>
+              <button onClick={onClose} className="text-gray-500 hover:text-gray-300 p-1">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-5">
+              {isLoading && <div className="flex justify-center py-10"><Spinner size="lg" /></div>}
+              {!isLoading && grouped.length === 0 && (
+                <div className="text-center py-10 text-gray-500">
+                  <Wrench size={32} className="mx-auto mb-3 opacity-30" />
+                  <p className="text-sm">No HBM activity yet</p>
+                </div>
+              )}
+              {grouped.map(([date, entries]) => (
+                <div key={date}>
+                  <p className="text-xs font-bold text-pink-400/80 uppercase tracking-wider mb-2">{date}</p>
+                  <div className="space-y-2">
+                    {entries.map((u) => {
+                      const veh = [u.ro?.vehicleYear, u.ro?.vehicleMake, u.ro?.vehicleModel].filter(Boolean).join(' ')
+                      const fields = []
+                      if (u.stage)        fields.push({ k: 'Stage', v: u.stage })
+                      if (u.statusNote)   fields.push({ k: 'Note', v: u.statusNote })
+                      if (u.waitingParts) fields.push({ k: 'Waiting', v: u.waitingParts })
+                      if (u.nextStep)     fields.push({ k: 'Next', v: u.nextStep })
+                      if (u.tech)         fields.push({ k: 'Tech', v: u.tech })
+                      return (
+                        <button
+                          key={u.id}
+                          onClick={() => { onClose(); if (u.ro?.id) navigate(`/ros/${u.ro.id}`) }}
+                          className="w-full text-left bg-gray-800/60 border border-pink-900/30 rounded-xl px-3.5 py-3 hover:bg-gray-700/60 transition-colors"
+                        >
+                          <div className="flex items-start justify-between gap-2 mb-1.5">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <Wrench size={12} className="text-pink-400 shrink-0" />
+                              <span className="text-sm font-bold text-gray-100 font-mono">{u.ro?.roNumber}</span>
+                              {veh && <span className="text-xs text-gray-400 truncate">{veh}</span>}
+                            </div>
+                            <span className="text-xs text-gray-500 shrink-0 flex items-center gap-1">
+                              <Clock size={10} />
+                              {formatTimeAgo(u.createdAt)}
+                            </span>
+                          </div>
+                          {fields.length > 0 && (
+                            <div className="pl-4 space-y-0.5">
+                              {fields.map((f, i) => (
+                                <p key={i} className="text-xs text-gray-400 truncate">
+                                  <span className="text-pink-400/80 font-semibold">{f.k}:</span>{' '}
+                                  <span className="text-gray-300">{f.v}</span>
+                                </p>
+                              ))}
+                            </div>
+                          )}
+                          {u.createdBy && (
+                            <p className="text-[10px] text-gray-600 pl-4 mt-1">by {u.createdBy}</p>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  )
+}
+
 // ─── Main component ──────────────────────────────────────────────────────────
-export default function ProductionBoardV2() {
+export default function ProductionBoardV2({ hbmOnly = false }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -346,6 +461,10 @@ export default function ProductionBoardV2() {
   const [addFlagOpen, setAddFlagOpen] = useState(false)
   const [newNoteText, setNewNoteText] = useState('')
   const [showAllNotes, setShowAllNotes] = useState(false)
+  const [hbmFeedOpen, setHbmFeedOpen] = useState(false)
+  const [hbmLastSeen, setHbmLastSeen] = useState(() => {
+    try { return localStorage.getItem('hbmFeedLastSeen') || '' } catch { return '' }
+  })
 
   const saveTimeout = useRef(null)
 
@@ -360,6 +479,7 @@ export default function ProductionBoardV2() {
     mutationFn: ({ roId, data }) => productionApi.save(roId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['production'] })
+      queryClient.invalidateQueries({ queryKey: ['hbm-feed'] })
       setSaving(false)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
@@ -370,13 +490,36 @@ export default function ProductionBoardV2() {
     },
   })
 
-  const activeROs = useMemo(
+  // Background HBM feed poll for the bell badge (main board only)
+  const { data: hbmFeedData } = useQuery({
+    queryKey: ['hbm-feed'],
+    queryFn: () => productionApi.hbmFeed(30),
+    enabled: !hbmOnly,
+    refetchInterval: hbmOnly ? false : 20_000,
+    refetchOnWindowFocus: true,
+  })
+
+  const hbmUnreadCount = useMemo(() => {
+    if (hbmOnly || !hbmFeedData?.length) return 0
+    if (!hbmLastSeen) return hbmFeedData.length
+    const last = new Date(hbmLastSeen).getTime()
+    return hbmFeedData.filter((u) => new Date(u.createdAt).getTime() > last).length
+  }, [hbmFeedData, hbmLastSeen, hbmOnly])
+
+  const markHbmSeen = useCallback((iso) => {
+    setHbmLastSeen(iso)
+    try { localStorage.setItem('hbmFeedLastSeen', iso) } catch {}
+  }, [])
+
+  const allActiveROs = useMemo(
     () =>
       (ros?.filter((r) => !r.isArchived) || []).sort(
         (a, b) => (parseInt(a.roNumber, 10) || 0) - (parseInt(b.roNumber, 10) || 0)
       ),
     [ros]
   )
+  const activeROs = hbmOnly ? allActiveROs.filter((r) => r.isHBM) : allActiveROs
+  const hbmCount  = allActiveROs.filter((r) => r.isHBM).length
   const currentRO = activeROs[index]
   const state = currentRO ? mergeState(currentRO, localEdits[currentRO.id]) : null
 
@@ -435,9 +578,14 @@ export default function ProductionBoardV2() {
   if (!currentRO) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center text-gray-500 p-8">
-        <Car size={40} className="mb-3 opacity-30" />
-        <p className="text-base font-semibold text-gray-300">No active ROs</p>
-        <button onClick={() => navigate('/')} className="mt-6 text-sm text-blue-400 hover:text-blue-300">Back home</button>
+        {hbmOnly ? <Wrench size={40} className="mb-3 opacity-30 text-pink-400" /> : <Car size={40} className="mb-3 opacity-30" />}
+        <p className="text-base font-semibold text-gray-300">
+          {hbmOnly ? 'No vehicles flagged for HBM' : 'No active ROs'}
+        </p>
+        {hbmOnly && <p className="text-xs text-gray-500 mt-1.5">Flip cars to HBM from the main board</p>}
+        <button onClick={() => navigate(hbmOnly ? '/board/v2' : '/')} className="mt-6 text-sm text-blue-400 hover:text-blue-300">
+          {hbmOnly ? '← Back to main board' : 'Back home'}
+        </button>
       </div>
     )
   }
@@ -459,20 +607,54 @@ export default function ProductionBoardV2() {
     <div className="min-h-screen bg-gray-950 flex flex-col">
       {/* ─── Top bar ─────────────────────────────────────────────────────── */}
       <div className="shrink-0 px-4 pt-3 pb-2 flex items-center justify-between gap-2 border-b border-gray-800/60">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-400">
-            <Sparkles size={11} className="inline mr-1 -mt-0.5" /> New design
-          </span>
+        <div className="flex items-center gap-2 min-w-0">
+          {hbmOnly ? (
+            <button
+              onClick={() => navigate('/board/v2')}
+              className="flex items-center gap-1.5 text-xs font-bold text-pink-300 hover:text-pink-200 px-2 py-1 rounded-lg bg-pink-950/40 border border-pink-500/40"
+              title="Back to main board"
+            >
+              <ChevronLeft size={13} /> HBM
+            </button>
+          ) : (
+            <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-400 shrink-0">
+              <Sparkles size={11} className="inline mr-1 -mt-0.5" /> New
+            </span>
+          )}
           <span className="text-xs text-gray-500">·</span>
           <span className="text-xs text-gray-400 font-mono">{index + 1} / {activeROs.length}</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <div className="flex items-center gap-1.5 text-xs text-gray-500 mr-1">
             {saving && <><Spinner size="sm" /><span>Saving…</span></>}
             {!saving && saved && <><Check size={13} className="text-emerald-400" /><span className="text-emerald-400">Saved</span></>}
           </div>
+          {!hbmOnly && (
+            <button
+              onClick={() => navigate('/board/v2/hbm')}
+              className="flex items-center gap-1.5 text-xs text-pink-400 hover:text-pink-300 px-2 py-1 rounded-lg bg-pink-950/40 border border-pink-900/50 transition-colors"
+              title="HBM board — vehicles assigned to our sister shop"
+            >
+              <Wrench size={13} />
+              HBM{hbmCount > 0 ? ` (${hbmCount})` : ''}
+            </button>
+          )}
+          {!hbmOnly && (
+            <button
+              onClick={() => setHbmFeedOpen(true)}
+              className="relative flex items-center text-xs text-pink-300 hover:text-pink-200 px-2 py-1 rounded-lg bg-pink-950/40 border border-pink-900/50 transition-colors"
+              title="HBM board activity feed"
+            >
+              <Bell size={13} />
+              {hbmUnreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-pink-500 text-[10px] font-bold text-white flex items-center justify-center shadow-lg shadow-pink-900/50 ring-2 ring-gray-950">
+                  {hbmUnreadCount > 99 ? '99+' : hbmUnreadCount}
+                </span>
+              )}
+            </button>
+          )}
           <button
-            onClick={() => navigate('/board')}
+            onClick={() => navigate(hbmOnly ? '/board/hbm' : '/board')}
             className="text-[11px] font-semibold text-gray-400 hover:text-gray-200 px-2 py-1 rounded-lg border border-gray-700/50 hover:border-gray-600 transition-colors"
             title="Switch back to legacy board"
           >
@@ -482,7 +664,7 @@ export default function ProductionBoardV2() {
             onClick={() => navigate('/')}
             className="flex items-center gap-1.5 text-xs text-gray-300 hover:text-white px-2 py-1 rounded-lg bg-gray-800/60 border border-gray-700/50 transition-colors"
           >
-            <Home size={13} /> Home
+            <Home size={13} />
           </button>
         </div>
       </div>
@@ -703,6 +885,11 @@ export default function ProductionBoardV2() {
         ro={currentRO}
         state={state}
         updateField={updateField}
+      />
+      <HbmFeedSheet
+        open={hbmFeedOpen}
+        onClose={() => setHbmFeedOpen(false)}
+        onSeen={markHbmSeen}
       />
     </div>
   )

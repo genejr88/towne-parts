@@ -154,6 +154,9 @@ export default function App() {
         <Route path="/board/v2" element={
           <ProtectedRoute><AppLayout><ProductionBoardV2 /></AppLayout></ProtectedRoute>
         } />
+        <Route path="/board/v2/hbm" element={
+          <ProtectedRoute><AppLayout><ProductionBoardV2 hbmOnly /></AppLayout></ProtectedRoute>
+        } />
         <Route path="/board/log" element={
           <ProtectedRoute><AppLayout><StatusLog /></AppLayout></ProtectedRoute>
         } />
