@@ -16,22 +16,26 @@ import EmptyState from '@/components/ui/EmptyState'
 import Textarea from '@/components/ui/Textarea'
 import CustomerInsuranceFields from '@/components/CustomerInsuranceFields'
 
-// Card gradient based on total loss or parts status
-function cardBg(partsStatus, isTotalLoss, totalLossReleased, prestorageActive) {
+// Card gradient based on flags / parts status. Flag priority: prestorage > totalLoss > HBM > BMW > parts status
+function cardBg(partsStatus, isTotalLoss, totalLossReleased, prestorageActive, isHBM, isBmw) {
   if (prestorageActive)                 return 'from-orange-950 to-amber-900/30'
   if (isTotalLoss && totalLossReleased) return 'from-emerald-950 to-gray-900'
-  if (isTotalLoss) return 'from-purple-950 to-purple-900/60'
-  if (partsStatus === 'MISSING') return 'from-red-950/60 to-gray-900'
-  if (partsStatus === 'ACKNOWLEDGED') return 'from-amber-950/40 to-gray-900'
-  if (partsStatus === 'ALL_HERE') return 'from-emerald-950/40 to-gray-900'
+  if (isTotalLoss)                      return 'from-purple-950 to-purple-900/60'
+  if (isHBM)                            return 'from-pink-950/70 to-fuchsia-950/40'
+  if (isBmw)                            return 'from-blue-950/60 to-sky-950/30'
+  if (partsStatus === 'MISSING')        return 'from-red-950/60 to-gray-900'
+  if (partsStatus === 'ACKNOWLEDGED')   return 'from-amber-950/40 to-gray-900'
+  if (partsStatus === 'ALL_HERE')       return 'from-emerald-950/40 to-gray-900'
   return 'from-gray-800 to-gray-900'
 }
 
 // Top accent stripe gradient — primary visual identity for the card
-function statusStripe(partsStatus, isTotalLoss, totalLossReleased, prestorageActive) {
+function statusStripe(partsStatus, isTotalLoss, totalLossReleased, prestorageActive, isHBM, isBmw) {
   if (prestorageActive)                 return 'from-orange-500 via-amber-400 to-orange-500'
   if (isTotalLoss && totalLossReleased) return 'from-emerald-500 via-emerald-400 to-emerald-500'
   if (isTotalLoss)                      return 'from-purple-500 via-fuchsia-500 to-purple-500'
+  if (isHBM)                            return 'from-pink-500 via-fuchsia-500 to-pink-500'
+  if (isBmw)                            return 'from-blue-500 via-sky-400 to-blue-500'
   if (partsStatus === 'MISSING')        return 'from-red-500 via-rose-500 to-red-500'
   if (partsStatus === 'ACKNOWLEDGED')   return 'from-amber-500 via-yellow-500 to-amber-500'
   if (partsStatus === 'ALL_HERE')       return 'from-emerald-500 via-teal-400 to-emerald-500'
@@ -237,6 +241,9 @@ function CustomerEditSheet({ open, onClose, ro }) {
   useEffect(() => {
     if (open && ro) {
       setForm({
+        // RO identity
+        roNumber:         ro.roNumber          || '',
+        isBmw:            ro.isBmw             || false,
         // Customer / Owner
         ownerName:        ro.ownerName        || '',
         ownerPhone:       ro.ownerPhone       || '',
@@ -291,15 +298,58 @@ function CustomerEditSheet({ open, onClose, ro }) {
           >
             <div className="flex items-center justify-between px-4 py-4 border-b border-gray-800/60 shrink-0">
               <div className="flex items-center gap-2">
-                <User size={17} className="text-blue-400" />
-                <h2 className="text-base font-bold text-gray-100">Edit Customer — RO #{ro?.roNumber}</h2>
+                <Pencil size={16} className="text-blue-400" />
+                <h2 className="text-base font-bold text-gray-100">Edit RO — #{ro?.roNumber}</h2>
               </div>
               <button onClick={onClose} className="text-gray-500 hover:text-gray-300 p-1">
                 <X size={20} />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* RO identity — number + BMW flag */}
+              <div className="bg-gray-800/40 border border-gray-700/50 rounded-2xl p-3 space-y-3">
+                <div>
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 block">
+                    RO Number
+                  </label>
+                  <input
+                    type="text"
+                    value={form.roNumber || ''}
+                    onChange={(e) => handleChange('roNumber', e.target.value)}
+                    placeholder="e.g. 5672"
+                    className="w-full bg-gray-900/70 border border-gray-700/60 focus:border-blue-500/60 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-3.5 py-2.5 text-sm text-gray-100 font-mono placeholder-gray-500 outline-none transition-all"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleChange('isBmw', !form.isBmw)}
+                  className={`w-full flex items-center justify-between gap-3 rounded-xl p-3 border transition-all ${
+                    form.isBmw
+                      ? 'bg-blue-950/50 border-blue-500/60 shadow-lg shadow-blue-900/20'
+                      : 'bg-gray-900/40 border-gray-700/50 hover:border-gray-600'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-12 h-6 rounded-full transition-colors relative flex items-center shrink-0 ${
+                      form.isBmw ? 'bg-blue-500' : 'bg-gray-700'
+                    }`}>
+                      <motion.div
+                        animate={{ x: form.isBmw ? 24 : 2 }}
+                        transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                        className="w-5 h-5 bg-white rounded-full shadow-md absolute"
+                      />
+                    </div>
+                    <div className="text-left">
+                      <p className={`text-sm font-bold ${form.isBmw ? 'text-blue-300' : 'text-gray-200'}`}>
+                        BMW Job
+                      </p>
+                      <p className="text-[10px] text-gray-500">Flag this RO as a BMW certified job</p>
+                    </div>
+                  </div>
+                </button>
+              </div>
+
               <CustomerInsuranceFields
                 form={form}
                 onChange={handleChange}
@@ -1527,13 +1577,16 @@ export default function ProductionBoard({ hbmOnly = false }) {
           >
             {/* ── RO Card 3.0 — Hero design ────────────────────────────── */}
             <div className={`relative rounded-2xl overflow-hidden border ${
-              state.prestorageActive ? 'border-orange-500/60' :
-              state.isTotalLoss && state.totalLossReleased ? 'border-emerald-600/60' :
-              state.isTotalLoss ? 'border-purple-500/60' : 'border-gray-700/50'
-            } bg-gradient-to-b ${cardBg(effectivePartsStatus(ro), state.isTotalLoss, state.totalLossReleased, state.prestorageActive)} shadow-2xl shadow-black/40 mb-4`}>
+              state.prestorageActive ? 'border-orange-500/70 shadow-[0_0_24px_-4px_rgba(251,146,60,0.4)]' :
+              state.isTotalLoss && state.totalLossReleased ? 'border-emerald-500/70 shadow-[0_0_24px_-4px_rgba(16,185,129,0.4)]' :
+              state.isTotalLoss ? 'border-purple-500/70 shadow-[0_0_24px_-4px_rgba(168,85,247,0.5)]' :
+              state.isHBM ? 'border-pink-500/70 shadow-[0_0_24px_-4px_rgba(244,114,182,0.45)]' :
+              ro.isBmw ? 'border-blue-500/60 shadow-[0_0_20px_-6px_rgba(59,130,246,0.4)]' :
+              'border-gray-700/50'
+            } bg-gradient-to-b ${cardBg(effectivePartsStatus(ro), state.isTotalLoss, state.totalLossReleased, state.prestorageActive, state.isHBM, ro.isBmw)} shadow-2xl shadow-black/40 mb-4`}>
 
               {/* Top status accent stripe — sets the visual identity instantly */}
-              <div className={`h-1 bg-gradient-to-r ${statusStripe(effectivePartsStatus(ro), state.isTotalLoss, state.totalLossReleased, state.prestorageActive)}`} />
+              <div className={`h-1.5 bg-gradient-to-r ${statusStripe(effectivePartsStatus(ro), state.isTotalLoss, state.totalLossReleased, state.prestorageActive, state.isHBM, ro.isBmw)} shadow-lg`} />
 
               {/* Pre-Storage accruing banner */}
               {state.prestorageActive && (
@@ -1563,27 +1616,41 @@ export default function ProductionBoard({ hbmOnly = false }) {
                 <div className="flex items-start justify-between gap-3 mb-2.5">
                   <div className="min-w-0 flex-1">
                     {/* Microcopy label row — RO + flags */}
-                    <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                    <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                       <span className="text-[9px] font-black uppercase tracking-[0.18em] text-gray-500">RO</span>
+                      {ro.isBmw && (
+                        <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-gradient-to-r from-blue-500/30 to-sky-500/30 border border-blue-400/60 text-blue-200 shadow-md shadow-blue-500/30 ring-1 ring-blue-400/20">
+                          <Shield size={10} className="drop-shadow-[0_0_3px_rgba(96,165,250,0.8)]" /> BMW
+                        </span>
+                      )}
                       {state.isHBM && (
-                        <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-pink-500/20 border border-pink-500/50 text-pink-300">
-                          <Wrench size={8} /> HBM
+                        <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-gradient-to-r from-pink-500/35 to-fuchsia-500/35 border border-pink-400/70 text-pink-100 shadow-lg shadow-pink-500/40 ring-1 ring-pink-400/30">
+                          <Wrench size={10} className="drop-shadow-[0_0_3px_rgba(244,114,182,0.9)]" /> HBM
                         </span>
                       )}
                       {state.isTotalLoss && (
-                        <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-purple-500/20 border border-purple-500/50 text-purple-300">
-                          <AlertTriangle size={8} /> Total Loss{state.totalLossReleased ? ' · Released' : ''}
+                        <span className={`flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border shadow-lg ring-1 ${
+                          state.totalLossReleased
+                            ? 'bg-gradient-to-r from-emerald-500/35 to-teal-500/35 border-emerald-400/70 text-emerald-100 shadow-emerald-500/40 ring-emerald-400/30'
+                            : 'bg-gradient-to-r from-purple-500/35 to-fuchsia-500/35 border-purple-400/70 text-purple-100 shadow-purple-500/40 ring-purple-400/30'
+                        }`}>
+                          <AlertTriangle size={10} className="drop-shadow-[0_0_3px_rgba(168,85,247,0.9)]" /> Total Loss{state.totalLossReleased ? ' · Released' : ''}
+                        </span>
+                      )}
+                      {state.prestorageActive && (
+                        <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-gradient-to-r from-orange-500/35 to-amber-500/35 border border-orange-400/70 text-orange-100 shadow-lg shadow-orange-500/40 ring-1 ring-orange-400/30">
+                          <Warehouse size={10} className="drop-shadow-[0_0_3px_rgba(251,146,60,0.9)]" /> Pre-Storage
                         </span>
                       )}
                       {state.productionFinalSupplement && (
-                        <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-300 flex items-center gap-1">
-                          <FileText size={8} /> Final Supp
+                        <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-gradient-to-r from-amber-500/30 to-yellow-500/30 border border-amber-400/60 text-amber-100 shadow-md shadow-amber-500/30 ring-1 ring-amber-400/20 flex items-center gap-1">
+                          <FileText size={10} className="drop-shadow-[0_0_3px_rgba(251,191,36,0.8)]" /> Final Supp
                         </span>
                       )}
                       {/* Supplement pending — no prestorage yet */}
                       {!state.prestorageActive && ro.supplements?.some(s => s.status === 'REQUESTED') && (
-                        <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-yellow-500/15 border border-yellow-500/30 text-yellow-300">
-                          <FilePlus size={8} /> Supp Pending
+                        <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-gradient-to-r from-yellow-500/30 to-amber-500/30 border border-yellow-400/60 text-yellow-100 shadow-md shadow-yellow-500/30 ring-1 ring-yellow-400/20">
+                          <FilePlus size={10} className="drop-shadow-[0_0_3px_rgba(250,204,21,0.8)]" /> Supp Pending
                         </span>
                       )}
                     </div>
