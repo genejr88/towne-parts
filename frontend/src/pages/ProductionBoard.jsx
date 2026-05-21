@@ -1466,11 +1466,12 @@ export default function ProductionBoard({ hbmOnly = false }) {
             {!saving && saved && <><Check size={13} className="text-emerald-400" /><span className="text-emerald-400">Saved</span></>}
           </div>
           <button
-            onClick={() => setPartsActivityOpen(true)}
-            className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 px-2 py-1 rounded-lg bg-emerald-950/40 border border-emerald-900/50 transition-colors"
+            onClick={() => navigate('/')}
+            className="flex items-center gap-1.5 text-xs text-gray-300 hover:text-white px-2 py-1 rounded-lg bg-gray-800/60 border border-gray-700/50 transition-colors"
+            title="Towne Parts home"
           >
-            <Package size={13} />
-            Parts
+            <Car size={13} />
+            Home
           </button>
           {!hbmOnly && (
             <button
@@ -1503,13 +1504,6 @@ export default function ProductionBoard({ hbmOnly = false }) {
           >
             <Activity size={13} />
             Status
-          </button>
-          <button
-            onClick={() => setLogOpen(true)}
-            className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 px-2 py-1 rounded-lg bg-blue-950/40 border border-blue-900/50 transition-colors"
-          >
-            <ClipboardList size={13} />
-            Log
           </button>
         </div>
       </div>
