@@ -983,7 +983,7 @@ function TaskSheet({ open, onClose, ro }) {
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
-export default function ProductionBoard() {
+export default function ProductionBoard({ hbmOnly = false }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [index, setIndex] = useState(0)
@@ -1051,8 +1051,10 @@ export default function ProductionBoard() {
     },
   })
 
-  const activeROs = (ros?.filter((r) => !r.isArchived) || [])
+  const allActiveROs = (ros?.filter((r) => !r.isArchived) || [])
     .sort((a, b) => (parseInt(a.roNumber, 10) || 0) - (parseInt(b.roNumber, 10) || 0))
+  const activeROs = hbmOnly ? allActiveROs.filter((r) => r.isHBM) : allActiveROs
+  const hbmCount  = allActiveROs.filter((r) => r.isHBM).length
   const currentRO = activeROs[index]
 
   // Search results
@@ -1094,6 +1096,7 @@ export default function ProductionBoard() {
       productionStatusNote: local.productionStatusNote ?? ro?.productionStatusNote ?? '',
       productionFinalSupplement: local.productionFinalSupplement ?? ro?.productionFinalSupplement ?? false,
       productionSupplementNote: local.productionSupplementNote ?? ro?.productionSupplementNote ?? '',
+      isHBM: local.isHBM ?? ro?.isHBM ?? false,
       isTotalLoss: local.isTotalLoss ?? ro?.isTotalLoss ?? false,
       totalLossReleased: local.totalLossReleased ?? ro?.totalLossReleased ?? false,
       prestorageActive: local.prestorageActive ?? ro?.prestorageActive ?? false,
@@ -1177,8 +1180,8 @@ export default function ProductionBoard() {
       <div className="px-4 py-8">
         <EmptyState
           icon={Car}
-          title="No active ROs"
-          description="All repair orders are archived or none exist yet"
+          title={hbmOnly ? 'No HBM vehicles' : 'No active ROs'}
+          description={hbmOnly ? 'No vehicles are currently flagged for HBM' : 'All repair orders are archived or none exist yet'}
         />
       </div>
     )
@@ -1196,9 +1199,20 @@ export default function ProductionBoard() {
     >
       {/* Top bar: counter + search + save status + log button */}
       <div className="flex items-center justify-between px-4 py-2 bg-gray-950 border-b border-gray-800/60 shrink-0 sm:px-6 gap-2">
-        <span className="text-sm font-medium text-gray-400 shrink-0">
-          {index + 1} <span className="text-gray-600">of</span> {activeROs.length}
-        </span>
+        <div className="flex items-center gap-2 shrink-0">
+          {hbmOnly && (
+            <button
+              onClick={() => navigate('/board')}
+              className="flex items-center gap-1 text-xs text-pink-400 hover:text-pink-300 font-semibold"
+            >
+              <ChevronLeft size={14} /> Board
+            </button>
+          )}
+          <span className="text-sm font-medium text-gray-400">
+            {hbmOnly && <span className="text-pink-400 font-bold mr-1.5">HBM</span>}
+            {index + 1} <span className="text-gray-600">of</span> {activeROs.length}
+          </span>
+        </div>
 
         {/* Search */}
         <div ref={searchRef} className="relative flex-1 max-w-[200px]">
@@ -1259,6 +1273,16 @@ export default function ProductionBoard() {
             <Package size={13} />
             Parts
           </button>
+          {!hbmOnly && (
+            <button
+              onClick={() => navigate('/board/hbm')}
+              className="flex items-center gap-1.5 text-xs text-pink-400 hover:text-pink-300 px-2 py-1 rounded-lg bg-pink-950/40 border border-pink-900/50 transition-colors"
+              title="HBM board — heavy body & metal vehicles"
+            >
+              <Wrench size={13} />
+              HBM{hbmCount > 0 ? ` (${hbmCount})` : ''}
+            </button>
+          )}
           <button
             onClick={() => navigate('/board/log')}
             className="flex items-center gap-1.5 text-xs text-purple-400 hover:text-purple-300 px-2 py-1 rounded-lg bg-purple-950/40 border border-purple-900/50 transition-colors"
@@ -1334,6 +1358,11 @@ export default function ProductionBoard() {
                     {/* Microcopy label row — RO + flags */}
                     <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
                       <span className="text-[9px] font-black uppercase tracking-[0.18em] text-gray-500">RO</span>
+                      {state.isHBM && (
+                        <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-pink-500/20 border border-pink-500/50 text-pink-300">
+                          <Wrench size={8} /> HBM
+                        </span>
+                      )}
                       {state.isTotalLoss && (
                         <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-purple-500/20 border border-purple-500/50 text-purple-300">
                           <AlertTriangle size={8} /> Total Loss{state.totalLossReleased ? ' · Released' : ''}
@@ -1721,6 +1750,33 @@ export default function ProductionBoard() {
                 )}
               </AnimatePresence>
             </div>
+
+            {/* HBM flag toggle */}
+            <div className={`border rounded-2xl p-3 mb-2 transition-colors duration-300 ${
+              state.isHBM ? 'bg-pink-950/60 border-pink-500/60' : 'bg-gray-800/60 border-gray-700/50'
+            }`}>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <div
+                  onClick={() => updateField('isHBM', !state.isHBM)}
+                  className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex items-center shrink-0 ${
+                    state.isHBM ? 'bg-pink-500' : 'bg-gray-700'
+                  }`}
+                >
+                  <motion.div
+                    animate={{ x: state.isHBM ? 24 : 2 }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                    className="w-5 h-5 bg-white rounded-full shadow-md absolute"
+                  />
+                </div>
+                <div>
+                  <p className={`text-sm font-semibold flex items-center gap-1.5 ${state.isHBM ? 'text-pink-300' : 'text-gray-200'}`}>
+                    <Wrench size={14} /> HBM
+                  </p>
+                  <p className="text-xs text-gray-500">Flag this vehicle for Heavy Body &amp; Metal — appears on the HBM board</p>
+                </div>
+              </label>
+            </div>
+
           </motion.div>
         </AnimatePresence>
         </div> {/* end max-w-2xl container */}

@@ -61,6 +61,7 @@ model RO {
   prestorageLetterDate    DateTime?
   prestorageStartDate     DateTime?
   prestorageJobId         String?
+  isHBM                   Boolean       @default(false)
   isTotalLoss             Boolean       @default(false)
   totalLossReleased       Boolean       @default(false)
   totalLossJobId          String?

@@ -192,6 +192,7 @@ router.post('/:roId', requireAuth, async (req, res) => {
     productionNextStep,
     productionFinalSupplement,
     productionSupplementNote,
+    isHBM,
     isTotalLoss,
     totalLossReleased,
     prestorageActive,
@@ -214,6 +215,7 @@ router.post('/:roId', requireAuth, async (req, res) => {
     if (productionNextStep !== undefined) updateData.productionNextStep = productionNextStep
     if (productionFinalSupplement !== undefined) updateData.productionFinalSupplement = Boolean(productionFinalSupplement)
     if (productionSupplementNote !== undefined) updateData.productionSupplementNote = productionSupplementNote
+    if (isHBM !== undefined) updateData.isHBM = Boolean(isHBM)
     if (isTotalLoss !== undefined) updateData.isTotalLoss = Boolean(isTotalLoss)
     if (totalLossReleased !== undefined) updateData.totalLossReleased = Boolean(totalLossReleased)
     if (prestorageActive !== undefined) updateData.prestorageActive = Boolean(prestorageActive)

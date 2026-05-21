@@ -27,7 +27,6 @@ export const STAGES = [
   'Check-In',
   'Needs Written',
   'Approval',
-  'HBM',
   'Body',
   'Paint Prep',
   'Paint',

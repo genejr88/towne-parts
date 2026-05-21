@@ -147,6 +147,9 @@ export default function App() {
         <Route path="/board" element={
           <ProtectedRoute><AppLayout><ProductionBoard /></AppLayout></ProtectedRoute>
         } />
+        <Route path="/board/hbm" element={
+          <ProtectedRoute><AppLayout><ProductionBoard hbmOnly /></AppLayout></ProtectedRoute>
+        } />
         <Route path="/board/log" element={
           <ProtectedRoute><AppLayout><StatusLog /></AppLayout></ProtectedRoute>
         } />
