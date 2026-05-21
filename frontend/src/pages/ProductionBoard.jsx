@@ -1535,9 +1535,9 @@ export default function ProductionBoard({ hbmOnly = false }) {
             Home
           </button>
           <button
-            onClick={() => navigate('/board/v2')}
+            onClick={() => navigate('/board/v3')}
             className="flex items-center gap-1.5 text-xs font-bold text-violet-200 hover:text-white px-2 py-1 rounded-lg bg-gradient-to-r from-violet-600/40 to-fuchsia-600/40 border border-violet-400/50 hover:border-violet-300/70 transition-colors shadow-md shadow-violet-900/30"
-            title="Preview the new stage-first design"
+            title="Preview the new clean design"
           >
             <Sparkles size={13} />
             Try new design
