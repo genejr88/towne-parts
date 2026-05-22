@@ -435,8 +435,9 @@ function AuthImage({ photoId, filename }) {
 }
 
 // ── Photo review + finish tag picker ─────────────────────────────────────────
-function PhotoReviewModal({ review, onConfirm, onRetake, onClose, isPending }) {
+function PhotoReviewModal({ review, onConfirm, onRetake, onClose, isPending, initialHasCore }) {
   const [finish, setFinish] = useState(review.finish || 'NO_FINISH_NEEDED')
+  const [hasCore, setHasCore] = useState(!!initialHasCore)
 
   const activeColor = {
     blue:   'bg-blue-600 text-white shadow-md',
@@ -488,6 +489,28 @@ function PhotoReviewModal({ review, onConfirm, onRetake, onClose, isPending }) {
           ))}
         </div>
 
+        {/* Core toggle */}
+        <button
+          onClick={() => setHasCore((c) => !c)}
+          className={`w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl border transition-all ${
+            hasCore
+              ? 'bg-orange-500/15 border-orange-500/50 text-orange-200'
+              : 'bg-gray-900/60 border-gray-700/50 text-gray-400 hover:border-gray-600'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider">Has core?</span>
+            <span className="text-[10px] text-gray-500">(charge / return separately)</span>
+          </div>
+          <div className={`w-10 h-5 rounded-full relative flex items-center shrink-0 ${hasCore ? 'bg-orange-500' : 'bg-gray-700'}`}>
+            <motion.div
+              animate={{ x: hasCore ? 20 : 2 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+              className="w-4 h-4 bg-white rounded-full shadow"
+            />
+          </div>
+        </button>
+
         <div className="flex gap-3">
           <button
             onClick={onRetake}
@@ -497,7 +520,7 @@ function PhotoReviewModal({ review, onConfirm, onRetake, onClose, isPending }) {
             Retake
           </button>
           <button
-            onClick={() => onConfirm(finish)}
+            onClick={() => onConfirm({ finish, hasCore })}
             disabled={isPending}
             className="flex-1 py-3 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
           >
@@ -540,9 +563,9 @@ function PartRow({ part, roId, inventoryMatch }) {
   })
 
   const photoMutation = useMutation({
-    mutationFn: async ({ file, finish }) => {
+    mutationFn: async ({ file, finish, hasCore }) => {
       await partsApi.uploadPhoto(part.id, file)
-      await partsApi.update(part.id, { isReceived: true, finishStatus: finish })
+      await partsApi.update(part.id, { isReceived: true, finishStatus: finish, hasCore: !!hasCore })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ro', roId] })
@@ -551,6 +574,28 @@ function PartRow({ part, roId, inventoryMatch }) {
     },
     onError: (err) => toast.error(err.message),
   })
+
+  // Receive-without-photo flow: when the user clicks the empty checkbox to
+  // mark a part as received, prompt for the core question.
+  const [coreConfirmOpen, setCoreConfirmOpen] = useState(false)
+
+  const receiveMutation = useMutation({
+    mutationFn: (hasCore) => partsApi.update(part.id, { isReceived: true, hasCore: !!hasCore }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ro', roId] })
+      setCoreConfirmOpen(false)
+    },
+    onError: (err) => toast.error(err.message),
+  })
+
+  const handleReceiveClick = () => {
+    if (part.isReceived) {
+      // Already received → just toggle off, no prompt
+      updateMutation.mutate({ isReceived: false })
+    } else {
+      setCoreConfirmOpen(true)
+    }
+  }
 
   const noteMutation = useMutation({
     mutationFn: (notes) => partsApi.update(part.id, { notes }),
@@ -587,7 +632,7 @@ function PartRow({ part, roId, inventoryMatch }) {
     e.target.value = ''
   }
 
-  const handleConfirm = (finish) => photoMutation.mutate({ file: review.file, finish })
+  const handleConfirm = ({ finish, hasCore }) => photoMutation.mutate({ file: review.file, finish, hasCore })
 
   const handleRetake = () => {
     URL.revokeObjectURL(review.url)
@@ -612,7 +657,7 @@ function PartRow({ part, roId, inventoryMatch }) {
       <div className="flex items-start gap-3">
         {/* Received checkbox */}
         <button
-          onClick={() => toggle('isReceived')}
+          onClick={handleReceiveClick}
           className={`mt-0.5 w-6 h-6 rounded-lg border-2 flex items-center justify-center shrink-0 transition-colors ${
             part.isReceived ? 'bg-emerald-600 border-emerald-600' : 'border-gray-600 bg-gray-800'
           }`}
@@ -638,9 +683,17 @@ function PartRow({ part, roId, inventoryMatch }) {
                 <Check size={9} strokeWidth={3} /> HERE
               </span>
             )}
-            {part.hasCore && (
-              <Badge variant="orange" className="text-[10px] py-0.5 px-2">Core</Badge>
-            )}
+            <button
+              onClick={() => toggle('hasCore')}
+              className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border transition-colors ${
+                part.hasCore
+                  ? 'bg-orange-500/20 border-orange-500/50 text-orange-300 hover:bg-orange-500/30'
+                  : 'bg-gray-800 border-dashed border-gray-700 text-gray-500 hover:border-orange-500/40 hover:text-orange-300'
+              }`}
+              title={part.hasCore ? 'Click to remove core flag' : 'Click to mark this part as having a core'}
+            >
+              {part.hasCore ? '● Core' : '+ Core'}
+            </button>
           </div>
           <p className={`text-sm mt-0.5 ${part.isReceived ? 'text-gray-400' : 'text-gray-200'}`}>
             {part.description || <span className="text-gray-600 italic">No description</span>}
@@ -768,9 +821,51 @@ function PartRow({ part, roId, inventoryMatch }) {
             onRetake={handleRetake}
             onClose={handleClose}
             isPending={photoMutation.isPending}
+            initialHasCore={part.hasCore}
           />
         )}
       </AnimatePresence>
+
+      {/* Core question on check-in (no-photo path) */}
+      <Modal
+        open={coreConfirmOpen}
+        onClose={() => setCoreConfirmOpen(false)}
+        title="Mark as Received"
+      >
+        <div className="space-y-4">
+          <div>
+            <p className="text-sm text-gray-300 mb-1">
+              Does this part have a <span className="font-bold text-orange-300">core</span>?
+            </p>
+            <p className="text-xs text-gray-500">
+              {part.partNumber && <span className="font-mono">{part.partNumber} · </span>}
+              {part.description || 'No description'}
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => receiveMutation.mutate(false)}
+              disabled={receiveMutation.isPending}
+              className="py-3 rounded-xl text-sm font-bold bg-gray-800 border border-gray-700 text-gray-200 hover:bg-gray-700 disabled:opacity-40 transition-colors"
+            >
+              No Core
+            </button>
+            <button
+              onClick={() => receiveMutation.mutate(true)}
+              disabled={receiveMutation.isPending}
+              className="py-3 rounded-xl text-sm font-bold bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-40 transition-colors shadow-lg shadow-orange-900/40"
+            >
+              Yes, Has Core
+            </button>
+          </div>
+          <button
+            onClick={() => setCoreConfirmOpen(false)}
+            className="w-full text-xs text-gray-500 hover:text-gray-300 transition-colors py-1"
+          >
+            Cancel
+          </button>
+        </div>
+      </Modal>
     </div>
   )
 }
