@@ -8,7 +8,7 @@ import {
   ExternalLink, DollarSign, FilePlus, Warehouse, Activity, ListTodo, CheckSquare, Bell, Sparkles,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { productionApi, rosApi, supplementsApi, tasksApi, techniciansApi } from '@/lib/api'
+import api, { productionApi, rosApi, supplementsApi, tasksApi, techniciansApi } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { STAGES, STAGE_COLORS, formatTimeAgo } from '@/lib/utils'
 import Spinner from '@/components/ui/Spinner'
@@ -561,6 +561,36 @@ function StageBubbles({ value, onChange }) {
 }
 
 // ── Parts Sheet ──────────────────────────────────────────────────────────────
+// Tiny authenticated thumbnail — fetches the part photo via API w/ JWT
+function PartThumb({ photoId, filename }) {
+  const [blobUrl, setBlobUrl] = useState(null)
+  const [errored, setErrored] = useState(false)
+  useEffect(() => {
+    let url = null
+    api.get(`/parts/photos/${photoId}/file`, { responseType: 'blob' })
+      .then((res) => { url = URL.createObjectURL(res.data); setBlobUrl(url) })
+      .catch(() => setErrored(true))
+    return () => { if (url) URL.revokeObjectURL(url) }
+  }, [photoId])
+  if (errored) return (
+    <div className="w-16 h-16 rounded-lg bg-gray-800 border border-gray-700 flex items-center justify-center shrink-0">
+      <XCircle size={14} className="text-gray-600" />
+    </div>
+  )
+  if (!blobUrl) return (
+    <div className="w-16 h-16 rounded-lg bg-gray-700/40 border border-gray-700 animate-pulse shrink-0" />
+  )
+  return (
+    <a href={blobUrl} target="_blank" rel="noopener noreferrer" className="shrink-0">
+      <img
+        src={blobUrl}
+        alt={filename || 'Part photo'}
+        className="w-16 h-16 object-cover rounded-lg border border-gray-700 hover:border-blue-400 transition-colors"
+      />
+    </a>
+  )
+}
+
 function PartsSheet({ open, onClose, parts, roNumber }) {
   const received = parts.filter((p) => p.isReceived)
   const pending  = parts.filter((p) => !p.isReceived)
@@ -604,8 +634,22 @@ function PartsSheet({ open, onClose, parts, roNumber }) {
                     {pending.map((p) => (
                       <div key={p.id} className="bg-red-950/30 border border-red-900/40 rounded-lg px-3 py-2">
                         <p className="text-sm text-gray-200">{p.description || '(no description)'}</p>
-                        {p.partNumber && <p className="text-xs text-gray-500 mt-0.5">#{p.partNumber}</p>}
-                        {p.qty > 1 && <p className="text-xs text-gray-500">Qty: {p.qty}</p>}
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          {p.partNumber && <span className="text-xs text-gray-500">#{p.partNumber}</span>}
+                          {p.qty > 1 && <span className="text-xs text-gray-500">Qty: {p.qty}</span>}
+                          {p.hasCore && (
+                            <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-orange-500/20 border border-orange-500/40 text-orange-300">
+                              Core
+                            </span>
+                          )}
+                        </div>
+                        {p.photos && p.photos.length > 0 && (
+                          <div className="flex gap-2 mt-2 overflow-x-auto pb-1">
+                            {p.photos.map((photo) => (
+                              <PartThumb key={photo.id} photoId={photo.id} filename={photo.originalFilename} />
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -622,8 +666,22 @@ function PartsSheet({ open, onClose, parts, roNumber }) {
                     {received.map((p) => (
                       <div key={p.id} className="bg-emerald-950/30 border border-emerald-900/40 rounded-lg px-3 py-2">
                         <p className="text-sm text-gray-200">{p.description || '(no description)'}</p>
-                        {p.partNumber && <p className="text-xs text-gray-500 mt-0.5">#{p.partNumber}</p>}
-                        {p.qty > 1 && <p className="text-xs text-gray-500">Qty: {p.qty}</p>}
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          {p.partNumber && <span className="text-xs text-gray-500">#{p.partNumber}</span>}
+                          {p.qty > 1 && <span className="text-xs text-gray-500">Qty: {p.qty}</span>}
+                          {p.hasCore && (
+                            <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-orange-500/20 border border-orange-500/40 text-orange-300">
+                              Core
+                            </span>
+                          )}
+                        </div>
+                        {p.photos && p.photos.length > 0 && (
+                          <div className="flex gap-2 mt-2 overflow-x-auto pb-1">
+                            {p.photos.map((photo) => (
+                              <PartThumb key={photo.id} photoId={photo.id} filename={photo.originalFilename} />
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -831,7 +889,11 @@ function HbmFeedSheet({ open, onClose, onSeen }) {
                       const veh = [u.ro?.vehicleYear, u.ro?.vehicleMake, u.ro?.vehicleModel].filter(Boolean).join(' ')
                       const fields = []
                       if (u.stage) fields.push({ k: 'Stage', v: u.stage })
-                      if (u.statusNote) fields.push({ k: 'Note', v: u.statusNote })
+                      if (u.statusNote) {
+                        // Note field stores the full running log — show only the most recent entry
+                        const latest = parseStatusNotes(u.statusNote)[0]
+                        if (latest?.body) fields.push({ k: 'Note', v: latest.body })
+                      }
                       if (u.waitingParts) fields.push({ k: 'Waiting', v: u.waitingParts })
                       if (u.nextStep) fields.push({ k: 'Next', v: u.nextStep })
                       if (u.tech) fields.push({ k: 'Tech', v: u.tech })

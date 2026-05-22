@@ -87,7 +87,11 @@ router.get('/', requireAuth, async (req, res) => {
       include: {
         vendor: true,
         parts: {
-          select: { id: true, isReceived: true, finishStatus: true, description: true, partNumber: true },
+          select: {
+            id: true, isReceived: true, finishStatus: true, description: true, partNumber: true,
+            qty: true, hasCore: true,
+            photos: { select: { id: true, originalFilename: true } },
+          },
         },
         locationPhotos: {
           take: 1,
