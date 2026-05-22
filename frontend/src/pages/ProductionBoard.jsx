@@ -1311,6 +1311,22 @@ export default function ProductionBoard({ hbmOnly = false }) {
   const hbmCount  = allActiveROs.filter((r) => r.isHBM).length
   const currentRO = activeROs[index]
 
+  // Reset index to 0 when switching between main and HBM board.
+  // Without this, navigating from card #25 on the main board to /board/hbm
+  // (which may have fewer than 25 cards) leaves index out of range and the
+  // render crashes when ro is undefined → white screen.
+  useEffect(() => {
+    setIndex(0)
+  }, [hbmOnly])
+
+  // Safety net: if activeROs shrinks below the current index for any other
+  // reason (e.g. an RO got archived in the background), clamp index in range.
+  useEffect(() => {
+    if (activeROs.length > 0 && index >= activeROs.length) {
+      setIndex(activeROs.length - 1)
+    }
+  }, [activeROs.length, index])
+
   // Reset per-RO transient note UI when switching cards
   useEffect(() => {
     setNewNoteText('')
@@ -1443,6 +1459,16 @@ export default function ProductionBoard({ hbmOnly = false }) {
           title={hbmOnly ? 'No HBM vehicles' : 'No active ROs'}
           description={hbmOnly ? 'No vehicles are currently flagged for HBM' : 'All repair orders are archived or none exist yet'}
         />
+      </div>
+    )
+  }
+
+  // Defensive: if the index-clamp effect hasn't yet re-run after a filter
+  // change, show a spinner for one frame rather than crashing on undefined.
+  if (!currentRO) {
+    return (
+      <div className="flex justify-center py-20">
+        <Spinner size="lg" />
       </div>
     )
   }
