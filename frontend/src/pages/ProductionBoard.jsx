@@ -1030,6 +1030,13 @@ function TaskSheet({ open, onClose, ro }) {
   const [note, setNote] = useState('')
   const [showCustom, setShowCustom] = useState(false)
 
+  const { data: techsData } = useQuery({
+    queryKey: ['technicians'],
+    queryFn: () => techniciansApi.list(),
+    staleTime: 60_000,
+  })
+  const TECHS = (techsData || []).map((t) => t.name)
+
   // Reset form when opening a new RO's sheet
   useEffect(() => {
     if (open) { setAssignTo(''); setCustomName(''); setNote(''); setShowCustom(false) }
