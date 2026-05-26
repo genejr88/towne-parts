@@ -42,7 +42,7 @@ const MAKE_MAP = {
   AUDI: 'Audi',
 }
 
-// Raw RO snapshot — see /CLAUDE.md for context
+// Raw RO snapshot from CCC ONE workflow
 // [roNumber, owner, year, makeAbbr, model, ccc-stage]
 const ROS = [
   // Screenshot 2 (lower RO numbers, run first to preserve creation order roughly)
