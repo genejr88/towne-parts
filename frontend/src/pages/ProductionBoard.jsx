@@ -8,7 +8,7 @@ import {
   ExternalLink, DollarSign, FilePlus, Warehouse, Activity, ListTodo, CheckSquare, Bell, Sparkles,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import api, { productionApi, rosApi, supplementsApi, tasksApi, techniciansApi } from '@/lib/api'
+import api, { productionApi, rosApi, supplementsApi, tasksApi, techniciansApi, stagesApi, useStages } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { STAGES, STAGE_COLORS, formatTimeAgo } from '@/lib/utils'
 import Spinner from '@/components/ui/Spinner'
@@ -535,11 +535,13 @@ function TechBubbles({ value, onChange }) {
 
 // ── Stage Bubbles (used inline in the action bar accordion) ──────────────────
 function StageBubbles({ value, onChange }) {
+  const stages = useStages()
+
   return (
     <div className="flex flex-wrap gap-2">
-      {STAGES.map((stage) => {
+      {stages.map((stage) => {
         const active = value === stage
-        const colorClass = STAGE_COLORS[stage] || 'bg-blue-600 text-white'
+        const colorClass = STAGE_COLORS[stage] || 'bg-gray-600/50 text-gray-300'
         return (
           <button
             key={stage}

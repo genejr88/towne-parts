@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Store, Users, Plus, Trash2, UserX, ToggleLeft, ToggleRight, Star, Pencil, KeyRound, Eye, EyeOff, Wrench } from 'lucide-react'
+import { Store, Users, Plus, Trash2, UserX, ToggleLeft, ToggleRight, Star, Pencil, KeyRound, Eye, EyeOff, Wrench, ClipboardList, GripVertical } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { vendorsApi, usersApi, techniciansApi } from '@/lib/api'
+import { vendorsApi, usersApi, techniciansApi, stagesApi } from '@/lib/api'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
@@ -643,6 +643,191 @@ function TechniciansSection() {
   )
 }
 
+// ── Production Stages ─────────────────────────────────────────────────────────
+function StageModal({ open, onClose, stage = null }) {
+  const queryClient = useQueryClient()
+  const isEdit = !!stage
+  const [name, setName] = useState(stage?.name || '')
+
+  // Sync when editing different stages
+  useEffect(() => {
+    setName(stage?.name || '')
+  }, [stage?.id])
+
+  const mutation = useMutation({
+    mutationFn: isEdit
+      ? (data) => stagesApi.update(stage.id, data)
+      : stagesApi.create,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stages-admin'] })
+      queryClient.invalidateQueries({ queryKey: ['stages'] })
+      toast.success(isEdit ? 'Stage updated' : 'Stage added')
+      if (!isEdit) setName('')
+      onClose()
+    },
+    onError: (err) => toast.error(err.message || 'Failed to save'),
+  })
+
+  const handleSubmit = () => {
+    if (!name.trim()) { toast.error('Stage name is required'); return }
+    mutation.mutate({ name: name.trim() })
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Stage' : 'Add Stage'}>
+      <div className="space-y-4">
+        <Input
+          label="Stage Name *"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+          placeholder="e.g. Frame, Alignment, Polish…"
+          autoFocus
+        />
+        <p className="text-xs text-gray-500">
+          Stage names appear as chips on the production board. Changes take effect immediately.
+        </p>
+        <div className="flex gap-3 pt-2">
+          <Button variant="secondary" onClick={onClose} className="flex-1">Cancel</Button>
+          <Button
+            variant="primary"
+            loading={mutation.isPending}
+            onClick={handleSubmit}
+            className="flex-1"
+          >
+            {isEdit ? 'Save Changes' : 'Add Stage'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function StagesSection() {
+  const queryClient = useQueryClient()
+  const [addOpen, setAddOpen] = useState(false)
+  const [editStage, setEditStage] = useState(null)
+
+  const { data: stages, isLoading } = useQuery({
+    queryKey: ['stages-admin'],
+    queryFn: () => stagesApi.list({ all: true }),
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, ...data }) => stagesApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stages-admin'] })
+      queryClient.invalidateQueries({ queryKey: ['stages'] })
+    },
+    onError: (err) => toast.error(err.message),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: stagesApi.remove,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stages-admin'] })
+      queryClient.invalidateQueries({ queryKey: ['stages'] })
+      toast.success('Stage removed')
+    },
+    onError: (err) => toast.error(err.message),
+  })
+
+  return (
+    <div className="mb-6">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <ClipboardList size={18} className="text-blue-400" />
+          <h2 className="text-base font-bold text-gray-100">Production Stages</h2>
+          {stages && <Badge variant="default">{stages.filter(s => s.isActive).length} active</Badge>}
+        </div>
+        <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>
+          <Plus size={15} /> Add
+        </Button>
+      </div>
+
+      <p className="text-xs text-gray-500 mb-3">
+        Stages shown on the production board when selecting a vehicle's current phase
+      </p>
+
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Spinner /></div>
+      ) : stages?.length === 0 ? (
+        <EmptyState icon={ClipboardList} title="No stages" description="Add production stages for your shop" />
+      ) : (
+        <div className="space-y-1.5">
+          {stages.map((s) => (
+            <motion.div
+              key={s.id}
+              layout
+              className={`border rounded-xl px-3.5 py-2.5 flex items-center gap-2 transition-colors ${
+                s.isActive
+                  ? 'bg-gray-800/60 border-gray-700/50'
+                  : 'bg-gray-900/40 border-gray-800/50 opacity-50'
+              }`}
+            >
+              <GripVertical size={14} className="text-gray-600 shrink-0" />
+
+              <p className={`flex-1 text-sm font-semibold truncate ${s.isActive ? 'text-gray-100' : 'text-gray-500'}`}>
+                {s.name}
+              </p>
+
+              {!s.isActive && <Badge variant="gray">Hidden</Badge>}
+
+              {/* Edit */}
+              <button
+                onClick={() => setEditStage(s)}
+                className="p-1.5 text-gray-600 hover:text-blue-400 transition-colors rounded-lg"
+                title="Rename stage"
+              >
+                <Pencil size={14} />
+              </button>
+
+              {/* Toggle active (show/hide on board) */}
+              <button
+                onClick={() => updateMutation.mutate({ id: s.id, isActive: !s.isActive })}
+                className={`p-1.5 transition-colors rounded-lg ${
+                  s.isActive
+                    ? 'text-emerald-400 hover:text-emerald-300'
+                    : 'text-gray-600 hover:text-gray-400'
+                }`}
+                title={s.isActive ? 'Hide from board' : 'Show on board'}
+              >
+                {s.isActive ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
+              </button>
+
+              {/* Delete */}
+              <button
+                onClick={() => {
+                  if (window.confirm(`Remove stage "${s.name}"? This won't affect ROs already assigned to it.`)) {
+                    deleteMutation.mutate(s.id)
+                  }
+                }}
+                className="p-1.5 text-gray-600 hover:text-red-400 transition-colors rounded-lg"
+                title="Delete stage"
+              >
+                <Trash2 size={14} />
+              </button>
+            </motion.div>
+          ))}
+        </div>
+      )}
+
+      <StageModal open={addOpen} onClose={() => setAddOpen(false)} />
+
+      <AnimatePresence>
+        {editStage && (
+          <StageModal
+            key={editStage.id}
+            open={!!editStage}
+            stage={editStage}
+            onClose={() => setEditStage(null)}
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
 // ── Main Admin page ────────────────────────────────────────────────────────────
 export default function Admin() {
   return (
@@ -654,6 +839,10 @@ export default function Admin() {
 
         <div className="border-t border-gray-700/50 pt-6 mb-6">
           <TechniciansSection />
+        </div>
+
+        <div className="border-t border-gray-700/50 pt-6 mb-6">
+          <StagesSection />
         </div>
 
         <div className="border-t border-gray-700/50 pt-6">

@@ -23,7 +23,7 @@ import {
   ExternalLink, Pencil, ListTodo, Activity, Sparkles, Home, Bell, Clock,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { productionApi, techniciansApi } from '@/lib/api'
+import { productionApi, techniciansApi, useStages } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { STAGES, STAGE_COLORS, formatTimeAgo } from '@/lib/utils'
 import Spinner from '@/components/ui/Spinner'
@@ -154,6 +154,7 @@ function TechPicker({ value, onChange, open, onClose }) {
 
 // ─── Stage Picker Sheet ──────────────────────────────────────────────────────
 function StagePickerSheet({ open, onClose, value, onChange }) {
+  const stages = useStages()
   return (
     <AnimatePresence>
       {open && (
@@ -175,7 +176,7 @@ function StagePickerSheet({ open, onClose, value, onChange }) {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 gap-2">
-              {STAGES.map((s) => {
+              {stages.map((s) => {
                 const active = value === s
                 const cls = STAGE_COLORS[s] || 'bg-blue-600 text-white'
                 return (
@@ -450,6 +451,7 @@ export default function ProductionBoardV2({ hbmOnly = false }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { user } = useAuth()
+  const stages = useStages()
 
   const [index, setIndex] = useState(0)
   const [localEdits, setLocalEdits] = useState({})
@@ -551,9 +553,9 @@ export default function ProductionBoardV2({ hbmOnly = false }) {
 
   const advanceStage = () => {
     if (!state) return
-    const i = STAGES.indexOf(state.productionStage)
-    if (i === -1 || i >= STAGES.length - 1) return
-    const next = STAGES[i + 1]
+    const i = stages.indexOf(state.productionStage)
+    if (i === -1 || i >= stages.length - 1) return
+    const next = stages[i + 1]
     updateField('productionStage', next)
     toast.success(`Moved to ${next}`)
   }
@@ -590,8 +592,8 @@ export default function ProductionBoardV2({ hbmOnly = false }) {
     )
   }
 
-  const stageIdx = STAGES.indexOf(state.productionStage)
-  const nextStage = stageIdx >= 0 && stageIdx < STAGES.length - 1 ? STAGES[stageIdx + 1] : null
+  const stageIdx = stages.indexOf(state.productionStage)
+  const nextStage = stageIdx >= 0 && stageIdx < stages.length - 1 ? stages[stageIdx + 1] : null
   const stageCls = STAGE_COLORS[state.productionStage] || 'bg-blue-900/40 text-blue-300'
   const notes = parseStatusNotes(state.productionStatusNote)
   const visibleNotes = showAllNotes ? notes : notes.slice(0, 2)

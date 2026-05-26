@@ -41,6 +41,7 @@ const supplementsRoutes = require('./routes/supplements')
 const carriersRoutes    = require('./routes/carriers')
 const tasksRoutes       = require('./routes/tasks')
 const connectRoutes     = require('./routes/connect')
+const stagesRoutes      = require('./routes/stages')
 
 app.use('/api/auth', authRoutes)
 app.use('/api/ros', rosRoutes)
@@ -61,6 +62,7 @@ app.use('/api/supplements', supplementsRoutes)
 app.use('/api/carriers',    carriersRoutes)
 app.use('/api/tasks',       tasksRoutes)
 app.use('/api/connect',     connectRoutes)
+app.use('/api/stages',      stagesRoutes)
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }))
 

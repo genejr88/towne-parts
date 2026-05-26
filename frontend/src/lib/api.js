@@ -1,4 +1,6 @@
 import axios from 'axios'
+import { useQuery } from '@tanstack/react-query'
+import { STAGES } from '@/lib/utils'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3002'
 
@@ -141,6 +143,14 @@ export const techniciansApi = {
   remove: (id) => unwrap(api.delete(`/technicians/${id}`)),
 }
 
+// ── Production Stages ─────────────────────────────────────────────────────────
+export const stagesApi = {
+  list: (params) => unwrap(api.get('/stages', { params })),
+  create: (data) => unwrap(api.post('/stages', data)),
+  update: (id, data) => unwrap(api.put(`/stages/${id}`, data)),
+  remove: (id) => unwrap(api.delete(`/stages/${id}`)),
+}
+
 // ── Users ─────────────────────────────────────────────────────────────────────
 export const usersApi = {
   list: () => unwrap(api.get('/users')),
@@ -167,6 +177,18 @@ export const importApi = {
     form.append('file', file)
     return unwrap(api.post('/import/photo', form, { headers: { 'Content-Type': 'multipart/form-data' } }))
   },
+}
+
+// ── useStages hook ────────────────────────────────────────────────────────────
+// Returns live stage names from the DB with the hardcoded STAGES as fallback
+// while loading. Safe to call in any component — React Query deduplicates.
+export function useStages() {
+  const { data } = useQuery({
+    queryKey: ['stages'],
+    queryFn: () => stagesApi.list(),
+    staleTime: 60_000,
+  })
+  return data?.map((s) => s.name) ?? STAGES
 }
 
 // ── Inventory (Surplus Parts Catalog) ────────────────────────────────────────
