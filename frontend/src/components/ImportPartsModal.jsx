@@ -52,6 +52,7 @@ export default function ImportPartsModal({ open, onClose }) {
         ownerName: data.ownerName || '',
         insuranceCompany: data.insuranceCompany || '',
         claimNumber: data.claimNumber || '',
+        isBmw: data.vehicleMake === 'BMW',
         parts: data.parts.map((p, i) => ({ _key: i, ...p })),
       })
       setStep('review')
@@ -80,6 +81,7 @@ export default function ImportPartsModal({ open, onClose }) {
         ownerName: data.ownerName || '',
         insuranceCompany: data.insuranceCompany || '',
         claimNumber: data.claimNumber || '',
+        isBmw: data.vehicleMake === 'BMW',
         parts: data.parts.map((p, i) => ({ _key: i, ...p })),
       })
       setStep('review')
@@ -129,6 +131,7 @@ export default function ImportPartsModal({ open, onClose }) {
         ownerName:        form.ownerName        || undefined,
         insuranceCompany: form.insuranceCompany || undefined,
         claimNumber:      form.claimNumber      || undefined,
+        isBmw:            form.isBmw || false,
       }
 
       let ro
@@ -388,6 +391,39 @@ export default function ImportPartsModal({ open, onClose }) {
                 className="font-mono text-sm"
               />
             )}
+
+            {/* BMW Job Toggle */}
+            <button
+              type="button"
+              onClick={() => updateField('isBmw', !form.isBmw)}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
+                form.isBmw
+                  ? 'bg-blue-600/20 border-blue-500/60 text-blue-300'
+                  : 'bg-gray-800/50 border-gray-700/50 text-gray-400 hover:border-gray-600'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black tracking-tight border ${
+                  form.isBmw ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-700 border-gray-600 text-gray-400'
+                }`}>
+                  BMW
+                </div>
+                <div className="text-left">
+                  <p className={`text-sm font-semibold ${form.isBmw ? 'text-blue-200' : 'text-gray-300'}`}>BMW Job</p>
+                  <p className="text-xs text-gray-500">Marks job for BMW-specific handling</p>
+                </div>
+              </div>
+              {/* Toggle switch */}
+              <div className={`w-10 h-5.5 rounded-full transition-all relative flex items-center px-0.5 ${
+                form.isBmw ? 'bg-blue-500' : 'bg-gray-600'
+              }`}
+                style={{ width: 40, height: 22 }}
+              >
+                <div className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                  form.isBmw ? 'translate-x-[18px]' : 'translate-x-0'
+                }`} />
+              </div>
+            </button>
             {/* Customer / Insurance */}
             <div className="border-t border-gray-700/40 pt-3 space-y-3">
               <Input
