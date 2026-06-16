@@ -29,6 +29,29 @@ function fmtDate(iso) {
   })
 }
 
+// Local day key (YYYY-MM-DD) so supplements group by the calendar day they were requested
+function dayKey(iso) {
+  const d = new Date(iso)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// Friendly header for a day group: "Today" / "Yesterday" / weekday + date
+function dayLabel(key) {
+  const [y, m, d] = key.split('-').map(Number)
+  const date = new Date(y, m - 1, d)
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const diff = Math.round((today.getTime() - date.getTime()) / 86400000)
+  const full = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+  if (diff === 0) return { label: 'Today', sub: full }
+  if (diff === 1) return { label: 'Yesterday', sub: full }
+  return { label: full, sub: null }
+}
+
+function fmtTime(iso) {
+  if (!iso) return ''
+  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+}
+
 function fmtFullDate(date) {
   return date.toLocaleDateString('en-US', {
     month: 'long', day: 'numeric', year: 'numeric',
@@ -625,31 +648,25 @@ export default function Supplements() {
     toast.success('Moved back to Filed')
   }
 
-  // Group by RO, then sort groups and items by createdAt
-  const rawGrouped = supplements.reduce((acc, s) => {
-    const key = s.ro?.roNumber || 'Unknown'
-    if (!acc[key]) acc[key] = { ro: s.ro, items: [] }
-    acc[key].items.push(s)
+  // Group by the calendar day the supplement was requested, then sort
+  const byDate = supplements.reduce((acc, s) => {
+    const key = dayKey(s.createdAt)
+    if (!acc[key]) acc[key] = []
+    acc[key].push(s)
     return acc
   }, {})
 
-  // Sort items within each group and sort the groups themselves
-  const grouped = Object.fromEntries(
-    Object.entries(rawGrouped)
-      .map(([key, { ro, items }]) => {
-        const sortedItems = [...items].sort((a, b) => {
-          const ta = new Date(a.createdAt).getTime()
-          const tb = new Date(b.createdAt).getTime()
-          return sortOrder === 'desc' ? tb - ta : ta - tb
-        })
-        return [key, { ro, items: sortedItems }]
-      })
-      .sort(([, a], [, b]) => {
-        const ta = Math.max(...a.items.map(i => new Date(i.createdAt).getTime()))
-        const tb = Math.max(...b.items.map(i => new Date(i.createdAt).getTime()))
+  // Sort items within each day, then sort the day groups themselves
+  const groupedDates = Object.entries(byDate)
+    .map(([key, items]) => {
+      const sortedItems = [...items].sort((a, b) => {
+        const ta = new Date(a.createdAt).getTime()
+        const tb = new Date(b.createdAt).getTime()
         return sortOrder === 'desc' ? tb - ta : ta - tb
       })
-  )
+      return [key, sortedItems]
+    })
+    .sort(([a], [b]) => (sortOrder === 'desc' ? b.localeCompare(a) : a.localeCompare(b)))
 
   const requestedCount  = supplements.filter(s => s.status === 'REQUESTED').length
   const filedCount      = supplements.filter(s => s.status === 'FILED').length
@@ -726,188 +743,197 @@ export default function Supplements() {
           <p className="text-gray-600 text-xs">Use the Request button on the Production Board to log supplements.</p>
         </motion.div>
       ) : (
-        <div className="space-y-4">
-          {Object.entries(grouped).map(([roNumber, { ro, items }]) => (
-            <motion.div
-              key={roNumber}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-gray-800/70 border border-gray-700/60 rounded-2xl overflow-hidden"
-            >
-              {/* RO header row */}
-              <div className="border-b border-gray-700/60">
-                <button
-                  onClick={() => ro?.id && navigate(`/ros/${ro.id}`)}
-                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-700/40 transition-colors group"
-                >
-                  <div className="text-left min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-black text-gray-100 font-mono">RO #{roNumber}</span>
-                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                        {items.length} supplement{items.length !== 1 ? 's' : ''}
-                      </span>
-                      {ro?.prestorageActive && (
-                        <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300">
-                          <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                          Pre-Storage
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex gap-2 flex-wrap mt-0.5">
-                      {ro?.insuranceCompany && (
-                        <span className="text-xs text-gray-300">{ro.insuranceCompany}</span>
-                      )}
-                      {ro?.ownerName && (
-                        <span className="text-xs text-gray-400">{ro.ownerName}</span>
-                      )}
-                    </div>
-                  </div>
-                  <ChevronRight size={14} className="text-gray-500 group-hover:text-gray-200 transition-colors shrink-0" />
-                </button>
+        <div className="space-y-6">
+          {groupedDates.map(([dateKey, items]) => {
+            const { label, sub } = dayLabel(dateKey)
+            return (
+              <div key={dateKey}>
+                {/* Date header */}
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <span className="text-sm font-black text-gray-100">{label}</span>
+                  {sub && <span className="text-xs text-gray-500">{sub}</span>}
+                  <span className="ml-auto text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                    {items.length} supp{items.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
 
-                {/* Pre-Storage action row */}
-                {ro && (
-                  <div className="px-4 pb-2.5 flex items-center justify-between">
-                    <span className="text-[10px] text-gray-600">
-                      {ro.prestorageActive && ro.prestorageStartDate
-                        ? `Storage accruing since ${fmtDate(ro.prestorageStartDate)}`
-                        : 'No pre-storage active'}
-                    </span>
-                    <button
-                      onClick={() => setPrestorageRO(ro)}
-                      className="flex items-center gap-1.5 text-[11px] font-bold text-orange-400 hover:text-orange-300 transition-colors px-2 py-1 rounded-lg hover:bg-orange-500/10"
-                    >
-                      <FileText size={12} />
-                      Generate Pre-Storage
-                    </button>
-                  </div>
-                )}
-              </div>
+                {/* Supplements requested that day */}
+                <div className="space-y-2.5">
+                  {items.map((s) => {
+                    const ro          = s.ro
+                    const roNumber    = ro?.roNumber || 'Unknown'
+                    const isCompleted = s.status === 'COMPLETED'
+                    const isFiled     = s.status === 'FILED'
+                    return (
+                      <AnimatePresence key={s.id} mode="wait">
+                        <motion.div
+                          layout
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className={`bg-gray-800/70 border border-gray-700/60 rounded-2xl overflow-hidden transition-opacity ${isCompleted ? 'opacity-60' : ''}`}
+                        >
+                          {/* RO row — tap to open the RO */}
+                          <button
+                            onClick={() => ro?.id && navigate(`/ros/${ro.id}`)}
+                            className="w-full flex items-center justify-between px-4 pt-3 pb-2 hover:bg-gray-700/30 transition-colors group"
+                          >
+                            <div className="text-left min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-black text-gray-100 font-mono">RO #{roNumber}</span>
+                                {ro?.prestorageActive && (
+                                  <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                                    Pre-Storage
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex gap-2 flex-wrap mt-0.5">
+                                {ro?.insuranceCompany && (
+                                  <span className="text-xs text-gray-300">{ro.insuranceCompany}</span>
+                                )}
+                                {ro?.ownerName && (
+                                  <span className="text-xs text-gray-400">{ro.ownerName}</span>
+                                )}
+                              </div>
+                            </div>
+                            <ChevronRight size={14} className="text-gray-500 group-hover:text-gray-200 transition-colors shrink-0" />
+                          </button>
 
-              {/* Supplement entries */}
-              <div className="divide-y divide-gray-700/50">
-                {items.map((s) => {
-                  const isCompleted = s.status === 'COMPLETED'
-                  const isFiled     = s.status === 'FILED'
-                  return (
-                    <AnimatePresence key={s.id} mode="wait">
-                      <motion.div
-                        layout
-                        className={`px-4 py-3 flex items-center gap-3 transition-opacity ${isCompleted ? 'opacity-60' : ''}`}
-                      >
-                        {/* Status icon */}
-                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                          isCompleted
-                            ? 'bg-gray-700/40 border border-gray-600/30'
-                            : isFiled
-                            ? 'bg-emerald-500/15 border border-emerald-500/30'
-                            : 'bg-amber-500/15 border border-amber-500/30'
-                        }`}>
-                          {isCompleted
-                            ? <CheckCircle2 size={15} className="text-gray-400" />
-                            : isFiled
-                            ? <FileCheck size={15} className="text-emerald-400" />
-                            : <FilePlus size={15} className="text-amber-400" />
-                          }
-                        </div>
-
-                        {/* Info */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className={`text-sm font-bold ${isCompleted ? 'text-gray-400 line-through decoration-gray-600' : 'text-gray-200'}`}>
-                              Supplement {s.number}
-                            </span>
-                            <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${
+                          {/* Supplement detail + actions */}
+                          <div className="px-4 pb-3 flex items-center gap-3">
+                            {/* Status icon */}
+                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
                               isCompleted
-                                ? 'bg-gray-700/40 border-gray-600/30 text-gray-500'
+                                ? 'bg-gray-700/40 border border-gray-600/30'
                                 : isFiled
-                                ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400'
-                                : 'bg-amber-500/10 border-amber-500/25 text-amber-400'
+                                ? 'bg-emerald-500/15 border border-emerald-500/30'
+                                : 'bg-amber-500/15 border border-amber-500/30'
                             }`}>
-                              {isCompleted ? 'Completed' : isFiled ? 'Filed' : 'Requested'}
-                            </span>
-                          </div>
-                          {s.notes && (
-                            <p className="text-xs text-gray-400 italic mt-0.5 truncate">{s.notes}</p>
-                          )}
-                          <p className="text-[10px] text-gray-500 mt-0.5">{fmtDate(s.createdAt)}</p>
-                        </div>
+                              {isCompleted
+                                ? <CheckCircle2 size={15} className="text-gray-400" />
+                                : isFiled
+                                ? <FileCheck size={15} className="text-emerald-400" />
+                                : <FilePlus size={15} className="text-amber-400" />
+                              }
+                            </div>
 
-                        {/* Actions */}
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {isCompleted ? (
-                            /* Undo complete → back to Filed */
-                            <button
-                              onClick={() => handleUncomplete(s)}
-                              disabled={updateMutation.isPending}
-                              title="Move back to Filed"
-                              className="p-2 rounded-xl border border-gray-600/50 text-gray-500 hover:text-emerald-400 hover:border-emerald-500/30 hover:bg-emerald-500/5 transition-colors"
-                            >
-                              <RotateCcw size={13} />
-                            </button>
-                          ) : (
-                            <>
-                              {/* REQUESTED → FILED or FILED → REQUESTED toggle */}
-                              <button
-                                onClick={() => handleStatusToggle(s)}
-                                disabled={updateMutation.isPending}
-                                title={isFiled ? 'Mark as Requested' : 'File this supplement'}
-                                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-[11px] font-bold transition-colors ${
-                                  isFiled
-                                    ? 'border-emerald-700/40 text-emerald-500 hover:bg-amber-500/5 hover:text-amber-400 hover:border-amber-500/30'
-                                    : 'border-gray-600/60 text-gray-400 hover:bg-emerald-500/5 hover:text-emerald-400 hover:border-emerald-500/30'
-                                }`}
-                              >
-                                {isFiled ? <><Clock size={11} /> Undo</> : <><Check size={11} /> File</>}
-                              </button>
+                            {/* Info */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className={`text-sm font-bold ${isCompleted ? 'text-gray-400 line-through decoration-gray-600' : 'text-gray-200'}`}>
+                                  Supplement {s.number}
+                                </span>
+                                <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${
+                                  isCompleted
+                                    ? 'bg-gray-700/40 border-gray-600/30 text-gray-500'
+                                    : isFiled
+                                    ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400'
+                                    : 'bg-amber-500/10 border-amber-500/25 text-amber-400'
+                                }`}>
+                                  {isCompleted ? 'Completed' : isFiled ? 'Filed' : 'Requested'}
+                                </span>
+                                <span className="ml-auto text-[10px] text-gray-500">{fmtTime(s.createdAt)}</span>
+                              </div>
+                              {s.notes && (
+                                <p className="text-xs text-gray-400 italic mt-0.5 truncate">{s.notes}</p>
+                              )}
+                            </div>
 
-                              {/* Filed → Complete (only shown when FILED) */}
-                              {isFiled && (
+                            {/* Actions */}
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {isCompleted ? (
+                                /* Undo complete → back to Filed */
                                 <button
-                                  onClick={() => handleComplete(s)}
+                                  onClick={() => handleUncomplete(s)}
                                   disabled={updateMutation.isPending}
-                                  title="Mark as Completed"
-                                  className="p-2 rounded-xl border border-gray-600/50 text-gray-400 hover:text-sky-400 hover:border-sky-500/30 hover:bg-sky-500/5 transition-colors"
+                                  title="Move back to Filed"
+                                  className="p-2 rounded-xl border border-gray-600/50 text-gray-500 hover:text-emerald-400 hover:border-emerald-500/30 hover:bg-emerald-500/5 transition-colors"
                                 >
-                                  <CheckCircle2 size={13} />
+                                  <RotateCcw size={13} />
+                                </button>
+                              ) : (
+                                <>
+                                  {/* REQUESTED → FILED or FILED → REQUESTED toggle */}
+                                  <button
+                                    onClick={() => handleStatusToggle(s)}
+                                    disabled={updateMutation.isPending}
+                                    title={isFiled ? 'Mark as Requested' : 'File this supplement'}
+                                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-[11px] font-bold transition-colors ${
+                                      isFiled
+                                        ? 'border-emerald-700/40 text-emerald-500 hover:bg-amber-500/5 hover:text-amber-400 hover:border-amber-500/30'
+                                        : 'border-gray-600/60 text-gray-400 hover:bg-emerald-500/5 hover:text-emerald-400 hover:border-emerald-500/30'
+                                    }`}
+                                  >
+                                    {isFiled ? <><Clock size={11} /> Undo</> : <><Check size={11} /> File</>}
+                                  </button>
+
+                                  {/* Filed → Complete (only shown when FILED) */}
+                                  {isFiled && (
+                                    <button
+                                      onClick={() => handleComplete(s)}
+                                      disabled={updateMutation.isPending}
+                                      title="Mark as Completed"
+                                      className="p-2 rounded-xl border border-gray-600/50 text-gray-400 hover:text-sky-400 hover:border-sky-500/30 hover:bg-sky-500/5 transition-colors"
+                                    >
+                                      <CheckCircle2 size={13} />
+                                    </button>
+                                  )}
+                                </>
+                              )}
+
+                              {/* Delete */}
+                              {deleteId === s.id ? (
+                                <div className="flex gap-1">
+                                  <button
+                                    onClick={() => deleteMutation.mutate(s.id)}
+                                    disabled={deleteMutation.isPending}
+                                    className="px-2.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-[11px] font-bold transition-colors"
+                                  >
+                                    {deleteMutation.isPending ? '…' : 'Del'}
+                                  </button>
+                                  <button
+                                    onClick={() => setDeleteId(null)}
+                                    className="p-1.5 rounded-xl text-gray-400 hover:text-gray-200 transition-colors"
+                                  >
+                                    <X size={13} />
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => setDeleteId(s.id)}
+                                  className="p-2 rounded-xl text-gray-500 hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-colors"
+                                >
+                                  <Trash2 size={13} />
                                 </button>
                               )}
-                            </>
-                          )}
+                            </div>
+                          </div>
 
-                          {/* Delete */}
-                          {deleteId === s.id ? (
-                            <div className="flex gap-1">
+                          {/* Pre-Storage action row */}
+                          {ro && (
+                            <div className="px-4 pb-2.5 flex items-center justify-between border-t border-gray-700/50 pt-2">
+                              <span className="text-[10px] text-gray-600">
+                                {ro.prestorageActive && ro.prestorageStartDate
+                                  ? `Storage accruing since ${fmtDate(ro.prestorageStartDate)}`
+                                  : 'No pre-storage active'}
+                              </span>
                               <button
-                                onClick={() => deleteMutation.mutate(s.id)}
-                                disabled={deleteMutation.isPending}
-                                className="px-2.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-[11px] font-bold transition-colors"
+                                onClick={() => setPrestorageRO(ro)}
+                                className="flex items-center gap-1.5 text-[11px] font-bold text-orange-400 hover:text-orange-300 transition-colors px-2 py-1 rounded-lg hover:bg-orange-500/10"
                               >
-                                {deleteMutation.isPending ? '…' : 'Del'}
-                              </button>
-                              <button
-                                onClick={() => setDeleteId(null)}
-                                className="p-1.5 rounded-xl text-gray-400 hover:text-gray-200 transition-colors"
-                              >
-                                <X size={13} />
+                                <FileText size={12} />
+                                Generate Pre-Storage
                               </button>
                             </div>
-                          ) : (
-                            <button
-                              onClick={() => setDeleteId(s.id)}
-                              className="p-2 rounded-xl text-gray-500 hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-colors"
-                            >
-                              <Trash2 size={13} />
-                            </button>
                           )}
-                        </div>
-                      </motion.div>
-                    </AnimatePresence>
-                  )
-                })}
+                        </motion.div>
+                      </AnimatePresence>
+                    )
+                  })}
+                </div>
               </div>
-            </motion.div>
-          ))}
+            )
+          })}
         </div>
       )}
 
