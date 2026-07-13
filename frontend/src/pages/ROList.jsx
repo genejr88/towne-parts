@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Search, Plus, X, ChevronRight, Car, Package, Archive, RefreshCw, Upload, Camera, ArchiveRestore, CheckCircle2, PackageX } from 'lucide-react'
+import { Search, Plus, X, ChevronRight, Car, Package, Archive, RefreshCw, Upload, Camera, ArchiveRestore, CheckCircle2, PackageX, ArrowUpDown, Clock } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { rosApi, vendorsApi } from '@/lib/api'
 import { formatDate, STAGE_COLORS } from '@/lib/utils'
@@ -24,6 +24,30 @@ const FILTER_TABS = [
   { key: 'no_parts', label: 'No Parts' },
   { key: 'archived', label: 'Archived' },
 ]
+
+// RO numbers are stored as text (roNumber String), so cycle through numeric
+// asc/desc client-side rather than relying on the server's updatedAt order.
+const SORT_MODES = ['recent', 'ro_asc', 'ro_desc']
+const SORT_STORAGE_KEY = 'ro_list_sort'
+
+function parseRoNum(roNumber) {
+  const match = String(roNumber ?? '').match(/\d+/)
+  return match ? parseInt(match[0], 10) : null
+}
+
+function sortRos(ros, sortMode) {
+  if (!ros || sortMode === 'recent') return ros
+  const list = [...ros]
+  list.sort((a, b) => {
+    const na = parseRoNum(a.roNumber)
+    const nb = parseRoNum(b.roNumber)
+    if (na == null && nb == null) return String(a.roNumber).localeCompare(String(b.roNumber))
+    if (na == null) return 1   // non-numeric ROs sink to the bottom either direction
+    if (nb == null) return -1
+    return sortMode === 'ro_asc' ? na - nb : nb - na
+  })
+  return list
+}
 
 function BmwRoundel({ size = 14 }) {
   return (
@@ -322,6 +346,15 @@ export default function ROList() {
   const [search, setSearch] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  const [sortMode, setSortMode] = useState(
+    () => (SORT_MODES.includes(localStorage.getItem(SORT_STORAGE_KEY)) ? localStorage.getItem(SORT_STORAGE_KEY) : 'recent')
+  )
+
+  const cycleSortMode = () => {
+    const next = SORT_MODES[(SORT_MODES.indexOf(sortMode) + 1) % SORT_MODES.length]
+    setSortMode(next)
+    localStorage.setItem(SORT_STORAGE_KEY, next)
+  }
 
   // Read filter from URL or default to 'active'
   const urlStatus = searchParams.get('status')
@@ -354,6 +387,8 @@ export default function ROList() {
     queryKey: ['ros', queryParams],
     queryFn: () => rosApi.list(queryParams),
   })
+
+  const sortedRos = useMemo(() => sortRos(ros, sortMode), [ros, sortMode])
 
   const unarchiveMutation = useMutation({
     mutationFn: (id) => rosApi.unarchive(id),
@@ -400,24 +435,36 @@ export default function ROList() {
           )}
         </div>
 
-        {/* Filter tabs */}
-        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-          {FILTER_TABS.map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => handleFilterChange(key)}
-              className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all duration-150 ${
-                activeFilter === key
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-800 text-gray-400 hover:text-gray-200 active:bg-gray-700'
-              }`}
-            >
-              {label}
-              {ros && key === activeFilter && (
-                <span className="ml-1.5 text-[10px] opacity-70">({ros.length})</span>
-              )}
-            </button>
-          ))}
+        {/* Filter tabs + sort toggle */}
+        <div className="flex items-center gap-1.5">
+          <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none flex-1">
+            {FILTER_TABS.map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => handleFilterChange(key)}
+                className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all duration-150 ${
+                  activeFilter === key
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-800 text-gray-400 hover:text-gray-200 active:bg-gray-700'
+                }`}
+              >
+                {label}
+                {ros && key === activeFilter && (
+                  <span className="ml-1.5 text-[10px] opacity-70">({ros.length})</span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Sort toggle: Recent (server order) -> RO # ascending -> RO # descending */}
+          <button
+            onClick={cycleSortMode}
+            title="Change sort order"
+            className="shrink-0 mb-1 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-gray-800 text-gray-400 hover:text-gray-200 active:bg-gray-700 transition-all duration-150"
+          >
+            {sortMode === 'recent' ? <Clock size={13} /> : <ArrowUpDown size={13} />}
+            {sortMode === 'recent' ? 'Recent' : sortMode === 'ro_asc' ? 'RO # ↑' : 'RO # ↓'}
+          </button>
         </div>
       </div>
 
@@ -435,7 +482,7 @@ export default function ROList() {
           />
         ) : (
           <AnimatePresence>
-            {ros?.map((ro) => (
+            {sortedRos?.map((ro) => (
               <ROCard
                 key={ro.id}
                 ro={ro}
