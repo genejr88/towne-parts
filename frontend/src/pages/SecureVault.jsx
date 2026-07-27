@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Lock, Plus, Pencil, Trash2, Check, X, ChevronLeft, ChevronRight,
   Upload, Camera, FileText, Image, BarChart3, ArrowLeftRight,
-  DollarSign, Clock, CheckCircle2, Printer, Eye, EyeOff,
+  DollarSign, Clock, CheckCircle2, Printer, Eye, EyeOff, Car,
 } from 'lucide-react'
 import { bmwApi, privateApi } from '@/lib/api'
 import Spinner from '@/components/ui/Spinner'
@@ -27,6 +27,29 @@ function fmtDate(iso) {
 function isImage(filename) {
   return /\.(jpg|jpeg|png|gif|webp|heic|heif|bmp)$/i.test(filename || '')
 }
+
+// ── Brand config — same tracker/compare functionality, separate books ──────────
+// Add a new entry here (+ a matching backend `brand` value) to clone the tracker
+// for another manufacturer without touching the bottom nav.
+const BRANDS = {
+  BMW: {
+    key: 'BMW',
+    label: 'BMW',
+    title: 'BMW PAYMENT TRACKER',
+    numberLabel: 'M# / BMW#',
+    numberPlaceholder: 'm1045',
+    accent: 'blue',
+  },
+  HYUNDAI_GENESIS: {
+    key: 'HYUNDAI_GENESIS',
+    label: 'Hyundai-Genesis',
+    title: 'HYUNDAI-GENESIS PAYMENT TRACKER',
+    numberLabel: 'Stock# / VIN#',
+    numberPlaceholder: 'H2045',
+    accent: 'slate',
+  },
+}
+const BRAND_LIST = Object.values(BRANDS)
 
 // ── Month / Year tab list ──────────────────────────────────────────────────────
 // Generate list of months from Nov 2024 → current month
@@ -79,7 +102,7 @@ function openPrintWindow(title, bodyHtml) {
   setTimeout(() => win.print(), 400)
 }
 
-function printMonthly(payments, monthLabel, invoiced, received, outstanding) {
+function printMonthly(brandCfg, payments, monthLabel, invoiced, received, outstanding) {
   const rows = payments.map(p => {
     const date = p.date ? new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'
     const status = p.status === 'RECEIVED'
@@ -98,25 +121,25 @@ function printMonthly(payments, monthLabel, invoiced, received, outstanding) {
   const pct = invoiced > 0 ? Math.round((received / invoiced) * 100) : 0
   const f = (n) => '$' + parseFloat(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-  openPrintWindow(`BMW Payments — ${monthLabel}`, `
-    <h1>BMW Payment Tracker</h1>
+  openPrintWindow(`${brandCfg.label} Payments — ${monthLabel}`, `
+    <h1>${brandCfg.title}</h1>
     <div class="meta">Month: ${monthLabel} &nbsp;·&nbsp; Printed: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</div>
     <div class="stats">
-      <div class="stat"><div class="stat-label">Invoiced</div><div class="stat-value">${f(invoiced)}</div><div class="stat-sub">${payments.length} BMW's Closed</div></div>
+      <div class="stat"><div class="stat-label">Invoiced</div><div class="stat-value">${f(invoiced)}</div><div class="stat-sub">${payments.length} Closed</div></div>
       <div class="stat"><div class="stat-label">Received</div><div class="stat-value" style="color:#059669">${f(received)}</div><div class="stat-sub">${pct}%</div></div>
       <div class="stat"><div class="stat-label">Outstanding</div><div class="stat-value" style="color:${outstanding > 0 ? '#d97706' : '#111'}">${f(outstanding)}</div><div class="stat-sub">pending</div></div>
       <div class="stat"><div class="stat-label">Entries</div><div class="stat-value">${payments.length}</div></div>
     </div>
     ${payments.length === 0 ? '<p style="color:#aaa;text-align:center;padding:40px 0">No entries for this month.</p>' : `
     <table>
-      <thead><tr><th>Date</th><th>Last Name</th><th>M# / BMW</th><th>RO#</th><th>Amount</th><th>Status</th></tr></thead>
+      <thead><tr><th>Date</th><th>Last Name</th><th>${brandCfg.numberLabel}</th><th>RO#</th><th>Amount</th><th>Status</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`}
-    <div class="footer">Towne Body Shop · BMW Payment Tracker · Confidential</div>
+    <div class="footer">Towne Body Shop · ${brandCfg.title} · Confidential</div>
   `)
 }
 
-function printCompare(summary, aKey, bKey) {
+function printCompare(brandCfg, summary, aKey, bKey) {
   const sorted = [...summary].sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month)
   const f = (n) => '$' + parseFloat(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   const label = (s) => `${MONTH_NAMES[s.month - 1]} ${s.year}`
@@ -165,8 +188,8 @@ function printCompare(summary, aKey, bKey) {
     }
   }
 
-  openPrintWindow('BMW Payments — All Months', `
-    <h1>BMW Payment Tracker — All Months</h1>
+  openPrintWindow(`${brandCfg.label} Payments — All Months`, `
+    <h1>${brandCfg.title} — All Months</h1>
     <div class="meta">Printed: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</div>
     <table>
       <thead><tr><th>Month</th><th>Invoiced</th><th>Received</th><th>Outstanding</th><th>Entries</th></tr></thead>
@@ -182,7 +205,7 @@ function printCompare(summary, aKey, bKey) {
       </tbody>
     </table>
     ${compareHtml}
-    <div class="footer">Towne Body Shop · BMW Payment Tracker · Confidential</div>
+    <div class="footer">Towne Body Shop · ${brandCfg.title} · Confidential</div>
   `)
 }
 
@@ -198,7 +221,7 @@ function Stat({ label, value, sub, color = 'text-gray-100' }) {
 }
 
 // ── Row editor modal ───────────────────────────────────────────────────────────
-function EntryModal({ entry, month, year, pin, onClose, onSaved }) {
+function EntryModal({ entry, month, year, pin, brandCfg, onClose, onSaved }) {
   const isNew = !entry
   const [form, setForm] = useState({
     date:      entry?.date ? entry.date.split('T')[0] : '',
@@ -220,7 +243,7 @@ function EntryModal({ entry, month, year, pin, onClose, onSaved }) {
     setErr('')
     try {
       const payload = {
-        month, year,
+        month, year, brand: brandCfg.key,
         date:      form.date || null,
         lastName:  form.lastName.trim() || null,
         bmwNumber: form.bmwNumber.trim() || null,
@@ -266,7 +289,7 @@ function EntryModal({ entry, month, year, pin, onClose, onSaved }) {
             <Field label="Last Name" value={form.lastName} onChange={v => set('lastName', v)} placeholder="Smith" />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="M# / BMW#" value={form.bmwNumber} onChange={v => set('bmwNumber', v)} placeholder="m1045" />
+            <Field label={brandCfg.numberLabel} value={form.bmwNumber} onChange={v => set('bmwNumber', v)} placeholder={brandCfg.numberPlaceholder} />
             <Field label="RO#" value={form.roNumber} onChange={v => set('roNumber', v)} placeholder="5501" />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -533,6 +556,14 @@ export default function SecureVault() {
   const queryClient = useQueryClient()
   const [pin, setPin] = useState(() => localStorage.getItem('private_pin'))
 
+  const [brandKey, setBrandKey]     = useState(() => localStorage.getItem('vault_brand') || 'BMW')
+  const brandCfg = BRANDS[brandKey] || BRANDS.BMW
+  const changeBrand = (key) => {
+    setBrandKey(key)
+    localStorage.setItem('vault_brand', key)
+    setCompareA(null); setCompareB(null) // these summaries belong to the previous brand
+  }
+
   const [activeTab, setActiveTab]   = useState('tracker')
   const [monthIdx, setMonthIdx]     = useState(() => MONTHS.length - 1) // default to latest
   const [editEntry, setEditEntry]   = useState(null)       // null = closed, false = new, obj = edit
@@ -550,15 +581,15 @@ export default function SecureVault() {
 
   // Tracker data
   const { data: payments = [], isLoading: loadingPayments } = useQuery({
-    queryKey: ['bmw-payments', month, year],
-    queryFn: () => bmwApi.list(pin, month, year),
+    queryKey: ['bmw-payments', brandKey, month, year],
+    queryFn: () => bmwApi.list(pin, month, year, brandKey),
     enabled: !!pin && activeTab === 'tracker',
   })
 
   // Summary for compare tab
   const { data: summary = [], isLoading: loadingSummary } = useQuery({
-    queryKey: ['bmw-summary'],
-    queryFn: () => bmwApi.summary(pin),
+    queryKey: ['bmw-summary', brandKey],
+    queryFn: () => bmwApi.summary(pin, brandKey),
     enabled: !!pin,
   })
 
@@ -616,9 +647,9 @@ export default function SecureVault() {
     <div className="px-4 py-5 pb-24 max-w-3xl mx-auto">
       {/* ── Header ── */}
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between mb-5">
+        className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-xl font-black text-gray-100 tracking-tight">BMW PAYMENT TRACKER</h1>
+          <h1 className="text-xl font-black text-gray-100 tracking-tight">{brandCfg.title}</h1>
           <p className="text-xs text-gray-600 mt-0.5">Private · secured</p>
         </div>
         <button onClick={handleLock}
@@ -626,6 +657,21 @@ export default function SecureVault() {
           <Lock size={13} /> Lock
         </button>
       </motion.div>
+
+      {/* ── Brand switcher — same tracker, separate books. This is the "link" to the
+           cloned Hyundai-Genesis tracker; no bottom-nav entry needed. ── */}
+      <div className="flex gap-1 mb-5 bg-gray-800/50 border border-gray-700/40 rounded-xl p-1">
+        {BRAND_LIST.map((b) => (
+          <button key={b.key} onClick={() => changeBrand(b.key)}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+              brandKey === b.key
+                ? 'bg-gray-700 text-white shadow'
+                : 'text-gray-500 hover:text-gray-300'
+            }`}>
+            <Car size={12} /> {b.label}
+          </button>
+        ))}
+      </div>
 
       {/* ── Tabs ── */}
       <div className="flex gap-1 mb-5 bg-gray-800/50 border border-gray-700/40 rounded-xl p-1">
@@ -668,7 +714,7 @@ export default function SecureVault() {
 
           {/* Print button */}
           <button
-            onClick={() => printMonthly(payments, `${MONTH_FULL[month-1]} ${year}`, invoiced, received, outstanding)}
+            onClick={() => printMonthly(brandCfg, payments, `${MONTH_FULL[month-1]} ${year}`, invoiced, received, outstanding)}
             className="w-full flex items-center justify-center gap-2 py-2 mb-4 rounded-xl bg-gray-800/60 border border-gray-700/40 text-gray-400 text-xs font-semibold hover:text-gray-200 hover:bg-gray-700/50 transition-colors"
           >
             <Printer size={13} /> Print {MONTH_NAMES[month-1]} {year}
@@ -799,7 +845,7 @@ export default function SecureVault() {
                     <h3 className="text-sm font-bold text-gray-200">All Months</h3>
                   </div>
                   <button
-                    onClick={() => printCompare(summary, compareA, compareB)}
+                    onClick={() => printCompare(brandCfg, summary, compareA, compareB)}
                     className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-700/60 border border-gray-600/40 text-gray-400 text-xs font-semibold hover:text-gray-200 hover:bg-gray-700 transition-colors"
                   >
                     <Printer size={12} /> Print
@@ -920,6 +966,7 @@ export default function SecureVault() {
             month={month}
             year={year}
             pin={pin}
+            brandCfg={brandCfg}
             onClose={() => setEditEntry(null)}
             onSaved={() => {
               queryClient.invalidateQueries({ queryKey: ['bmw-payments'] })

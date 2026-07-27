@@ -239,10 +239,10 @@ export const prestorageApi = {
 
 // ── BMW Payment Tracker ───────────────────────────────────────────────────────
 export const bmwApi = {
-  list: (pin, month, year) =>
-    unwrap(api.get('/bmw', { headers: { 'x-private-pin': pin }, params: { month, year } })),
-  summary: (pin) =>
-    unwrap(api.get('/bmw/summary', { headers: { 'x-private-pin': pin } })),
+  list: (pin, month, year, brand = 'BMW') =>
+    unwrap(api.get('/bmw', { headers: { 'x-private-pin': pin }, params: { month, year, brand } })),
+  summary: (pin, brand = 'BMW') =>
+    unwrap(api.get('/bmw/summary', { headers: { 'x-private-pin': pin }, params: { brand } })),
   create: (pin, data) =>
     unwrap(api.post('/bmw', data, { headers: { 'x-private-pin': pin } })),
   update: (pin, id, data) =>

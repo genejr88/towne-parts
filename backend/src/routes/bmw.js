@@ -14,11 +14,11 @@ function requirePin(req, res, next) {
 // All BMW routes require PIN auth
 router.use(requirePin)
 
-// ── GET /api/bmw?month=1&year=2025  ──────────────────────────────────────────
+// ── GET /api/bmw?month=1&year=2025&brand=BMW  ─────────────────────────────────
 router.get('/', async (req, res) => {
   try {
-    const { month, year } = req.query
-    const where = {}
+    const { month, year, brand } = req.query
+    const where = { brand: brand || 'BMW' }
     if (month) where.month = parseInt(month)
     if (year)  where.year  = parseInt(year)
 
@@ -33,11 +33,13 @@ router.get('/', async (req, res) => {
   }
 })
 
-// ── GET /api/bmw/summary  ─────────────────────────────────────────────────────
+// ── GET /api/bmw/summary?brand=BMW  ───────────────────────────────────────────
 // Returns [{month, year, invoiced, received, outstanding, count}]
 router.get('/summary', async (req, res) => {
   try {
+    const { brand } = req.query
     const payments = await prisma.bMWPayment.findMany({
+      where: { brand: brand || 'BMW' },
       orderBy: [{ year: 'asc' }, { month: 'asc' }],
     })
 
@@ -69,11 +71,12 @@ router.get('/summary', async (req, res) => {
 // ── POST /api/bmw  ────────────────────────────────────────────────────────────
 router.post('/', async (req, res) => {
   try {
-    const { month, year, date, lastName, bmwNumber, roNumber, amount, status, notes } = req.body
+    const { month, year, date, lastName, bmwNumber, roNumber, amount, status, notes, brand } = req.body
     if (!month || !year) return res.status(400).json({ success: false, error: 'month and year are required' })
 
     const payment = await prisma.bMWPayment.create({
       data: {
+        brand: brand || 'BMW',
         month: parseInt(month),
         year:  parseInt(year),
         date:  date ? new Date(date) : null,
@@ -95,8 +98,9 @@ router.post('/', async (req, res) => {
 // ── PUT /api/bmw/:id  ─────────────────────────────────────────────────────────
 router.put('/:id', async (req, res) => {
   try {
-    const { date, lastName, bmwNumber, roNumber, amount, status, notes, month, year } = req.body
+    const { date, lastName, bmwNumber, roNumber, amount, status, notes, month, year, brand } = req.body
     const data = {}
+    if (brand     !== undefined) data.brand     = brand
     if (date      !== undefined) data.date      = date ? new Date(date) : null
     if (lastName  !== undefined) data.lastName  = lastName
     if (bmwNumber !== undefined) data.bmwNumber = bmwNumber
@@ -137,6 +141,7 @@ router.post('/bulk', async (req, res) => {
 
     const created = await prisma.bMWPayment.createMany({
       data: payments.map((p) => ({
+        brand:     p.brand || 'BMW',
         month:     parseInt(p.month),
         year:      parseInt(p.year),
         date:      p.date ? new Date(p.date) : null,
