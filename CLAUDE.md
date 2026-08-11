@@ -27,6 +27,7 @@ Parts management system for Towne Body Shop. Tracks repair orders (ROs), parts o
 | `backend/src/routes/vendors.js` | Vendor management (isDefault support) |
 | `backend/src/routes/private.js` | PIN-gated file storage (`PRIVATE_PIN` env var) |
 | `backend/src/routes/bmw.js` | BMW payment tracker CRUD (`/api/bmw`) |
+| `backend/src/routes/numbers.js` | Assigned-number sequence tracker (M#/GF#) CRUD + atomic "generate next" (`/api/numbers`) |
 | `backend/src/routes/auth.js` | JWT login/logout |
 | `backend/src/routes/admin.js` | Admin-only actions |
 | `backend/src/routes/users.js` | User management |
@@ -72,6 +73,8 @@ Parts management system for Towne Body Shop. Tracks repair orders (ROs), parts o
 - `InventoryPartPhoto` — photos per inventory item
 - `Supplement` — supplement requests per RO (number auto-increments within RO, status: REQUESTED | FILED | COMPLETED)
 - `BMWPayment` — BMW payment tracking (month, year, date, lastName, bmwNumber, roNumber, amount, status: NOT_RECEIVED | RECEIVED)
+- `NumberSequence` — per-program counter for the assigned-number tracker (program, prefix, current, padLength) — add a row to add a new program (e.g. Genesis of Milford → GM#)
+- `AssignedNumber` — issued M#/GF# records (program, number, programRoNumber, towneRoNumber, vehicleYear/Make/Model, customerName) — number is freely editable after generation, deletable
 
 ## Auth
 - JWT tokens, stored in `localStorage` under key `parts_token`
@@ -119,10 +122,17 @@ Parts management system for Towne Body Shop. Tracks repair orders (ROs), parts o
 
 ## BMW Payment Tracker (`/vault`)
 - PIN-gated via `sessionStorage.getItem('private_pin')` — set when PIN is verified via `POST /api/private/verify`
-- 3 tabs: **Tracker** (monthly view), **Compare** (all-months table + side-by-side delta), **Files** (PIN-gated file storage)
+- 4 tabs: **Tracker** (monthly view), **Compare** (all-months table + side-by-side delta), **Numbers** (M#/GF# assigned-number tracker), **Files** (PIN-gated file storage)
 - Tracker: month nav (← →), stat cards (Invoiced / Received / Outstanding with "# BMW's Closed" sub-label), entry cards with one-tap status toggle
 - Print: Tracker tab has "Print [Month Year]" button → opens styled print window; Compare tab has "Print" button → all-months table + optional comparison delta if two months selected
 - Historical data: 212 records Nov 2024 – Apr 2026, seeded once via `seed-bmw.js`
+
+## Assigned Numbers Tracker (`/vault` → Numbers tab)
+- Tracks the M# sequence for BMW (currently at M1129, no zero-padding) and GF# for Genesis of Fairfield (zero-padded to 4 digits, e.g. GF0001) — separate books via the `program` field on `NumberSequence`/`AssignedNumber`
+- "Generate Next" button: `POST /api/numbers/:program/next` atomically increments the `NumberSequence.current` counter inside a Prisma transaction (row-level lock prevents duplicate numbers on concurrent clicks) and creates a new `AssignedNumber` row with just the formatted number — the edit modal opens immediately so RO#/name/vehicle can be filled in
+- The number itself is freely editable after generation (not locked to the counter's format), and records are hard-deletable — both by explicit choice, not an oversight
+- To add a new program (e.g. Genesis of Milford → GM#): add a `NumberSequence` row (prefix `GM`, current `0`, padLength as desired) and add an entry to the `PROGRAMS` config in `frontend/src/components/AssignedNumbers.jsx` — no schema changes needed
+- **TODO**: Telegram notification on Submit (full record: number + RO + name + vehicle) — not yet wired, pending bot token/chat ID setup (see `backend/src/routes/telegram.js` for the existing pattern to extend)
 
 ## Supplement Workflow
 1. On Production Board → Final Supplement card → tap **Request** → logs `Supplement N` (REQUESTED status)
@@ -146,6 +156,7 @@ Parts management system for Towne Body Shop. Tracks repair orders (ROs), parts o
 - ✅ Inventory catalog with photos
 - ✅ Telegram notifications
 - ✅ BMW Payment Tracker at `/vault` with monthly tracking, compare, print, and file storage
+- ✅ Assigned Numbers tracker at `/vault` → Numbers tab (M# for BMW, GF# for Genesis of Fairfield, atomic generate-next)
 - ✅ Help page (`/help`)
 
 ## Planned / Known Issues

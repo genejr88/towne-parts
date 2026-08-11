@@ -379,6 +379,34 @@ model InventoryPart {
   photos      InventoryPartPhoto[]
 }
 
+model NumberSequence {
+  id        Int      @id @default(autoincrement())
+  program   String   @unique // "BMW" | "GENESIS_FAIRFIELD" | "GENESIS_MILFORD" (add rows here to add programs)
+  prefix    String   // "M" | "GF" | "GM"
+  current   Int      @default(0) // last number issued — next generate = current + 1
+  padLength Int      @default(0) // 0 = no padding (M1130), 4 = zero-padded (GF0002)
+  updatedAt DateTime @updatedAt
+
+  @@map("number_sequences")
+}
+
+model AssignedNumber {
+  id              Int      @id @default(autoincrement())
+  program         String   // "BMW" | "GENESIS_FAIRFIELD" | "GENESIS_MILFORD"
+  number          String   // e.g. "M1130", "GF0002" — freely editable after generation
+  programRoNumber String?  // the manufacturer/dealer-side RO (e.g. BMW RO)
+  towneRoNumber   String?  // Towne's internal RO
+  vehicleYear     String?
+  vehicleMake     String?
+  vehicleModel    String?
+  customerName    String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([program])
+  @@map("assigned_numbers")
+}
+
 model InventoryPartPhoto {
   id                String        @id @default(cuid())
   inventoryPartId   String

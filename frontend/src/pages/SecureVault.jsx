@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { bmwApi, privateApi } from '@/lib/api'
 import Spinner from '@/components/ui/Spinner'
+import AssignedNumbers from '@/components/AssignedNumbers'
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -549,7 +550,7 @@ function PinEntryScreen({ onUnlock }) {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-const TABS = ['tracker', 'compare', 'files']
+const TABS = ['tracker', 'compare', 'numbers', 'files']
 const MONTHS = generateMonthList()
 
 export default function SecureVault() {
@@ -675,7 +676,7 @@ export default function SecureVault() {
 
       {/* ── Tabs ── */}
       <div className="flex gap-1 mb-5 bg-gray-800/50 border border-gray-700/40 rounded-xl p-1">
-        {[['tracker', 'Tracker'], ['compare', 'Compare'], ['files', 'Files']].map(([t, label]) => (
+        {[['tracker', 'Tracker'], ['compare', 'Compare'], ['numbers', 'Numbers'], ['files', 'Files']].map(([t, label]) => (
           <button key={t} onClick={() => setActiveTab(t)}
             className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${
               activeTab === t
@@ -904,6 +905,9 @@ export default function SecureVault() {
           )}
         </div>
       )}
+
+      {/* ── NUMBERS TAB (M#/GF# assigned-number tracker) ── */}
+      {activeTab === 'numbers' && <AssignedNumbers pin={pin} />}
 
       {/* ── FILES TAB ── */}
       {activeTab === 'files' && (

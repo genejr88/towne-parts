@@ -253,6 +253,20 @@ export const bmwApi = {
     unwrap(api.post('/bmw/bulk', { payments }, { headers: { 'x-private-pin': pin } })),
 }
 
+// ── Assigned Numbers (M#/GF# sequence tracker) ───────────────────────────────
+export const numbersApi = {
+  list: (pin, program) =>
+    unwrap(api.get('/numbers', { headers: { 'x-private-pin': pin }, params: { program } })),
+  nextPreview: (pin, program) =>
+    unwrap(api.get('/numbers/next-preview', { headers: { 'x-private-pin': pin }, params: { program } })),
+  generateNext: (pin, program) =>
+    unwrap(api.post(`/numbers/${program}/next`, {}, { headers: { 'x-private-pin': pin } })),
+  update: (pin, id, data) =>
+    unwrap(api.put(`/numbers/${id}`, data, { headers: { 'x-private-pin': pin } })),
+  remove: (pin, id) =>
+    unwrap(api.delete(`/numbers/${id}`, { headers: { 'x-private-pin': pin } })),
+}
+
 // ── Private (BMW RO Tracking) ─────────────────────────────────────────────────
 export const privateApi = {
   verify: (pin) => unwrap(api.post('/private/verify', { pin })),
