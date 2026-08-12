@@ -98,6 +98,7 @@ function NewQuoteTab() {
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [selectedKit, setSelectedKit] = useState(null)
+  const [kitPriceInput, setKitPriceInput] = useState('')
   const [tier, setTier] = useState(null)
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
@@ -148,12 +149,14 @@ function NewQuoteTab() {
 
   const pickKit = (kit) => {
     setSelectedKit(kit)
+    setKitPriceInput(String(kit.price))
     setQuery(kit.title)
     setTier(kit.rackOnly ? 'RACK_ONLY' : null)
   }
 
   const resetForKit = () => {
     setSelectedKit(null)
+    setKitPriceInput('')
     setQuery('')
     setTier(null)
     searchRef.current?.focus()
@@ -166,7 +169,8 @@ function NewQuoteTab() {
   }
 
   const tierFee = tier && tiersCfg ? tiersCfg.tiers[tier]?.fee : 0
-  const kitPrice = selectedKit ? parseFloat(selectedKit.price) : 0
+  const kitPrice = selectedKit ? (parseFloat(kitPriceInput) || 0) : 0
+  const isTowTier = tier === 'RACK_AND_TOW' || tier === 'RACK_TOW_WIRING'
   const shipping = tiersCfg?.shipping ?? 40
   const taxRate = tiersCfg?.taxRate ?? 0.0635
   const subtotal = selectedKit && tier ? kitPrice + tierFee + shipping : 0
@@ -179,6 +183,7 @@ function NewQuoteTab() {
     createMutation.mutate({
       hitchKitId: selectedKit.id,
       tier,
+      kitPriceOverride: kitPriceInput,
       customerName, customerPhone, customerEmail, notes,
     }, {
       onError: (e) => setError(e.message || 'Failed to save quote'),
@@ -318,7 +323,32 @@ function NewQuoteTab() {
       {/* Price breakdown */}
       {selectedKit && tier && (
         <div className="mb-4 bg-gray-800/50 border border-gray-700/40 rounded-xl p-4 space-y-1.5">
-          <div className="flex justify-between text-sm"><span className="text-gray-500">Hitch Kit</span><span className="text-gray-200 tabular-nums">{fmt$(kitPrice)}</span></div>
+          {isTowTier && (
+            <div className="flex items-start gap-1.5 text-[11px] text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-2 mb-2">
+              <span>Cached price is Stealth's <strong>Rack Only</strong> base — their tow combo pricing isn't in the public feed.{' '}
+                {selectedKit.handle && (
+                  <a href={stealthUrl(selectedKit.handle)} target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-300">
+                    Check live price
+                  </a>
+                )} and correct it below if needed.
+              </span>
+            </div>
+          )}
+          <div className="flex justify-between items-center text-sm">
+            <span className="text-gray-500">Hitch Kit</span>
+            <span className="flex items-center gap-1 text-gray-200">
+              <span className="text-gray-500">$</span>
+              <input
+                type="number"
+                step="0.01"
+                value={kitPriceInput}
+                onChange={e => setKitPriceInput(e.target.value)}
+                className={`w-24 bg-gray-900/60 border rounded-lg px-2 py-1 text-sm text-right tabular-nums focus:outline-none ${
+                  isTowTier ? 'border-amber-500/40 focus:border-amber-400' : 'border-gray-700 focus:border-gray-500'
+                }`}
+              />
+            </span>
+          </div>
           <div className="flex justify-between text-sm"><span className="text-gray-500">{tiersCfg.tiers[tier].label}</span><span className="text-gray-200 tabular-nums">{fmt$(tierFee)}</span></div>
           <div className="flex justify-between text-sm"><span className="text-gray-500">Shipping</span><span className="text-gray-200 tabular-nums">{fmt$(shipping)}</span></div>
           <div className="flex justify-between text-sm"><span className="text-gray-500">Tax ({(taxRate * 100).toFixed(2)}%)</span><span className="text-gray-200 tabular-nums">{fmt$(tax)}</span></div>

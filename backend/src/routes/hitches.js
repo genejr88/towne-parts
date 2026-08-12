@@ -169,7 +169,7 @@ router.get('/quotes/:id', async (req, res) => {
 // ── POST /api/hitches/quotes  — build + save a quote ─────────────────────────
 router.post('/quotes', async (req, res) => {
   try {
-    const { hitchKitId, tier, customerName, customerPhone, customerEmail, notes } = req.body
+    const { hitchKitId, tier, customerName, customerPhone, customerEmail, notes, kitPriceOverride } = req.body
 
     if (!hitchKitId) return res.status(400).json({ success: false, error: 'hitchKitId is required' })
     if (!TIERS[tier]) return res.status(400).json({ success: false, error: 'Invalid tier' })
@@ -180,7 +180,14 @@ router.post('/quotes', async (req, res) => {
       return res.status(400).json({ success: false, error: 'This kit is Rack Only — only that tier is available' })
     }
 
-    const kitPrice = parseFloat(kit.price)
+    // Stealth's cached price is the "Rack Only" base — their site adds a separate
+    // conversion-kit surcharge for tow packages via client-side JS that isn't in
+    // the public product feed, so it can't be trusted for tow tiers. Staff verify
+    // via the "View on Stealth" link and can override the price at quote time.
+    const kitPrice = kitPriceOverride != null && kitPriceOverride !== ''
+      ? parseFloat(kitPriceOverride)
+      : parseFloat(kit.price)
+    if (isNaN(kitPrice)) return res.status(400).json({ success: false, error: 'Invalid kit price' })
     const tierFee = TIERS[tier].fee
     const subtotal = kitPrice + tierFee + SHIPPING
     const tax = Math.round(subtotal * TAX_RATE * 100) / 100
