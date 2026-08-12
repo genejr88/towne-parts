@@ -407,6 +407,51 @@ model AssignedNumber {
   @@map("assigned_numbers")
 }
 
+model HitchKit {
+  id          Int          @id @default(autoincrement())
+  shopifyId   String       @unique // Stealth Hitches product id
+  handle      String?
+  title       String       // vehicle fitment string, e.g. "2007-2011 BMW 3 Series Sedan Gas"
+  sku         String?
+  price       Decimal      @db.Decimal(10, 2)
+  available   Boolean      @default(true)
+  rackOnly    Boolean      @default(false) // auto-detected from title ("Rack Only"); editable override
+  syncedAt    DateTime     @default(now())
+  quotes      HitchQuote[]
+
+  @@index([title])
+  @@map("hitch_kits")
+}
+
+enum HitchTier {
+  RACK_ONLY
+  RACK_AND_TOW
+  RACK_TOW_WIRING
+}
+
+model HitchQuote {
+  id            Int       @id @default(autoincrement())
+  hitchKitId    Int?
+  hitchKit      HitchKit? @relation(fields: [hitchKitId], references: [id], onDelete: SetNull)
+  vehicleTitle  String    // snapshot of the matched kit's title at quote time
+  kitPrice      Decimal   @db.Decimal(10, 2) // snapshot — survives future Stealth price changes
+  tier          HitchTier
+  tierFee       Decimal   @db.Decimal(10, 2) // snapshot of the flat fee at quote time
+  shipping      Decimal   @db.Decimal(10, 2) @default(40.00)
+  taxRate       Decimal   @db.Decimal(5, 4)  @default(0.0635)
+  subtotal      Decimal   @db.Decimal(10, 2)
+  tax           Decimal   @db.Decimal(10, 2)
+  total         Decimal   @db.Decimal(10, 2)
+  customerName  String?
+  customerPhone String?
+  customerEmail String?
+  notes         String?
+  createdBy     String?
+  createdAt     DateTime  @default(now())
+
+  @@map("hitch_quotes")
+}
+
 model InventoryPartPhoto {
   id                String        @id @default(cuid())
   inventoryPartId   String

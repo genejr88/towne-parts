@@ -20,6 +20,7 @@ import RecentActivity from '@/pages/RecentActivity'
 import Help from '@/pages/Help'
 import Supplements from '@/pages/Supplements'
 import CarrierHistory from '@/pages/CarrierHistory'
+import HitchQuotes from '@/pages/HitchQuotes'
 import StatusLog from '@/pages/StatusLog'
 
 function ProtectedRoute({ children, adminOnly = false }) {
@@ -187,6 +188,9 @@ export default function App() {
         } />
         <Route path="/carriers" element={
           <ProtectedRoute><AppLayout><CarrierHistory /></AppLayout></ProtectedRoute>
+        } />
+        <Route path="/hitches" element={
+          <ProtectedRoute><AppLayout><HitchQuotes /></AppLayout></ProtectedRoute>
         } />
         <Route path="/help" element={
           <ProtectedRoute><AppLayout><Help /></AppLayout></ProtectedRoute>

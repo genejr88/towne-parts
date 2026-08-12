@@ -28,6 +28,7 @@ Parts management system for Towne Body Shop. Tracks repair orders (ROs), parts o
 | `backend/src/routes/private.js` | PIN-gated file storage (`PRIVATE_PIN` env var) |
 | `backend/src/routes/bmw.js` | BMW payment tracker CRUD (`/api/bmw`) |
 | `backend/src/routes/numbers.js` | Assigned-number sequence tracker (M#/GF#) CRUD + atomic "generate next" (`/api/numbers`) |
+| `backend/src/routes/hitches.js` | Stealth Hitches quote builder — cached kit catalog, refresh-from-Stealth, quote CRUD (`/api/hitches`) |
 | `backend/src/routes/auth.js` | JWT login/logout |
 | `backend/src/routes/admin.js` | Admin-only actions |
 | `backend/src/routes/users.js` | User management |
@@ -52,6 +53,7 @@ Parts management system for Towne Body Shop. Tracks repair orders (ROs), parts o
 | `Supplements` | `/supplements` | All supplement requests grouped by RO, status management |
 | `Inventory` | `/inventory` | Stock parts catalog |
 | `SecureVault` | `/vault` | PIN-gated BMW Payment Tracker + file storage |
+| `HitchQuotes` | `/hitches` | Stealth Hitches quote builder — search kit by vehicle, pick install tier, save/print/history |
 | `Admin` | `/admin` | Admin panel |
 | `RecentActivity` | `/recent` | Activity log |
 | `Help` | `/help` | Help & guide accordion |
@@ -75,6 +77,8 @@ Parts management system for Towne Body Shop. Tracks repair orders (ROs), parts o
 - `BMWPayment` — BMW payment tracking (month, year, date, lastName, bmwNumber, roNumber, amount, status: NOT_RECEIVED | RECEIVED)
 - `NumberSequence` — per-program counter for the assigned-number tracker (program, prefix, current, padLength) — add a row to add a new program (e.g. Genesis of Milford → GM#)
 - `AssignedNumber` — issued M#/GF# records (program, number, programRoNumber, towneRoNumber, vehicleYear/Make/Model, customerName) — number is freely editable after generation, deletable
+- `HitchKit` — cached Stealth Hitches product catalog (shopifyId, title = vehicle fitment string, price, rackOnly) — refreshed on demand from Stealth's public Shopify JSON feed
+- `HitchQuote` — saved hitch quotes (hitchKitId, vehicleTitle/kitPrice/tierFee snapshotted at quote time so history doesn't drift if prices change later, tier, shipping, tax, total, customer info)
 
 ## Auth
 - JWT tokens, stored in `localStorage` under key `parts_token`
@@ -134,6 +138,21 @@ Parts management system for Towne Body Shop. Tracks repair orders (ROs), parts o
 - To add a new program (e.g. Genesis of Milford → GM#): add a `NumberSequence` row (prefix `GM`, current `0`, padLength as desired) and add an entry to the `PROGRAMS` config in `frontend/src/components/AssignedNumbers.jsx` — no schema changes needed
 - **TODO**: Telegram notification on Submit (full record: number + RO + name + vehicle) — not yet wired, pending bot token/chat ID setup (see `backend/src/routes/telegram.js` for the existing pattern to extend)
 
+## Stealth Hitch Quote Builder (`/hitches`)
+- Towne is an authorized Stealth Hitches installer (stealthhitches.com) — this tool lets office staff search a vehicle, pull the kit price, and build a quote without manually copying prices off Stealth's site
+- **Catalog source**: stealthhitches.com is a Shopify store with a public, no-auth JSON feed — `https://stealthhitches.com/collections/hitches/products.json?limit=250` returns all ~127 kits with `title` (the vehicle fitment string, e.g. "2007-2011 BMW 3 Series Sedan Gas"), `sku`, `price`, `available`. No login/API key needed.
+- Catalog is cached in `HitchKit` (not fetched live per-quote) — staff hits "Refresh Catalog" in the New Quote tab to re-sync; `POST /api/hitches/kits/refresh` upserts by `shopifyId`
+- `rackOnly` is auto-detected via `/rack only/i` regex against the product title (7 of 127 kits as of Aug 2026: BMW X5, Audi Q5 PHEV, Polestar 2/3, Audi Q5/Q6/A6 e-tron, Volvo EX90) — editable per-kit via `PUT /api/hitches/kits/:id` in case the regex misfires on an edge case (e.g. "RACK ONLY OPTION AVAILABLE" phrasing)
+- **Pricing**: kit cost = Stealth's listed price directly, no markup (Towne charges what Stealth charges) + one of 3 flat install fees + $40 shipping, taxed at 6.35%:
+  - Rack Only — $800
+  - Rack and Tow — $1,000
+  - Rack and Tow w/ Active Wiring — $1,200
+  - Config lives in `TIERS`/`SHIPPING`/`TAX_RATE` constants at the top of `backend/src/routes/hitches.js` — change fees there, not in the frontend
+- If the matched kit is rack-only, the tier picker auto-restricts to just the Rack Only option (both client-side UI and server-side validation on `POST /api/hitches/quotes`)
+- Quotes are saved with history (`HitchQuote`), searchable by customer name or vehicle; kit price and tier fee are snapshotted at save time so a later Stealth price change or fee adjustment doesn't retroactively alter old quotes
+- Print via browser print window (same pattern as the BMW tracker's `openPrintWindow`, reimplemented standalone in `HitchQuotes.jsx`)
+- Standalone tool for now — does not create an RO or Part record on save/accept (may be wired up later)
+
 ## Supplement Workflow
 1. On Production Board → Final Supplement card → tap **Request** → logs `Supplement N` (REQUESTED status)
 2. Navigate to `/supplements` (BottomNav "Supps" tab) to manage status
@@ -157,6 +176,7 @@ Parts management system for Towne Body Shop. Tracks repair orders (ROs), parts o
 - ✅ Telegram notifications
 - ✅ BMW Payment Tracker at `/vault` with monthly tracking, compare, print, and file storage
 - ✅ Assigned Numbers tracker at `/vault` → Numbers tab (M# for BMW, GF# for Genesis of Fairfield, atomic generate-next)
+- ✅ Stealth Hitch Quote Builder at `/hitches` — vehicle search against cached Stealth catalog, 3 flat install tiers, saved quote history, print
 - ✅ Help page (`/help`)
 
 ## Planned / Known Issues

@@ -253,6 +253,19 @@ export const bmwApi = {
     unwrap(api.post('/bmw/bulk', { payments }, { headers: { 'x-private-pin': pin } })),
 }
 
+// ── Stealth Hitch Quotes ──────────────────────────────────────────────────────
+export const hitchesApi = {
+  tiers:        ()      => unwrap(api.get('/hitches/tiers')),
+  searchKits:   (q)     => unwrap(api.get('/hitches/kits', { params: q ? { q } : {} })),
+  catalogStatus:()      => unwrap(api.get('/hitches/kits/status')),
+  refreshCatalog:()     => unwrap(api.post('/hitches/kits/refresh')),
+  setKitRackOnly:(id, rackOnly) => unwrap(api.put(`/hitches/kits/${id}`, { rackOnly })),
+  listQuotes:   (search) => unwrap(api.get('/hitches/quotes', { params: search ? { search } : {} })),
+  getQuote:     (id)    => unwrap(api.get(`/hitches/quotes/${id}`)),
+  createQuote:  (data)  => unwrap(api.post('/hitches/quotes', data)),
+  removeQuote:  (id)    => unwrap(api.delete(`/hitches/quotes/${id}`)),
+}
+
 // ── Assigned Numbers (M#/GF# sequence tracker) ───────────────────────────────
 export const numbersApi = {
   list: (pin, program) =>

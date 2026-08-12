@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { PackageCheck, Layers, RotateCcw, Settings, Package, FilePlus } from 'lucide-react'
+import { PackageCheck, Layers, RotateCcw, Settings, Package, FilePlus, Link2 } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 
@@ -24,6 +24,7 @@ const navItems = [
   { to: '/supplements', icon: FilePlus,     label: 'Supps' },
   { to: '/src',         icon: RotateCcw,    label: 'S.R.C.' },
   { to: '/inventory',   icon: Package,      label: 'Inventory' },
+  { to: '/hitches',     icon: Link2,        label: 'Hitches' },
   { to: '/vault',       icon: BmwIcon,      label: 'BMW' },
   { to: '/admin',       icon: Settings,     label: 'Admin' },
 ]
