@@ -434,6 +434,7 @@ model HitchQuote {
   hitchKitId    Int?
   hitchKit      HitchKit? @relation(fields: [hitchKitId], references: [id], onDelete: SetNull)
   vehicleTitle  String    // snapshot of the matched kit's title at quote time
+  kitHandle     String?   // snapshot of the Stealth product handle — builds the live product-page link
   kitPrice      Decimal   @db.Decimal(10, 2) // snapshot — survives future Stealth price changes
   tier          HitchTier
   tierFee       Decimal   @db.Decimal(10, 2) // snapshot of the flat fee at quote time

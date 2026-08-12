@@ -152,6 +152,8 @@ Parts management system for Towne Body Shop. Tracks repair orders (ROs), parts o
 - Quotes are saved with history (`HitchQuote`), searchable by customer name or vehicle; kit price and tier fee are snapshotted at save time so a later Stealth price change or fee adjustment doesn't retroactively alter old quotes
 - Print via browser print window (same pattern as the BMW tracker's `openPrintWindow`, reimplemented standalone in `HitchQuotes.jsx`)
 - Standalone tool for now — does not create an RO or Part record on save/accept (may be wired up later)
+- **Stealth product link**: every kit/quote shows a "View on Stealth" link (`stealthhitches.com/products/{handle}`) so staff can verify pricing live; `handle` is cached on `HitchKit` and snapshotted onto `HitchQuote.kitHandle` so the link survives catalog refreshes
+- **Tier ≠ Stealth's own package selector, don't confuse the two**: Stealth's product page has its own "Rack Only" / "Rack + Tow Combo" toggle (same price either way, single SKU) — this is unrelated to Towne's 3 install-fee tiers. `STEALTH_PACKAGE_FOR_TIER` in `HitchQuotes.jsx` maps our tier to which of Stealth's 2 packages to actually select when placing the order (RACK_ONLY→Rack Only, RACK_AND_TOW/RACK_TOW_WIRING→Rack + Tow Combo) — shown on the tier picker, the saved-quote confirmation, and the printed quote so whoever orders from Stealth never has to guess
 
 ## Supplement Workflow
 1. On Production Board → Final Supplement card → tap **Request** → logs `Supplement N` (REQUESTED status)

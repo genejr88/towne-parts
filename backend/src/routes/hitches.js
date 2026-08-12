@@ -7,6 +7,7 @@ const { requireAuth } = require('../middleware/auth')
 router.use(requireAuth)
 
 const STEALTH_CATALOG_URL = 'https://stealthhitches.com/collections/hitches/products.json?limit=250'
+const STEALTH_PRODUCT_BASE_URL = 'https://stealthhitches.com/products/'
 
 const TIERS = {
   RACK_ONLY:        { label: 'Rack Only',                        fee: 800 },
@@ -18,20 +19,46 @@ const TAX_RATE = 0.0635
 
 // ── GET /api/hitches/tiers  — fee tier config for the frontend ───────────────
 router.get('/tiers', (req, res) => {
-  res.json({ success: true, data: { tiers: TIERS, shipping: SHIPPING, taxRate: TAX_RATE } })
+  res.json({ success: true, data: { tiers: TIERS, shipping: SHIPPING, taxRate: TAX_RATE, stealthBaseUrl: STEALTH_PRODUCT_BASE_URL } })
 })
+
+// Titles are fitment strings like "2011-2018 Volvo V60" or "2020 Audi Q5 Plug-in
+// Hybrid" — a plain substring search misses "2012" against a "2011-2018" range.
+// Pull every 4-digit year (and year range) out of the title so a typed year can
+// be checked against the range instead of requiring an exact literal match.
+function extractYearRanges(title) {
+  const ranges = []
+  const re = /\b(\d{4})(?:-(\d{4}))?\b/g
+  let m
+  while ((m = re.exec(title))) {
+    const start = parseInt(m[1], 10)
+    const end = m[2] ? parseInt(m[2], 10) : start
+    ranges.push([start, end])
+  }
+  return ranges
+}
+
+function kitMatchesQuery(kit, query) {
+  const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  if (tokens.length === 0) return true
+  const titleLower = kit.title.toLowerCase()
+  const ranges = extractYearRanges(kit.title)
+  return tokens.every((tok) => {
+    if (/^\d{4}$/.test(tok)) {
+      const year = parseInt(tok, 10)
+      return ranges.some(([start, end]) => year >= start && year <= end)
+    }
+    return titleLower.includes(tok)
+  })
+}
 
 // ── GET /api/hitches/kits?q=x5  — search the cached catalog ──────────────────
 router.get('/kits', async (req, res) => {
   try {
     const { q } = req.query
-    const where = q ? { title: { contains: q, mode: 'insensitive' } } : {}
-    const kits = await prisma.hitchKit.findMany({
-      where,
-      orderBy: { title: 'asc' },
-      take: 30,
-    })
-    res.json({ success: true, data: kits })
+    const allKits = await prisma.hitchKit.findMany({ orderBy: { title: 'asc' } })
+    const kits = q ? allKits.filter((k) => kitMatchesQuery(k, q)) : allKits
+    res.json({ success: true, data: kits.slice(0, 30) })
   } catch (err) {
     console.error(err)
     res.status(500).json({ success: false, error: err.message })
@@ -163,6 +190,7 @@ router.post('/quotes', async (req, res) => {
       data: {
         hitchKitId: kit.id,
         vehicleTitle: kit.title,
+        kitHandle: kit.handle,
         kitPrice,
         tier,
         tierFee,

@@ -1,9 +1,22 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Search, RefreshCw, Printer, Trash2, X, CheckCircle2, Link2, Clock } from 'lucide-react'
+import { Search, RefreshCw, Printer, Trash2, X, CheckCircle2, Link2, Clock, ExternalLink } from 'lucide-react'
 import { hitchesApi } from '@/lib/api'
 import Spinner from '@/components/ui/Spinner'
+
+const STEALTH_BASE_URL = 'https://stealthhitches.com/products/'
+const stealthUrl = (handle) => handle ? `${STEALTH_BASE_URL}${handle}` : null
+
+// Stealth's own product page has its own "Rack Only" / "Rack + Tow Combo" package
+// selector (same price either way) — separate from our 3 install-fee tiers, which
+// are Towne's labor pricing. This maps our tier to which of Stealth's 2 packages
+// to actually pick when placing the order, so it's never a guessing game.
+const STEALTH_PACKAGE_FOR_TIER = {
+  RACK_ONLY:       'Rack Only',
+  RACK_AND_TOW:    'Rack + Tow Combo',
+  RACK_TOW_WIRING: 'Rack + Tow Combo',
+}
 
 function fmt$(n) {
   if (n == null) return '—'
@@ -36,6 +49,8 @@ const PRINT_STYLE = `
   td { padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
   td.amt { text-align: right; font-variant-numeric: tabular-nums; }
   tr.total td { font-weight: 900; font-size: 16px; border-top: 2px solid #111; border-bottom: none; padding-top: 12px; }
+  .order-note { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #0c4a6e; margin-bottom: 20px; }
+  .order-note strong { font-weight: 800; }
   .customer { margin-top: 24px; font-size: 12px; color: #444; }
   .footer { margin-top: 32px; font-size: 10px; color: #aaa; border-top: 1px solid #e5e7eb; padding-top: 12px; }
   @media print { body { padding: 0; } }
@@ -53,7 +68,7 @@ function printQuote(q) {
   win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Hitch Quote</title><style>${PRINT_STYLE}</style></head><body>
     <h1>Towne Body Shop — Hitch Quote</h1>
     <div class="meta">${fmtDate(q.createdAt)}${q.createdBy ? ' · Prepared by ' + q.createdBy : ''}</div>
-    <div class="vehicle">${q.vehicleTitle}</div>
+    <div class="vehicle">${q.vehicleTitle}${q.kitHandle ? ` &middot; <a href="${stealthUrl(q.kitHandle)}" target="_blank" style="font-weight:400;font-size:12px;color:#0284c7">View kit on Stealth ↗</a>` : ''}</div>
     <table>
       <tr><td>Hitch Kit</td><td class="amt">${fmt$(q.kitPrice)}</td></tr>
       <tr><td>${tierLabel}</td><td class="amt">${fmt$(q.tierFee)}</td></tr>
@@ -61,6 +76,7 @@ function printQuote(q) {
       <tr><td>Tax (${(parseFloat(q.taxRate) * 100).toFixed(2)}%)</td><td class="amt">${fmt$(q.tax)}</td></tr>
       <tr class="total"><td>Total</td><td class="amt">${fmt$(q.total)}</td></tr>
     </table>
+    <div class="order-note">When ordering on Stealth's site, select package: <strong>${STEALTH_PACKAGE_FOR_TIER[q.tier] || '—'}</strong></div>
     ${q.customerName || q.customerPhone || q.customerEmail ? `
     <div class="customer">
       ${q.customerName ? `<div>${q.customerName}</div>` : ''}
@@ -178,6 +194,9 @@ function NewQuoteTab() {
         <div>
           <p className="text-lg font-bold text-gray-100">Quote Saved</p>
           <p className="text-sm text-gray-500 mt-1">{saved.vehicleTitle} — {fmt$(saved.total)}</p>
+          <p className="text-xs text-sky-400 mt-2 bg-sky-500/10 border border-sky-500/20 rounded-lg px-3 py-2">
+            When ordering on Stealth's site, select package: <strong>{STEALTH_PACKAGE_FOR_TIER[saved.tier]}</strong>
+          </p>
         </div>
         <div className="flex gap-2.5 mt-2">
           <button onClick={() => printQuote(saved)}
@@ -254,7 +273,15 @@ function NewQuoteTab() {
         <div className="mb-4 flex items-center justify-between gap-2 bg-gray-800/50 border border-gray-700/40 rounded-xl px-3.5 py-3">
           <div className="min-w-0">
             <p className="text-sm font-bold text-gray-100 truncate">{selectedKit.title}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{fmt$(selectedKit.price)} kit cost{selectedKit.rackOnly && ' · Rack Only kit'}</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {fmt$(selectedKit.price)} kit cost{selectedKit.rackOnly && ' · Rack Only kit'}
+              {selectedKit.handle && (
+                <a href={stealthUrl(selectedKit.handle)} target="_blank" rel="noopener noreferrer"
+                  className="ml-2 inline-flex items-center gap-0.5 text-sky-400 hover:text-sky-300">
+                  View on Stealth <ExternalLink size={10} />
+                </a>
+              )}
+            </p>
           </div>
           <button onClick={resetForKit} className="p-1.5 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-700/50 shrink-0">
             <X size={15} />
@@ -277,8 +304,11 @@ function NewQuoteTab() {
                     : 'bg-gray-800/40 border-gray-700/40 text-gray-400 hover:border-gray-600'
                 }`}
               >
-                <span className="text-sm font-semibold">{tiersCfg.tiers[t].label}</span>
-                <span className="text-sm font-bold tabular-nums">{fmt$(tiersCfg.tiers[t].fee)}</span>
+                <span>
+                  <span className="block text-sm font-semibold">{tiersCfg.tiers[t].label}</span>
+                  <span className="block text-[10px] text-gray-500 mt-0.5">Stealth package: {STEALTH_PACKAGE_FOR_TIER[t]}</span>
+                </span>
+                <span className="text-sm font-bold tabular-nums shrink-0">{fmt$(tiersCfg.tiers[t].fee)}</span>
               </button>
             ))}
           </div>
@@ -392,6 +422,12 @@ function HistoryTab() {
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="text-base font-black text-gray-100 tabular-nums">{fmt$(q.total)}</span>
+                  {q.kitHandle && (
+                    <a href={stealthUrl(q.kitHandle)} target="_blank" rel="noopener noreferrer"
+                      className="p-1.5 rounded-lg text-gray-600 hover:text-sky-400 hover:bg-sky-500/10 transition-colors">
+                      <ExternalLink size={13} />
+                    </a>
+                  )}
                   <button onClick={() => printQuote(q)} className="p-1.5 rounded-lg text-gray-600 hover:text-blue-400 hover:bg-blue-500/10 transition-colors">
                     <Printer size={13} />
                   </button>
