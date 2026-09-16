@@ -37,6 +37,9 @@ import Spinner from '@/components/ui/Spinner'
 import InvoiceScanner from '@/components/ui/InvoiceScanner'
 import CustomerInsuranceFields from '@/components/CustomerInsuranceFields'
 
+// The standalone 360-spin capture app — separate deploy, linked by RO # only (see towne-spin repo)
+const SPIN_APP_URL = import.meta.env.VITE_SPIN_APP_URL || 'https://spin.towneapps.com'
+
 // ── Finish chip ────────────────────────────────────────────────────────────────
 function FinishChip({ value, onClick }) {
   const finish = FINISH_STATUSES.find((f) => f.value === value) || FINISH_STATUSES[0]
@@ -1120,6 +1123,23 @@ export default function RODetail() {
               />
             </label>
           )}
+        </div>
+
+        {/* 360 Spin */}
+        <div className="mb-3">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">360 Spin</p>
+          <a
+            href={`${SPIN_APP_URL}/?ro=${encodeURIComponent(ro.roNumber)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-between gap-3 w-full px-4 py-3 rounded-xl border border-gray-700/50 bg-gray-800/60 hover:border-blue-500/40 hover:bg-gray-800 transition-colors"
+          >
+            <div className="flex items-center gap-2.5 text-sm font-semibold text-gray-200">
+              <RotateCcw size={16} className="text-blue-400" />
+              View 360 Spin for this RO
+            </div>
+            <ExternalLink size={14} className="text-gray-500 shrink-0" />
+          </a>
         </div>
 
         {/* Vehicle info card */}
