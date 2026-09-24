@@ -45,6 +45,7 @@ const stagesRoutes      = require('./routes/stages')
 const numbersRoutes     = require('./routes/numbers')
 const hitchesRoutes     = require('./routes/hitches')
 
+app.use('/api/auth/reset', require('./routes/passwordReset'))
 app.use('/api/auth', authRoutes)
 app.use('/api/ros', rosRoutes)
 app.use('/api/parts', partsRoutes)

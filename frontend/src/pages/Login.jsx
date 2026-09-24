@@ -7,6 +7,7 @@ import toast from 'react-hot-toast'
 import { useAuth } from '@/lib/auth'
 import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
+import ForgotPassword from '../components/ForgotPassword'
 
 export default function Login() {
   const [username, setUsername] = useState('')
@@ -127,6 +128,7 @@ export default function Login() {
               {!loading && <ArrowRight size={18} />}
             </Button>
           </motion.form>
+          <ForgotPassword />
         </div>
 
         <p className="text-center text-xs text-gray-700 mt-4">
