@@ -14,10 +14,9 @@ async function main() {
   if (existing) {
     await prisma.user.update({
       where: { username: 'gene' },
-      data: {
-        password: await bcrypt.hash('TowneParts1', 10),
-        role: 'ADMIN',
-      },
+      // Default passwords are only used on first create — never reset on deploy,
+      // so passwords changed in the app stick.
+      data: { role: 'ADMIN' },
     })
     console.log('Admin user updated')
   } else {
@@ -34,7 +33,7 @@ async function main() {
   // Standard shared admin account
   await prisma.user.upsert({
     where: { username: 'Admin' },
-    update: { password: await bcrypt.hash('Towne123!', 10), role: 'ADMIN' },
+    update: { role: 'ADMIN' },
     create: { username: 'Admin', password: await bcrypt.hash('Towne123!', 10), role: 'ADMIN' },
   })
   console.log('Shared admin account ready: Admin')
