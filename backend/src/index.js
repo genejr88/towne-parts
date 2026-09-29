@@ -20,7 +20,9 @@ const srcDir = path.join(uploadsBase, 'src')
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
 })
 
-app.use('/uploads', express.static(uploadsBase))
+// Uploaded files: Railway Storage Bucket first, local disk fallback (lib/storage.js).
+// /uploads/private/* is not public — private files go through the PIN-protected /api/private routes.
+app.get('/uploads/*', require('./lib/storage').serveUploads)
 
 const authRoutes = require('./routes/auth')
 const rosRoutes = require('./routes/ros')

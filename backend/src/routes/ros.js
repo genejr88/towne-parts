@@ -4,6 +4,7 @@ const fs = require('fs')
 const multer = require('multer')
 const prisma = require('../lib/prisma')
 const { requireAuth, requireAdmin } = require('../middleware/auth')
+const fileStore = require('../lib/storage')
 
 const locationDir = path.join(__dirname, '../../uploads/location')
 if (!fs.existsSync(locationDir)) fs.mkdirSync(locationDir, { recursive: true })
@@ -342,10 +343,11 @@ router.post('/:id/location-photos', requireAuth, locationUpload.single('photo'),
   try {
     const existing = await prisma.rO.findUnique({ where: { id } })
     if (!existing) {
-      fs.unlinkSync(req.file.path)
+      await fileStore.discard(req.file)
       return res.status(404).json({ success: false, error: 'RO not found.' })
     }
 
+    await fileStore.save(req.file, 'location')
     const photo = await prisma.rOLocationPhoto.create({
       data: {
         roId: id,
@@ -356,7 +358,7 @@ router.post('/:id/location-photos', requireAuth, locationUpload.single('photo'),
 
     return res.status(201).json({ success: true, data: photo })
   } catch (err) {
-    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path)
+    await fileStore.discard(req.file)
     console.error('Location photo upload error:', err)
     return res.status(500).json({ success: false, error: err.message })
   }
@@ -369,8 +371,7 @@ router.delete('/:id/location-photos/:photoId', requireAuth, async (req, res) => 
     const photo = await prisma.rOLocationPhoto.findUnique({ where: { id: photoId } })
     if (!photo) return res.status(404).json({ success: false, error: 'Photo not found.' })
 
-    const filePath = path.join(locationDir, path.basename(photo.storedPath))
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+    await fileStore.remove(`location/${path.basename(photo.storedPath)}`)
 
     await prisma.rOLocationPhoto.delete({ where: { id: photoId } })
     return res.json({ success: true, data: { id: photoId } })

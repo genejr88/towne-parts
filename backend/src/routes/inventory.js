@@ -4,6 +4,7 @@ const fs = require('fs')
 const multer = require('multer')
 const prisma = require('../lib/prisma')
 const { requireAuth } = require('../middleware/auth')
+const fileStore = require('../lib/storage')
 
 const router = express.Router()
 
@@ -132,12 +133,9 @@ router.delete('/:id', requireAuth, async (req, res) => {
       return res.status(404).json({ success: false, error: 'Inventory part not found.' })
     }
 
-    // Delete photo files from disk before DB delete
+    // Delete stored photo files before DB delete
     for (const photo of existing.photos) {
-      const filePath = path.join(inventoryPhotosDir, photo.storedPath)
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath)
-      }
+      await fileStore.remove(`inventory/${photo.storedPath}`)
     }
 
     await prisma.inventoryPart.delete({ where: { id } })
@@ -160,10 +158,11 @@ router.post('/:id/photos', requireAuth, photoUpload.single('photo'), async (req,
   try {
     const part = await prisma.inventoryPart.findUnique({ where: { id } })
     if (!part) {
-      fs.unlinkSync(req.file.path)
+      await fileStore.discard(req.file)
       return res.status(404).json({ success: false, error: 'Inventory part not found.' })
     }
 
+    await fileStore.save(req.file, 'inventory')
     const photo = await prisma.inventoryPartPhoto.create({
       data: {
         inventoryPartId: id,
@@ -175,9 +174,7 @@ router.post('/:id/photos', requireAuth, photoUpload.single('photo'), async (req,
     return res.status(201).json({ success: true, data: photo })
   } catch (err) {
     console.error('Upload inventory photo error:', err)
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path)
-    }
+    await fileStore.discard(req.file)
     return res.status(500).json({ success: false, error: err.message })
   }
 })
@@ -190,12 +187,8 @@ router.get('/photos/:photoId/file', async (req, res) => {
     if (!photo) {
       return res.status(404).json({ success: false, error: 'Photo not found.' })
     }
-    const filePath = path.join(inventoryPhotosDir, photo.storedPath)
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ success: false, error: 'File not found on disk.' })
-    }
-    res.setHeader('Content-Disposition', `inline; filename="${photo.originalFilename || photo.storedPath}"`)
-    return res.sendFile(filePath)
+    const found = await fileStore.send(req, res, `inventory/${photo.storedPath}`, { filename: photo.originalFilename || photo.storedPath })
+    if (!found) return res.status(404).json({ success: false, error: 'File not found.' })
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message })
   }
@@ -210,10 +203,7 @@ router.delete('/photos/:photoId', requireAuth, async (req, res) => {
       return res.status(404).json({ success: false, error: 'Photo not found.' })
     }
     await prisma.inventoryPartPhoto.delete({ where: { id: photoId } })
-    const filePath = path.join(inventoryPhotosDir, photo.storedPath)
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath)
-    }
+    await fileStore.remove(`inventory/${photo.storedPath}`)
     return res.json({ success: true, data: { message: 'Photo deleted.' } })
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message })

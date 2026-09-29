@@ -4,6 +4,7 @@ const path = require('path')
 const fs = require('fs')
 const prisma = require('../lib/prisma')
 const { requireAuth } = require('../middleware/auth')
+const fileStore = require('../lib/storage')
 
 const router = express.Router()
 
@@ -168,12 +169,13 @@ router.post('/:id/photos', requireAuth, upload.array('photos', 10), async (req, 
   try {
     const existing = await prisma.sRCEntry.findUnique({ where: { id } })
     if (!existing) {
-      req.files?.forEach((f) => { try { fs.unlinkSync(f.path) } catch {} })
+      for (const f of req.files || []) await fileStore.discard(f)
       return res.status(404).json({ success: false, error: 'SRC entry not found.' })
     }
     if (!req.files || req.files.length === 0)
       return res.status(400).json({ success: false, error: 'No files uploaded.' })
 
+    for (const f of req.files) await fileStore.save(f, 'src')
     const photos = await Promise.all(
       req.files.map((f) =>
         prisma.sRCPhoto.create({
@@ -183,7 +185,7 @@ router.post('/:id/photos', requireAuth, upload.array('photos', 10), async (req, 
     )
     return res.status(201).json({ success: true, data: photos })
   } catch (err) {
-    req.files?.forEach((f) => { try { fs.unlinkSync(f.path) } catch {} })
+    for (const f of req.files || []) await fileStore.discard(f)
     console.error('SRC photo upload error:', err)
     return res.status(500).json({ success: false, error: err.message })
   }
@@ -195,7 +197,7 @@ router.delete('/photos/:photoId', requireAuth, async (req, res) => {
   try {
     const photo = await prisma.sRCPhoto.findUnique({ where: { id: photoId } })
     if (!photo) return res.status(404).json({ success: false, error: 'Photo not found.' })
-    try { fs.unlinkSync(path.join(uploadsDir, photo.storedPath)) } catch {}
+    await fileStore.remove(`src/${photo.storedPath}`)
     await prisma.sRCPhoto.delete({ where: { id: photoId } })
     return res.json({ success: true, data: { message: 'Photo deleted.' } })
   } catch (err) {
@@ -255,7 +257,7 @@ router.delete('/:id', requireAuth, async (req, res) => {
     const existing = await prisma.sRCEntry.findUnique({ where: { id }, include: { photos: true } })
     if (!existing) return res.status(404).json({ success: false, error: 'SRC entry not found.' })
 
-    existing.photos.forEach((p) => { try { fs.unlinkSync(path.join(uploadsDir, p.storedPath)) } catch {} })
+    for (const p of existing.photos) await fileStore.remove(`src/${p.storedPath}`)
     await prisma.sRCEntry.delete({ where: { id } })
 
     if (existing.roId) {

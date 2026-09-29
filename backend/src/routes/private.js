@@ -4,6 +4,7 @@ const fs = require('fs')
 const multer = require('multer')
 const prisma = require('../lib/prisma')
 const { requireAuth } = require('../middleware/auth')
+const fileStore = require('../lib/storage')
 
 const PRIVATE_PIN = process.env.PRIVATE_PIN || 'TowneBMW2025'
 
@@ -55,6 +56,7 @@ router.get('/files', requireAuth, requirePin, async (req, res) => {
 router.post('/upload', requireAuth, requirePin, privateUpload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ success: false, error: 'No file uploaded.' })
   try {
+    await fileStore.save(req.file, 'private')
     const file = await prisma.privateFile.create({
       data: {
         storedPath: req.file.filename,
@@ -64,7 +66,7 @@ router.post('/upload', requireAuth, requirePin, privateUpload.single('file'), as
     })
     return res.status(201).json({ success: true, data: file })
   } catch (err) {
-    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path)
+    await fileStore.discard(req.file)
     console.error('Private upload error:', err)
     return res.status(500).json({ success: false, error: err.message })
   }
@@ -77,10 +79,8 @@ router.get('/files/:id/view', requirePin, async (req, res) => {
     const file = await prisma.privateFile.findUnique({ where: { id } })
     if (!file) return res.status(404).json({ success: false, error: 'File not found.' })
 
-    const filePath = path.join(privateDir, file.storedPath)
-    if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, error: 'File missing on disk.' })
-
-    return res.sendFile(filePath)
+    const found = await fileStore.send(req, res, `private/${file.storedPath}`)
+    if (!found) return res.status(404).json({ success: false, error: 'File missing.' })
   } catch (err) {
     console.error('View private file error:', err)
     return res.status(500).json({ success: false, error: err.message })
@@ -94,8 +94,7 @@ router.delete('/files/:id', requireAuth, requirePin, async (req, res) => {
     const file = await prisma.privateFile.findUnique({ where: { id } })
     if (!file) return res.status(404).json({ success: false, error: 'File not found.' })
 
-    const filePath = path.join(privateDir, file.storedPath)
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+    await fileStore.remove(`private/${file.storedPath}`)
 
     await prisma.privateFile.delete({ where: { id } })
     return res.json({ success: true, data: { id } })

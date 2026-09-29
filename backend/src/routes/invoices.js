@@ -4,6 +4,7 @@ const fs = require('fs')
 const multer = require('multer')
 const prisma = require('../lib/prisma')
 const { requireAuth } = require('../middleware/auth')
+const fileStore = require('../lib/storage')
 
 const router = express.Router()
 
@@ -48,11 +49,13 @@ router.post('/ro/:roId', requireAuth, upload.single('file'), async (req, res) =>
     const ro = await prisma.rO.findUnique({ where: { id: roId } })
     if (!ro) {
       // Clean up the uploaded file
-      fs.unlinkSync(req.file.path)
+      await fileStore.discard(req.file)
       return res.status(404).json({ success: false, error: 'RO not found.' })
     }
 
     const fileType = req.body?.fileType === 'PARTS_LIST' ? 'PARTS_LIST' : 'INVOICE'
+
+    await fileStore.save(req.file, 'invoices')
 
     const invoice = await prisma.rOInvoice.create({
       data: {
@@ -76,9 +79,7 @@ router.post('/ro/:roId', requireAuth, upload.single('file'), async (req, res) =>
   } catch (err) {
     console.error('Upload invoice error:', err)
     // Clean up file on DB error
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path)
-    }
+    await fileStore.discard(req.file)
     return res.status(500).json({ success: false, error: err.message })
   }
 })
@@ -110,13 +111,8 @@ router.get('/:id/file', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Invoice not found.' })
     }
 
-    const filePath = path.join(invoicesDir, invoice.storedPath)
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ success: false, error: 'File not found on disk.' })
-    }
-
-    res.setHeader('Content-Disposition', `inline; filename="${invoice.originalFilename || invoice.storedPath}"`)
-    return res.sendFile(filePath)
+    const found = await fileStore.send(req, res, `invoices/${invoice.storedPath}`, { filename: invoice.originalFilename || invoice.storedPath })
+    if (!found) return res.status(404).json({ success: false, error: 'File not found.' })
   } catch (err) {
     console.error('Serve invoice file error:', err)
     return res.status(500).json({ success: false, error: err.message })
@@ -136,11 +132,8 @@ router.delete('/:id', requireAuth, async (req, res) => {
     // Delete from DB first
     await prisma.rOInvoice.delete({ where: { id } })
 
-    // Remove file from disk
-    const filePath = path.join(invoicesDir, invoice.storedPath)
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath)
-    }
+    // Remove the stored file (bucket + any local copy)
+    await fileStore.remove(`invoices/${invoice.storedPath}`)
 
     await prisma.activityLog.create({
       data: {
