@@ -62,4 +62,34 @@ router.post('/users/:id/password', async (req, res) => {
   }
 })
 
+// DELETE /users/:id — never cascades: rows that require a user (rentals, photos, spins…)
+// make the database refuse (P2003), and we report that instead of deleting history.
+router.delete('/users/:id', async (req, res) => {
+  try {
+    const users = await prisma.user.findMany()
+    const user = users.find(u => String(u.id) === String(req.params.id))
+    if (!user) return res.status(404).json({ success: false, error: 'User not found.' })
+    const isAdmin = u => /admin/i.test(String(u.role || ''))
+    if (users.length <= 1) {
+      return res.status(409).json({ success: false, error: "Can't delete the only user in this app." })
+    }
+    if (isAdmin(user) && users.filter(isAdmin).length <= 1) {
+      return res.status(409).json({ success: false, error: "Can't delete the last admin in this app." })
+    }
+    try {
+      await prisma.user.delete({ where: { id: user.id } })
+    } catch (err) {
+      if (err.code === 'P2003' || err.code === 'P2014') {
+        return res.status(409).json({ success: false, error: 'This user has records in this app, so they can\'t be deleted. Reset their password instead.' })
+      }
+      throw err
+    }
+    console.log(`[admin-hub] user deleted: ${user.username || user.email} via Towne Control`)
+    res.json({ success: true, data: { username: user.username || user.email } })
+  } catch (err) {
+    console.error('Admin hub delete error:', err)
+    res.status(500).json({ success: false, error: 'Internal server error.' })
+  }
+})
+
 module.exports = router
