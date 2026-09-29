@@ -92,4 +92,32 @@ router.delete('/users/:id', async (req, res) => {
   }
 })
 
+// GET /backup — every table in this app's database as gzipped JSON:
+// { createdAt, tables: { name: [rows...] } }. Includes password hashes and customer data,
+// so it only ever goes to Towne Control (root login) and never to a browser directly.
+router.get('/backup', async (req, res) => {
+  try {
+    const tables = (await prisma.$queryRawUnsafe(
+      `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name`
+    )).map(r => r.table_name)
+    const zlib = require('zlib')
+    const gz = zlib.createGzip()
+    res.setHeader('Content-Type', 'application/gzip')
+    gz.pipe(res)
+    // BigInt (int8 / counts) can't go through JSON.stringify — send as strings
+    const json = v => JSON.stringify(v, (k, x) => (typeof x === 'bigint' ? x.toString() : x))
+    gz.write(`{"createdAt":${json(new Date())},"tables":{`)
+    for (let i = 0; i < tables.length; i++) {
+      const rows = await prisma.$queryRawUnsafe(`SELECT * FROM "${tables[i].replace(/"/g, '""')}"`)
+      gz.write(`${i ? ',' : ''}${json(tables[i])}:${json(rows)}`)
+    }
+    gz.end('}}')
+    console.log(`[admin-hub] backup: ${tables.length} tables via Towne Control`)
+  } catch (err) {
+    console.error('Admin hub backup error:', err)
+    if (!res.headersSent) res.status(500).json({ success: false, error: 'Backup failed.' })
+    else res.destroy(err)
+  }
+})
+
 module.exports = router
