@@ -178,6 +178,75 @@ function removalRefusal(users, user) {
   return null
 }
 
+// GET /storage — read-only usage report for Towne Control's Storage panel:
+// database size, the uploads bucket (if this app has one), and Cloudinary plan usage
+// (if this app has CLOUDINARY_URL). Each part fails independently.
+function cloudinaryCreds() {
+  const u = process.env.CLOUDINARY_URL
+  const m = u && u.match(/^cloudinary:\/\/([^:]+):([^@]+)@([^/?#]+)/)
+  if (m) return { key: m[1], secret: m[2], cloud: m[3] }
+  if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
+    return { key: process.env.CLOUDINARY_API_KEY, secret: process.env.CLOUDINARY_API_SECRET, cloud: process.env.CLOUDINARY_CLOUD_NAME }
+  }
+  return null
+}
+
+router.get('/storage', async (req, res) => {
+  const out = {}
+  const tasks = []
+
+  tasks.push((async () => {
+    try {
+      const r = await prisma.$queryRawUnsafe('SELECT pg_database_size(current_database())::bigint AS bytes')
+      out.database = { bytes: Number(r[0].bytes) }
+    } catch (err) { out.database = { error: err.message } }
+  })())
+
+  if (process.env.UPLOADS_S3_BUCKET) {
+    tasks.push((async () => {
+      try {
+        const S3 = require('@aws-sdk/client-s3')
+        const s3 = new S3.S3Client({
+          endpoint: process.env.UPLOADS_S3_ENDPOINT, region: process.env.UPLOADS_S3_REGION || 'auto',
+          credentials: { accessKeyId: process.env.UPLOADS_S3_ACCESS_KEY_ID, secretAccessKey: process.env.UPLOADS_S3_SECRET_ACCESS_KEY },
+        })
+        let token, objects = 0, bytes = 0
+        do {
+          const r = await s3.send(new S3.ListObjectsV2Command({ Bucket: process.env.UPLOADS_S3_BUCKET, ContinuationToken: token }))
+          for (const o of r.Contents || []) { objects++; bytes += o.Size || 0 }
+          token = r.IsTruncated ? r.NextContinuationToken : undefined
+        } while (token)
+        out.bucket = { name: process.env.UPLOADS_S3_BUCKET, objects, bytes }
+      } catch (err) { out.bucket = { error: err.message } }
+    })())
+  }
+
+  const cl = cloudinaryCreds()
+  if (cl) {
+    tasks.push((async () => {
+      try {
+        const r = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(cl.cloud)}/usage`, {
+          headers: { Authorization: 'Basic ' + Buffer.from(`${cl.key}:${cl.secret}`).toString('base64') },
+          signal: AbortSignal.timeout(6000),
+        })
+        const u = await r.json()
+        if (!r.ok) throw new Error((u.error && u.error.message) || `Cloudinary ${r.status}`)
+        out.cloudinary = {
+          cloud: cl.cloud, plan: u.plan, lastUpdated: u.last_updated,
+          credits: u.credits || null,
+          storageBytes: u.storage ? u.storage.usage : null,
+          bandwidthBytes: u.bandwidth ? u.bandwidth.usage : null,
+          transformations: u.transformations ? u.transformations.usage : null,
+          objects: u.objects ? u.objects.usage : null,
+        }
+      } catch (err) { out.cloudinary = { cloud: cl.cloud, error: err.message } }
+    })())
+  }
+
+  await Promise.all(tasks)
+  res.json({ success: true, data: out })
+})
+
 // GET /backup — every table in this app's database as gzipped JSON:
 // { createdAt, tables: { name: [rows...] } }. Includes password hashes and customer data,
 // so it only ever goes to Towne Control (root login) and never to a browser directly.
