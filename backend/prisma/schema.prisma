@@ -166,12 +166,32 @@ model Part {
   hasCore      Boolean      @default(false)
   receivedAt   DateTime?
   price        Decimal?     @db.Decimal(10, 2)
-  notes        String?
+  notes        String?      // latest follow-up note (full history in PartEvent)
+  // Chase status while the part isn't here: NEED_TO_ORDER | ORDERED | BACKORDERED | PROBLEM | NOT_NEEDED.
+  // NOT_NEEDED counts as done for the RO without being "received".
+  chaseStatus  String       @default("ORDERED")
+  qtyReceived  Int          @default(0) // partial deliveries; isReceived = all qty here
+  receivedBy   String?
   photos       PartPhoto[]
+  events       PartEvent[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
   @@map("parts")
+}
+
+// Per-part timeline: ordered, ETA changes, status changes, follow-up notes, check-ins
+model PartEvent {
+  id        Int      @id @default(autoincrement())
+  partId    Int
+  part      Part     @relation(fields: [partId], references: [id], onDelete: Cascade)
+  type      String   // ADDED | ORDERED | ETA | STATUS | NOTE | RECEIVED | PARTIAL | UNRECEIVED
+  message   String
+  username  String?
+  createdAt DateTime @default(now())
+
+  @@index([partId])
+  @@map("part_events")
 }
 
 enum FinishStatus {

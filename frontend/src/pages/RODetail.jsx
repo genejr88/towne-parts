@@ -36,6 +36,8 @@ import Modal from '@/components/ui/Modal'
 import Spinner from '@/components/ui/Spinner'
 import InvoiceScanner from '@/components/ui/InvoiceScanner'
 import CustomerInsuranceFields from '@/components/CustomerInsuranceFields'
+import PartFollowUp from '@/components/PartFollowUp'
+import { chaseStatus, urgency, TONE, partialLabel, fmtDay, daysOut } from '@/lib/chase'
 
 // The standalone 360-spin capture app — separate deploy, linked by RO # only (see towne-spin repo)
 const SPIN_APP_URL = import.meta.env.VITE_SPIN_APP_URL || 'https://spin.towneapps.com'
@@ -438,9 +440,10 @@ function AuthImage({ photoId, filename }) {
 }
 
 // ── Photo review + finish tag picker ─────────────────────────────────────────
-function PhotoReviewModal({ review, onConfirm, onRetake, onClose, isPending, initialHasCore }) {
+function PhotoReviewModal({ review, onConfirm, onRetake, onClose, isPending, initialHasCore, remaining = 1 }) {
   const [finish, setFinish] = useState(review.finish || 'NO_FINISH_NEEDED')
   const [hasCore, setHasCore] = useState(!!initialHasCore)
+  const [arrived, setArrived] = useState(remaining) // multi-qty parts: how many came in this time
 
   const activeColor = {
     blue:   'bg-blue-600 text-white shadow-md',
@@ -514,6 +517,17 @@ function PhotoReviewModal({ review, onConfirm, onRetake, onClose, isPending, ini
           </div>
         </button>
 
+        {remaining > 1 && (
+          <div className="flex items-center justify-between gap-2 px-3.5 py-2 rounded-xl border border-gray-700/50 bg-gray-900/60">
+            <span className="text-xs font-bold uppercase tracking-wider text-gray-400">How many arrived?</span>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setArrived((n) => Math.max(1, n - 1))} className="w-8 h-8 rounded-lg bg-gray-800 text-gray-200 text-lg leading-none">−</button>
+              <span className="w-14 text-center text-sm font-semibold text-gray-100">{arrived} of {remaining}</span>
+              <button onClick={() => setArrived((n) => Math.min(remaining, n + 1))} className="w-8 h-8 rounded-lg bg-gray-800 text-gray-200 text-lg leading-none">+</button>
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-3">
           <button
             onClick={onRetake}
@@ -523,7 +537,7 @@ function PhotoReviewModal({ review, onConfirm, onRetake, onClose, isPending, ini
             Retake
           </button>
           <button
-            onClick={() => onConfirm({ finish, hasCore })}
+            onClick={() => onConfirm({ finish, hasCore, arrived })}
             disabled={isPending}
             className="flex-1 py-3 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
           >
@@ -552,7 +566,11 @@ function PartRow({ part, roId, inventoryMatch }) {
 
   const updateMutation = useMutation({
     mutationFn: (data) => partsApi.update(part.id, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ro', roId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ro', roId] })
+      queryClient.invalidateQueries({ queryKey: ['still-out'] })
+      queryClient.invalidateQueries({ queryKey: ['part-events', part.id] })
+    },
     onError: (err) => toast.error(err.message),
   })
 
@@ -565,13 +583,21 @@ function PartRow({ part, roId, inventoryMatch }) {
     onError: (err) => toast.error(err.message),
   })
 
+  const [followOpen, setFollowOpen] = useState(false)
+  const remaining = Math.max(1, (part.qty || 1) - (part.qtyReceived || 0))
+
   const photoMutation = useMutation({
-    mutationFn: async ({ file, finish, hasCore }) => {
+    mutationFn: async ({ file, finish, hasCore, arrived }) => {
       await partsApi.uploadPhoto(part.id, file)
-      await partsApi.update(part.id, { isReceived: true, finishStatus: finish, hasCore: !!hasCore })
+      const change = { finishStatus: finish, hasCore: !!hasCore }
+      // Partial delivery: count what came in; the server marks it received once all are here
+      if (!part.isReceived) change.qtyReceived = Math.min(part.qty || 1, (part.qtyReceived || 0) + (arrived || remaining))
+      await partsApi.update(part.id, change)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ro', roId] })
+      queryClient.invalidateQueries({ queryKey: ['still-out'] })
+      queryClient.invalidateQueries({ queryKey: ['part-events', part.id] })
       toast.success('Photo saved')
       setReview(null)
     },
@@ -586,6 +612,7 @@ function PartRow({ part, roId, inventoryMatch }) {
     mutationFn: (hasCore) => partsApi.update(part.id, { isReceived: true, hasCore: !!hasCore }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ro', roId] })
+      queryClient.invalidateQueries({ queryKey: ['still-out'] })
       setCoreConfirmOpen(false)
     },
     onError: (err) => toast.error(err.message),
@@ -710,10 +737,42 @@ function PartRow({ part, roId, inventoryMatch }) {
               IN STOCK
             </button>
           )}
+          {/* Chase strip — only while the part isn't here */}
+          {!part.isReceived && (() => {
+            const st = chaseStatus(part.chaseStatus)
+            const u = part.chaseStatus === 'NOT_NEEDED' ? null : urgency(part)
+            const partial = partialLabel(part)
+            return (
+              <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                <button
+                  onClick={() => setFollowOpen((o) => !o)}
+                  className={`px-2 py-0.5 rounded-md border text-[11px] font-semibold ${st.chip}`}
+                  title="Change status, ETA or add a follow-up note"
+                >
+                  {st.label}
+                </button>
+                {u && <span className={`px-2 py-0.5 rounded-md border text-[11px] font-semibold ${TONE[u.tone]}`}>{u.label}</span>}
+                {partial && <span className="px-2 py-0.5 rounded-md border text-[11px] font-semibold bg-emerald-500/15 text-emerald-300 border-emerald-500/40">{partial}</span>}
+                {part.dateOrdered && <span className="text-[11px] text-gray-500">ordered {fmtDay(part.dateOrdered)} · {daysOut(part)}d</span>}
+                <button
+                  onClick={() => setFollowOpen((o) => !o)}
+                  className="ml-auto text-[11px] font-semibold text-blue-400 hover:text-blue-300"
+                >
+                  {followOpen ? 'Close' : 'Follow up'}
+                </button>
+              </div>
+            )
+          })()}
+          {followOpen && !part.isReceived && (
+            <div className="mt-3 p-3 rounded-lg bg-gray-900/70 border border-gray-700/50">
+              <PartFollowUp part={part} roId={roId} />
+            </div>
+          )}
+
           <div className="flex items-center gap-3 mt-2 flex-wrap">
-            {part.etaDate && (
+            {part.isReceived && part.receivedAt && (
               <span className="text-xs text-gray-500 flex items-center gap-1">
-                <Clock size={11} /> ETA {formatDate(part.etaDate)}
+                <Clock size={11} /> Here {formatDate(part.receivedAt)}{part.receivedBy ? ` · ${part.receivedBy}` : ''}
               </span>
             )}
             {part.price != null && (
@@ -825,6 +884,7 @@ function PartRow({ part, roId, inventoryMatch }) {
             onClose={handleClose}
             isPending={photoMutation.isPending}
             initialHasCore={part.hasCore}
+            remaining={part.isReceived ? 1 : remaining}
           />
         )}
       </AnimatePresence>
@@ -880,6 +940,7 @@ export default function RODetail() {
   const queryClient = useQueryClient()
   const [editOpen, setEditOpen] = useState(false)
   const [addPartOpen, setAddPartOpen] = useState(false)
+  const [hereOpen, setHereOpen] = useState(null) // null = auto (open only when nothing is still out)
   const [addSRCOpen, setAddSRCOpen] = useState(false)
 
   const { data: ro, isLoading, error } = useQuery({
@@ -1342,13 +1403,48 @@ export default function RODetail() {
                 {ro.noPartsRequired ? 'No Parts Required ✓ (tap to undo)' : 'Mark as No Parts Required'}
               </button>
             </div>
-          ) : (
-            <div className="space-y-0">
-              {parts.map((p) => (
-                <PartRow key={p.id} part={p} roId={id} inventoryMatch={findInventoryMatch(p)} />
-              ))}
-            </div>
-          )}
+          ) : (() => {
+            // Check-in view: what's still out first (most urgent on top), what's here folded away
+            const done = (p) => p.isReceived || p.chaseStatus === 'NOT_NEEDED'
+            const out = parts.filter((p) => !done(p)).sort((a, b) => urgency(a).rank - urgency(b).rank)
+            const here = parts.filter(done)
+            const hereCount = parts.filter((p) => p.isReceived).length
+            const counted = parts.filter((p) => p.chaseStatus !== 'NOT_NEEDED' || p.isReceived).length
+            const pct = counted ? Math.round((hereCount / counted) * 100) : 100
+            const showHere = hereOpen ?? out.length === 0
+            return (
+              <div>
+                <div className="mb-3">
+                  <div className="flex items-baseline justify-between mb-1.5">
+                    <span className="text-sm font-semibold text-gray-100">
+                      {out.length === 0 ? `All ${hereCount} here` : `${hereCount} of ${counted} here`}
+                    </span>
+                    {out.length > 0 && <span className="text-xs text-amber-300">{out.length} still out</span>}
+                  </div>
+                  <div className="h-1.5 rounded-full bg-gray-800 overflow-hidden">
+                    <div className="h-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+                {out.map((p) => (
+                  <PartRow key={p.id} part={p} roId={id} inventoryMatch={findInventoryMatch(p)} />
+                ))}
+                {here.length > 0 && (
+                  <>
+                    <button
+                      onClick={() => setHereOpen(!showHere)}
+                      className="w-full flex items-center gap-1.5 py-2 text-xs font-semibold text-gray-500 hover:text-gray-300"
+                    >
+                      {showHere ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      {here.length} {out.length ? 'here or not needed' : 'parts'} {showHere ? '' : '(tap to show)'}
+                    </button>
+                    {showHere && here.map((p) => (
+                      <PartRow key={p.id} part={p} roId={id} inventoryMatch={findInventoryMatch(p)} />
+                    ))}
+                  </>
+                )}
+              </div>
+            )
+          })()}
         </Section>
 
         {/* Parts Lists section */}

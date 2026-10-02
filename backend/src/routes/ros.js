@@ -81,7 +81,7 @@ router.get('/', requireAuth, async (req, res) => {
       where,
       include: {
         vendor: true,
-        parts: { select: { id: true, isReceived: true } },
+        parts: { where: { chaseStatus: { not: 'NOT_NEEDED' } }, select: { id: true, isReceived: true } },
         _count: { select: { parts: true, invoices: true, srcEntries: true } },
       },
       orderBy: { updatedAt: 'desc' },

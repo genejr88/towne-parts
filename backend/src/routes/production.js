@@ -87,6 +87,7 @@ router.get('/', requireAuth, async (req, res) => {
       include: {
         vendor: true,
         parts: {
+          where: { chaseStatus: { not: 'NOT_NEEDED' } },
           select: {
             id: true, isReceived: true, finishStatus: true, description: true, partNumber: true,
             qty: true, hasCore: true,
@@ -270,7 +271,7 @@ router.post('/:roId', requireAuth, async (req, res) => {
       data: updateData,
       include: {
         vendor: true,
-        parts: { select: { id: true, isReceived: true, finishStatus: true } },
+        parts: { where: { chaseStatus: { not: 'NOT_NEEDED' } }, select: { id: true, isReceived: true, finishStatus: true } },
       },
     })
 
@@ -486,7 +487,7 @@ router.post('/prestorage/:roId', requireAuth, async (req, res) => {
       data: updateData,
       include: {
         vendor: true,
-        parts: { select: { id: true, isReceived: true, finishStatus: true } },
+        parts: { where: { chaseStatus: { not: 'NOT_NEEDED' } }, select: { id: true, isReceived: true, finishStatus: true } },
         supplements: { select: { id: true, number: true, status: true } },
       },
     })

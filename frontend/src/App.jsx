@@ -19,6 +19,7 @@ import SecureVault from '@/pages/SecureVault'
 import RecentActivity from '@/pages/RecentActivity'
 import Help from '@/pages/Help'
 import Supplements from '@/pages/Supplements'
+import StillOut from '@/pages/StillOut'
 import CarrierHistory from '@/pages/CarrierHistory'
 import HitchQuotes from '@/pages/HitchQuotes'
 import StatusLog from '@/pages/StatusLog'
@@ -182,6 +183,9 @@ export default function App() {
         } />
         <Route path="/recent" element={
           <ProtectedRoute><AppLayout><RecentActivity /></AppLayout></ProtectedRoute>
+        } />
+        <Route path="/still-out" element={
+          <ProtectedRoute><AppLayout><StillOut /></AppLayout></ProtectedRoute>
         } />
         <Route path="/supplements" element={
           <ProtectedRoute><AppLayout><Supplements /></AppLayout></ProtectedRoute>

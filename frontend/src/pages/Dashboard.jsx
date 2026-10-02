@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { PackageCheck, Package, RotateCcw, FileWarning, ChevronRight, History, Palette } from 'lucide-react'
+import { PackageCheck, PackageSearch, Package, RotateCcw, FileWarning, ChevronRight, History, Palette } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { rosApi, srcApi, partsApi } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import Spinner from '@/components/ui/Spinner'
+import { urgency } from '@/lib/chase'
 
 function StatCard({ icon: Icon, label, value, sub, color, onClick, delay = 0 }) {
   const colorMap = {
@@ -58,6 +59,11 @@ export default function Dashboard() {
     queryKey: ['parts', 'ready-for-paint', 7],
     queryFn: () => partsApi.readyForPaint(7),
     staleTime: 60_000,
+  })
+
+  const { data: stillOut } = useQuery({
+    queryKey: ['still-out'],
+    queryFn: () => partsApi.stillOut(),
   })
 
   const { data: missingPartsList } = useQuery({
@@ -138,6 +144,34 @@ export default function Dashboard() {
           />
         </div>
       )}
+
+      {/* Still Out — parts not here yet across open ROs */}
+      {stillOut && stillOut.length > 0 && (() => {
+        const late = stillOut.filter((p) => urgency(p).key === 'late').length
+        const toOrder = stillOut.filter((p) => p.chaseStatus === 'NEED_TO_ORDER').length
+        return (
+          <motion.button
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2, duration: 0.3 }}
+            onClick={() => navigate('/still-out')}
+            className={`w-full mt-4 flex items-center gap-3 border rounded-2xl px-4 py-3.5 active:scale-[0.98] transition-transform group ${
+              late ? 'bg-red-500/10 border-red-500/30' : 'bg-amber-500/10 border-amber-500/25'
+            }`}
+          >
+            <div className={`p-2.5 rounded-xl border ${late ? 'bg-red-500/15 border-red-500/25' : 'bg-amber-500/15 border-amber-500/20'}`}>
+              <PackageSearch size={18} className={late ? 'text-red-400' : 'text-amber-400'} />
+            </div>
+            <div className="flex-1 text-left min-w-0">
+              <p className="text-sm font-bold text-gray-100">{stillOut.length} part{stillOut.length === 1 ? '' : 's'} still out</p>
+              <p className="text-xs text-gray-500 mt-0.5 truncate">
+                {[late && `${late} late`, toOrder && `${toOrder} to order`].filter(Boolean).join(' · ') || 'Nothing late'}
+              </p>
+            </div>
+            <ChevronRight size={16} className="text-gray-500 group-active:translate-x-0.5 transition-transform shrink-0" />
+          </motion.button>
+        )
+      })()}
 
       {/* Recent Parts Activity quick link */}
       <motion.button

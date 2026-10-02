@@ -78,6 +78,10 @@ export const partsApi = {
   },
   deletePhoto: (photoId) => unwrap(api.delete(`/parts/photos/${photoId}`)),
   photoUrl: (storedPath) => `${API_URL}/uploads/parts/${storedPath}`,
+  // Parts chase
+  stillOut: () => unwrap(api.get('/parts/still-out')),
+  events: (id) => unwrap(api.get(`/parts/${id}/events`)),
+  followUp: (id, data) => unwrap(api.post(`/parts/${id}/events`, data)), // { note?, etaDate?, chaseStatus? }
 }
 
 // ── Production Board ──────────────────────────────────────────────────────────

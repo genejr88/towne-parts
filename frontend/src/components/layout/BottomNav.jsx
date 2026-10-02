@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { PackageCheck, Layers, RotateCcw, Settings, Package, FilePlus, Link2 } from 'lucide-react'
+import { PackageCheck, PackageSearch, Layers, RotateCcw, Settings, Package, FilePlus, Link2 } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 
@@ -20,6 +20,7 @@ function BmwIcon({ size = 22 }) {
 
 const navItems = [
   { to: '/ros',         icon: PackageCheck, label: 'Parts' },
+  { to: '/still-out',   icon: PackageSearch, label: 'Out' },
   { to: '/board',       icon: Layers,       label: 'Board' },
   { to: '/supplements', icon: FilePlus,     label: 'Supps' },
   { to: '/src',         icon: RotateCcw,    label: 'S.R.C.' },

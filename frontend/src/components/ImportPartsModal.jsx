@@ -53,6 +53,7 @@ export default function ImportPartsModal({ open, onClose }) {
         insuranceCompany: data.insuranceCompany || '',
         claimNumber: data.claimNumber || '',
         isBmw: data.vehicleMake === 'BMW',
+        alreadyOrdered: true,
         parts: data.parts.map((p, i) => ({ _key: i, ...p })),
       })
       setStep('review')
@@ -82,6 +83,7 @@ export default function ImportPartsModal({ open, onClose }) {
         insuranceCompany: data.insuranceCompany || '',
         claimNumber: data.claimNumber || '',
         isBmw: data.vehicleMake === 'BMW',
+        alreadyOrdered: true,
         parts: data.parts.map((p, i) => ({ _key: i, ...p })),
       })
       setStep('review')
@@ -176,6 +178,7 @@ export default function ImportPartsModal({ open, onClose }) {
           partNumber: part.partNumber || undefined,
           qty: parseInt(part.qty) || 1,
           price: part.price != null ? part.price : undefined,
+          alreadyOrdered: form.alreadyOrdered !== false,
         })
         partsAdded++
       }
@@ -422,6 +425,31 @@ export default function ImportPartsModal({ open, onClose }) {
                 <div className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${
                   form.isBmw ? 'translate-x-[18px]' : 'translate-x-0'
                 }`} />
+              </div>
+            </button>
+            {/* Already ordered? — starts the Still Out clock (order date = today) */}
+            <button
+              type="button"
+              onClick={() => updateField('alreadyOrdered', form.alreadyOrdered === false)}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
+                form.alreadyOrdered !== false
+                  ? 'bg-emerald-600/15 border-emerald-500/50'
+                  : 'bg-violet-600/10 border-violet-500/40'
+              }`}
+            >
+              <div className="text-left">
+                <p className={`text-sm font-semibold ${form.alreadyOrdered !== false ? 'text-emerald-200' : 'text-violet-200'}`}>
+                  {form.alreadyOrdered !== false ? 'Already ordered' : 'Not ordered yet'}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {form.alreadyOrdered !== false ? 'Parts start as Ordered, dated today' : 'Parts start as Need to order'}
+                </p>
+              </div>
+              <div
+                className={`rounded-full transition-all relative flex items-center px-0.5 ${form.alreadyOrdered !== false ? 'bg-emerald-500' : 'bg-gray-600'}`}
+                style={{ width: 40, height: 22 }}
+              >
+                <div className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${form.alreadyOrdered !== false ? 'translate-x-[18px]' : 'translate-x-0'}`} />
               </div>
             </button>
             {/* Customer / Insurance */}
