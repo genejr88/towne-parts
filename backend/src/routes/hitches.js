@@ -9,6 +9,31 @@ router.use(requireAuth)
 const STEALTH_CATALOG_URL = 'https://stealthhitches.com/collections/hitches/products.json?limit=250'
 const STEALTH_PRODUCT_BASE_URL = 'https://stealthhitches.com/products/'
 
+// Stealth's store is on Shopify, which intermittently answers 429 (Too Many Requests) to
+// Railway's shared server addresses even when we haven't called it in weeks. Look like a
+// normal browser and retry 429 / 5xx a few times, waiting as long as Shopify asks.
+const STEALTH_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36',
+  Accept: 'application/json,text/html;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.9',
+}
+async function fetchStealthCatalog() {
+  const waits = [2000, 5000, 10000] // ms before retries 1–3
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return (await axios.get(STEALTH_CATALOG_URL, { timeout: 15000, headers: STEALTH_HEADERS })).data
+    } catch (err) {
+      const status = err.response?.status
+      const retryable = status === 429 || (status >= 500 && status < 600) || err.code === 'ECONNRESET' || err.code === 'ECONNABORTED'
+      if (!retryable || attempt >= waits.length) throw err
+      const retryAfter = parseInt(err.response?.headers?.['retry-after'], 10)
+      const wait = Math.min(Number.isFinite(retryAfter) ? retryAfter * 1000 : waits[attempt], 15000)
+      console.warn(`[hitches] Stealth catalog ${status || err.code} — retry ${attempt + 1} in ${wait}ms`)
+      await new Promise((r) => setTimeout(r, wait))
+    }
+  }
+}
+
 const TIERS = {
   RACK_ONLY:        { label: 'Rack Only',                        fee: 800 },
   RACK_AND_TOW:      { label: 'Rack and Tow',                     fee: 1000 },
@@ -80,7 +105,7 @@ router.get('/kits/status', async (req, res) => {
 // ── POST /api/hitches/kits/refresh  — pull the latest catalog from Stealth ───
 router.post('/kits/refresh', async (req, res) => {
   try {
-    const { data } = await axios.get(STEALTH_CATALOG_URL, { timeout: 15000 })
+    const data = await fetchStealthCatalog()
     const products = data.products || []
 
     let upserted = 0
@@ -115,7 +140,13 @@ router.post('/kits/refresh', async (req, res) => {
     res.json({ success: true, data: { upserted, total: products.length } })
   } catch (err) {
     console.error('Hitch catalog refresh error:', err)
-    res.status(502).json({ success: false, error: 'Failed to fetch catalog from Stealth Hitches. ' + err.message })
+    const status = err.response?.status
+    const error = status === 429
+      ? 'Stealth Hitches is temporarily limiting requests from our server. Try Refresh again in a few minutes.'
+      : status ? `Stealth Hitches returned an error (${status}). Try again in a few minutes.`
+      : err.code ? `Couldn't reach Stealth Hitches (${err.code}). Try again in a few minutes.`
+      : 'Catalog refresh failed: ' + err.message
+    res.status(502).json({ success: false, error })
   }
 })
 
