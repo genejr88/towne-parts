@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, X, Hash, Car } from 'lucide-react'
@@ -121,19 +122,25 @@ function EntryModal({ entry, programCfg, pin, onClose, onSaved }) {
 
 export default function AssignedNumbers({ pin }) {
   const queryClient = useQueryClient()
-  const [programKey, setProgramKey] = useState(() => localStorage.getItem('numbers_program') || 'BMW')
-  const programCfg = PROGRAMS[programKey] || PROGRAMS.BMW
+  // Which program is shown comes from the link (?program=GENESIS_FAIRFIELD), not from per-browser memory.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const programKey = PROGRAMS[searchParams.get('program')] ? searchParams.get('program') : 'BMW'
+  const programCfg = PROGRAMS[programKey]
   const changeProgram = (key) => {
-    setProgramKey(key)
-    localStorage.setItem('numbers_program', key)
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (key === 'BMW') next.delete('program'); else next.set('program', key)
+      return next
+    }, { replace: true })
   }
+  useEffect(() => { localStorage.removeItem('numbers_program') }, [])
 
   const [editEntry, setEditEntry] = useState(null) // null = closed, obj = editing
   const [deleteId, setDeleteId]   = useState(null)
   const [generating, setGenerating] = useState(false)
   const [genError, setGenError]     = useState('')
 
-  const { data: records = [], isLoading } = useQuery({
+  const { data: records = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['assigned-numbers', programKey],
     queryFn: () => numbersApi.list(pin, programKey),
     enabled: !!pin,
@@ -193,7 +200,14 @@ export default function AssignedNumbers({ pin }) {
       </button>
       {genError && <p className="text-xs text-red-400 mb-3 text-center">{genError}</p>}
 
-      <p className="text-[11px] text-gray-600 mb-4 text-center">{records.length} {programCfg.label} number{records.length === 1 ? '' : 's'} issued</p>
+      {isError && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3">
+          <p className="text-xs text-red-300">Couldn't load the numbers. What's below may be incomplete. Your data isn't gone.</p>
+          <button onClick={() => refetch()} className="flex-shrink-0 text-xs font-semibold text-red-200 underline">Try again</button>
+        </div>
+      )}
+
+      <p className="text-[11px] text-gray-600 mb-4 text-center">{isError ? "Couldn't load numbers" : `${records.length} ${programCfg.label} number${records.length === 1 ? '' : 's'} issued`}</p>
 
       {/* List */}
       {isLoading ? (

@@ -1,4 +1,5 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -479,7 +480,16 @@ function PrivateFileCard({ file, pin, onDelete }) {
 }
 
 // ── PIN entry screen ───────────────────────────────────────────────────────────
-function PinEntryScreen({ onUnlock }) {
+function LoadError({ what, onRetry }) {
+  return (
+    <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3">
+      <p className="text-xs text-red-300">Couldn't load {what}. What's below may be incomplete. Your data isn't gone.</p>
+      <button onClick={onRetry} className="flex-shrink-0 text-xs font-semibold text-red-200 underline">Try again</button>
+    </div>
+  )
+}
+
+function PinEntryScreen({ onUnlock, notice }) {
   const [value,   setValue]   = useState('')
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
@@ -521,6 +531,7 @@ function PinEntryScreen({ onUnlock }) {
           </svg>
           <h1 className="text-xl font-black text-gray-100">BMW Tracker</h1>
           <p className="text-sm text-gray-500">Enter PIN to unlock</p>
+          {notice && <p className="text-xs text-amber-400 text-center max-w-[16rem]">{notice}</p>}
         </div>
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <div className="relative">
@@ -557,13 +568,35 @@ export default function SecureVault() {
   const queryClient = useQueryClient()
   const [pin, setPin] = useState(() => localStorage.getItem('private_pin'))
 
-  const [brandKey, setBrandKey]     = useState(() => localStorage.getItem('vault_brand') || 'BMW')
-  const brandCfg = BRANDS[brandKey] || BRANDS.BMW
+  const [notice, setNotice] = useState('')
+
+  // Which book is open comes from the link (?book=HYUNDAI_GENESIS), never from what this browser last used,
+  // so everyone who opens /vault lands on the same thing. Bookmark the Genesis link if you want it.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const brandKey = BRANDS[searchParams.get('book')] ? searchParams.get('book') : 'BMW'
+  const brandCfg = BRANDS[brandKey]
   const changeBrand = (key) => {
-    setBrandKey(key)
-    localStorage.setItem('vault_brand', key)
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (key === 'BMW') next.delete('book'); else next.set('book', key)
+      return next
+    }, { replace: true })
     setCompareA(null); setCompareB(null) // these summaries belong to the previous brand
   }
+
+  // Drop the old per-browser memory of the last book.
+  useEffect(() => { localStorage.removeItem('vault_brand') }, [])
+
+  // The server rejected this browser's cached PIN: lock and say why (api.js fires this event).
+  useEffect(() => {
+    const onRejected = () => {
+      ['bmw-payments', 'bmw-summary', 'private-files', 'assigned-numbers', 'assigned-numbers-preview'].forEach((k) => queryClient.removeQueries({ queryKey: [k] }))
+      setPin(null)
+      setNotice('The vault PIN has changed since you last unlocked. Enter the current PIN.')
+    }
+    window.addEventListener('vault-pin-rejected', onRejected)
+    return () => window.removeEventListener('vault-pin-rejected', onRejected)
+  }, [queryClient])
 
   const [activeTab, setActiveTab]   = useState('tracker')
   const [monthIdx, setMonthIdx]     = useState(() => MONTHS.length - 1) // default to latest
@@ -581,21 +614,21 @@ export default function SecureVault() {
   const { month, year } = MONTHS[monthIdx] || {}
 
   // Tracker data
-  const { data: payments = [], isLoading: loadingPayments } = useQuery({
+  const { data: payments = [], isLoading: loadingPayments, isError: paymentsError, refetch: refetchPayments } = useQuery({
     queryKey: ['bmw-payments', brandKey, month, year],
     queryFn: () => bmwApi.list(pin, month, year, brandKey),
     enabled: !!pin && activeTab === 'tracker',
   })
 
   // Summary for compare tab
-  const { data: summary = [], isLoading: loadingSummary } = useQuery({
+  const { data: summary = [], isLoading: loadingSummary, isError: summaryError, refetch: refetchSummary } = useQuery({
     queryKey: ['bmw-summary', brandKey],
     queryFn: () => bmwApi.summary(pin, brandKey),
     enabled: !!pin,
   })
 
   // Files
-  const { data: files = [], isLoading: loadingFiles } = useQuery({
+  const { data: files = [], isLoading: loadingFiles, isError: filesError, refetch: refetchFiles } = useQuery({
     queryKey: ['private-files'],
     queryFn: () => privateApi.listFiles(pin),
     enabled: !!pin && activeTab === 'files',
@@ -633,6 +666,7 @@ export default function SecureVault() {
 
   const handleLock = () => {
     localStorage.removeItem('private_pin')
+    ['bmw-payments', 'bmw-summary', 'private-files', 'assigned-numbers', 'assigned-numbers-preview'].forEach((k) => queryClient.removeQueries({ queryKey: [k] }))
     setPin(null)
   }
 
@@ -642,7 +676,7 @@ export default function SecureVault() {
   const outstanding = invoiced - received
   const pctReceived = invoiced > 0 ? Math.round((received / invoiced) * 100) : 0
 
-  if (!pin) return <PinEntryScreen onUnlock={setPin} />
+  if (!pin) return <PinEntryScreen onUnlock={(p) => { setNotice(''); setPin(p) }} notice={notice} />
 
   return (
     <div className="px-4 py-5 pb-24 max-w-3xl mx-auto">
@@ -702,7 +736,7 @@ export default function SecureVault() {
             </button>
             <div className="text-center">
               <p className="text-lg font-black text-gray-100">{MONTH_FULL[month-1]} {year}</p>
-              <p className="text-xs text-gray-600">{payments.length} entr{payments.length === 1 ? 'y' : 'ies'}</p>
+              <p className="text-xs text-gray-600">{paymentsError ? "Couldn't load" : `${payments.length} entr${payments.length === 1 ? 'y' : 'ies'}`}</p>
             </div>
             <button
               onClick={() => setMonthIdx(i => Math.min(MONTHS.length - 1, i + 1))}
@@ -713,19 +747,23 @@ export default function SecureVault() {
             </button>
           </div>
 
-          {/* Print button */}
-          <button
-            onClick={() => printMonthly(brandCfg, payments, `${MONTH_FULL[month-1]} ${year}`, invoiced, received, outstanding)}
-            className="w-full flex items-center justify-center gap-2 py-2 mb-4 rounded-xl bg-gray-800/60 border border-gray-700/40 text-gray-400 text-xs font-semibold hover:text-gray-200 hover:bg-gray-700/50 transition-colors"
-          >
-            <Printer size={13} /> Print {MONTH_NAMES[month-1]} {year}
-          </button>
+          {paymentsError && <LoadError what="this month's entries" onRetry={refetchPayments} />}
+
+          {/* Print button (hidden if the month failed to load: never print a falsely empty month) */}
+          {!paymentsError && (
+            <button
+              onClick={() => printMonthly(brandCfg, payments, `${MONTH_FULL[month-1]} ${year}`, invoiced, received, outstanding)}
+              className="w-full flex items-center justify-center gap-2 py-2 mb-4 rounded-xl bg-gray-800/60 border border-gray-700/40 text-gray-400 text-xs font-semibold hover:text-gray-200 hover:bg-gray-700/50 transition-colors"
+            >
+              <Printer size={13} /> Print {MONTH_NAMES[month-1]} {year}
+            </button>
+          )}
 
           {/* Stat cards */}
           <div className="grid grid-cols-3 gap-2.5 mb-5">
-            <Stat label="Invoiced" value={fmt$(invoiced)} sub={`${payments.length} BMW's Closed`} />
-            <Stat label="Received" value={fmt$(received)} sub={`${pctReceived}%`} color="text-emerald-400" />
-            <Stat label="Outstanding" value={fmt$(outstanding)} sub="pending" color={outstanding > 0 ? 'text-amber-400' : 'text-gray-400'} />
+            <Stat label="Invoiced" value={paymentsError ? '—' : fmt$(invoiced)} sub={paymentsError ? '—' : `${payments.length} BMW's Closed`} />
+            <Stat label="Received" value={paymentsError ? '—' : fmt$(received)} sub={paymentsError ? '—' : `${pctReceived}%`} color="text-emerald-400" />
+            <Stat label="Outstanding" value={paymentsError ? '—' : fmt$(outstanding)} sub={paymentsError ? '—' : 'pending'} color={outstanding > 0 && !paymentsError ? 'text-amber-400' : 'text-gray-400'} />
           </div>
 
           {/* Add button */}
@@ -739,7 +777,7 @@ export default function SecureVault() {
           {/* Table */}
           {loadingPayments ? (
             <div className="flex justify-center py-12"><Spinner size="lg" /></div>
-          ) : payments.length === 0 ? (
+          ) : paymentsError ? null : payments.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-12 text-center">
               <div className="w-12 h-12 rounded-2xl bg-gray-800/60 flex items-center justify-center">
                 <DollarSign size={24} className="text-gray-600" />
@@ -834,6 +872,7 @@ export default function SecureVault() {
       {/* ── COMPARE TAB ── */}
       {activeTab === 'compare' && (
         <div>
+          {summaryError && <LoadError what="the monthly summary" onRetry={refetchSummary} />}
           {loadingSummary ? (
             <div className="flex justify-center py-12"><Spinner size="lg" /></div>
           ) : (
@@ -912,6 +951,7 @@ export default function SecureVault() {
       {/* ── FILES TAB ── */}
       {activeTab === 'files' && (
         <div>
+          {filesError && <LoadError what="the files" onRetry={refetchFiles} />}
           {/* Upload area */}
           <div className="mb-5 bg-gray-800/50 border border-gray-700/50 rounded-2xl p-4">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Add File</p>

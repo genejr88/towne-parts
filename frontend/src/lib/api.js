@@ -26,6 +26,13 @@ api.interceptors.response.use(
       localStorage.removeItem('parts_token')
       window.location.href = '/login'
     }
+    // The vault PIN is one shared secret. If the server rejects a PIN this browser cached (e.g. it was
+    // changed), forget it and tell the vault to ask again - a rejected request must never look like an empty tracker.
+    const sentPin = error.config?.headers?.get?.('x-private-pin') ?? error.config?.headers?.['x-private-pin']
+    if (error.response?.status === 403 && sentPin) {
+      localStorage.removeItem('private_pin')
+      window.dispatchEvent(new Event('vault-pin-rejected'))
+    }
     return Promise.reject(error)
   }
 )
