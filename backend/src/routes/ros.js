@@ -173,6 +173,53 @@ router.get('/:id', requireAuth, async (req, res) => {
 })
 
 // PUT /api/ros/:id
+// Fold RO `source` into RO `target` (used when an RO is renumbered to a number that's taken,
+// e.g. a parts list imported as 6171 that belongs to 6158). Nothing is thrown away:
+//  - every part, parts list / invoice, photo, S.R.C. entry, supplement, task, status update
+//    and activity entry moves to the target;
+//  - the fields filled in on the edit form overwrite the target's; blank fields keep the
+//    target's values; the target keeps its own production stage / board status;
+//  - then the emptied source RO is deleted.
+// All in one transaction, so it either fully happens or not at all.
+async function mergeROInto(source, target, updateData, username) {
+  const { roNumber: _ignored, ...fields } = updateData
+  const overwrite = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== null && v !== undefined && v !== ''))
+  // isBmw is a checkbox: only carry a "yes" across, never switch the target off
+  if (overwrite.isBmw === false) delete overwrite.isBmw
+  const moved = {}
+  await prisma.$transaction(async (tx) => {
+    const by = { where: { roId: source.id }, data: { roId: target.id } }
+    // Supplement numbers are unique per RO — renumber the incoming ones after the target's
+    const supps = await tx.supplement.findMany({ where: { roId: source.id }, orderBy: { number: 'asc' } })
+    if (supps.length) {
+      const max = (await tx.supplement.aggregate({ where: { roId: target.id }, _max: { number: true } }))._max.number || 0
+      for (let i = 0; i < supps.length; i++) await tx.supplement.update({ where: { id: supps[i].id }, data: { roId: target.id, number: max + i + 1 } })
+      moved.supplements = supps.length
+    }
+    moved.parts = (await tx.part.updateMany(by)).count
+    moved.files = (await tx.rOInvoice.updateMany(by)).count
+    moved.photos = (await tx.rOLocationPhoto.updateMany(by)).count
+    moved.src = (await tx.sRCEntry.updateMany(by)).count
+    moved.tasks = (await tx.task.updateMany(by)).count
+    await tx.productionStatusUpdate.updateMany(by)
+    await tx.activityLog.updateMany(by)
+    if (!target.locationPhotoUrl && source.locationPhotoUrl) overwrite.locationPhotoUrl = source.locationPhotoUrl
+    await tx.rO.update({ where: { id: target.id }, data: { ...overwrite, isArchived: false, archivedAt: null } })
+    await tx.rO.delete({ where: { id: source.id } })
+    const summary = Object.entries(moved).filter(([, n]) => n).map(([k, n]) => `${n} ${k}`).join(', ') || 'no attached items'
+    await tx.activityLog.create({
+      data: { roId: target.id, eventType: 'RO_MERGED', message: `RO ${source.roNumber} merged into ${target.roNumber}${username ? ` by ${username}` : ''} (moved ${summary})` },
+    })
+  })
+  // Parts status depends on the combined parts list
+  const parts = await prisma.part.findMany({ where: { roId: target.id }, select: { isReceived: true, chaseStatus: true } })
+  if (parts.length) {
+    const allHere = parts.every((p) => p.isReceived || p.chaseStatus === 'NOT_NEEDED')
+    await prisma.rO.update({ where: { id: target.id }, data: { partsStatus: allHere ? 'ALL_HERE' : 'MISSING' } })
+  }
+  return prisma.rO.findUnique({ where: { id: target.id }, include: RO_DETAIL_INCLUDE })
+}
+
 router.put('/:id', requireAuth, async (req, res) => {
   const id = parseInt(req.params.id)
   const {
@@ -217,12 +264,23 @@ router.put('/:id', requireAuth, async (req, res) => {
       return res.status(404).json({ success: false, error: 'RO not found.' })
     }
 
-    // Check for duplicate roNumber if changing
+    // Changing to a number another RO already has: tell the app which RO that is, so it can
+    // offer to merge. With mergeInto: true, this RO is folded into that one (see below).
+    let mergeTarget = null
     if (roNumber && roNumber !== existing.roNumber) {
-      const dup = await prisma.rO.findUnique({ where: { roNumber } })
-      if (dup) {
-        return res.status(409).json({ success: false, error: 'An RO with that number already exists.' })
+      const dup = await prisma.rO.findUnique({ where: { roNumber }, include: { _count: { select: { parts: true, invoices: true } } } })
+      if (dup && req.body.mergeInto !== true) {
+        return res.status(409).json({
+          success: false,
+          error: `RO ${roNumber} already exists.`,
+          existing: {
+            id: dup.id, roNumber: dup.roNumber, isArchived: dup.isArchived,
+            vehicle: [dup.vehicleYear, dup.vehicleMake, dup.vehicleModel].filter(Boolean).join(' '),
+            ownerName: dup.ownerName, parts: dup._count.parts, files: dup._count.invoices,
+          },
+        })
       }
+      mergeTarget = dup
     }
 
     const updateData = {}
@@ -261,6 +319,11 @@ router.put('/:id', requireAuth, async (req, res) => {
     if (adjusterPhone    !== undefined) updateData.adjusterPhone    = adjusterPhone    || null
     if (deductible       !== undefined) updateData.deductible       = deductible != null && deductible !== '' ? parseFloat(deductible) : null
     if (dateOfLoss       !== undefined) updateData.dateOfLoss       = dateOfLoss ? new Date(dateOfLoss) : null
+
+    if (mergeTarget) {
+      const ro = await mergeROInto(existing, mergeTarget, updateData, req.user?.username)
+      return res.json({ success: true, data: ro, merged: { from: existing.roNumber, into: mergeTarget.roNumber } })
+    }
 
     const ro = await prisma.rO.update({
       where: { id },

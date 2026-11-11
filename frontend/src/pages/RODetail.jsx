@@ -131,19 +131,36 @@ function EditROModal({ open, onClose, ro }) {
     enabled: open,
   })
 
+  const navigate = useNavigate()
+  // Number already taken → { id, roNumber, vehicle, ownerName, parts, files, isArchived } of that RO
+  const [conflict, setConflict] = useState(null)
   const mutation = useMutation({
     mutationFn: (data) => rosApi.update(ro.id, data),
-    onSuccess: () => {
+    onSuccess: (data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['ro', ro.id] })
+      queryClient.invalidateQueries({ queryKey: ['ros'] })
+      queryClient.invalidateQueries({ queryKey: ['production'] })
+      if (vars.mergeInto) {
+        toast.success(`Merged into RO ${data.roNumber}`)
+        setConflict(null)
+        onClose()
+        navigate(`/ros/${data.id}`, { replace: true })
+        return
+      }
       toast.success('RO updated')
       onClose()
     },
-    onError: (err) => toast.error(err.message || 'Failed to update'),
+    onError: (err) => {
+      const existing = err.response?.status === 409 && err.response.data?.existing
+      if (existing) return setConflict(existing)
+      toast.error(err.response?.data?.error || err.message || 'Failed to update')
+    },
   })
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
 
-  const handleSave = () => mutation.mutate({
+  const handleSave = (extra = {}) => mutation.mutate({
+    ...extra,
     roNumber:         form.roNumber,
     vehicleYear:      form.vehicleYear || null,
     vehicleMake:      form.vehicleMake || null,
@@ -209,9 +226,31 @@ function EditROModal({ open, onClose, ro }) {
 
         <div className="flex gap-3 pt-3 border-t border-gray-700/50">
           <Button variant="secondary" onClick={onClose} className="flex-1">Cancel</Button>
-          <Button variant="primary" loading={mutation.isPending} onClick={handleSave} className="flex-1">Save</Button>
+          <Button variant="primary" loading={mutation.isPending} onClick={() => handleSave()} className="flex-1">Save</Button>
         </div>
       </div>
+
+      {/* RO number already taken → offer to merge this RO into that one */}
+      {conflict && (
+        <div className="fixed inset-0 z-[70] bg-black/70 flex items-center justify-center p-4" onClick={() => setConflict(null)}>
+          <div className="w-full max-w-sm bg-gray-900 border border-amber-500/40 rounded-2xl p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <p className="text-base font-bold text-gray-100">RO {conflict.roNumber} already exists</p>
+            <div className="text-xs text-gray-400 bg-gray-800/70 rounded-lg px-3 py-2 space-y-0.5">
+              <p className="text-gray-200">{[conflict.vehicle, conflict.ownerName].filter(Boolean).join(' · ') || 'No vehicle or owner on file'}</p>
+              <p>{conflict.parts} part{conflict.parts === 1 ? '' : 's'} · {conflict.files} file{conflict.files === 1 ? '' : 's'}{conflict.isArchived ? ' · delivered (archived)' : ''}</p>
+            </div>
+            <p className="text-sm text-gray-300 leading-relaxed">
+              Merge RO {ro.roNumber} into RO {conflict.roNumber}? Its parts, parts lists, photos and notes move over, the info you entered here replaces RO {conflict.roNumber}'s, and RO {ro.roNumber} is removed.
+              {conflict.isArchived ? ` RO ${conflict.roNumber} comes back onto the board.` : ''}
+            </p>
+            <p className="text-xs text-gray-500">RO {conflict.roNumber} keeps its own parts and board stage. Nothing is deleted except the empty RO {ro.roNumber}.</p>
+            <div className="flex gap-3 pt-1">
+              <Button variant="secondary" onClick={() => setConflict(null)} className="flex-1">Cancel</Button>
+              <Button variant="primary" loading={mutation.isPending} onClick={() => handleSave({ mergeInto: true })} className="flex-1">Merge into {conflict.roNumber}</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </Modal>
   )
 }
