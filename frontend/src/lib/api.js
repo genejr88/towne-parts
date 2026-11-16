@@ -99,6 +99,8 @@ export const productionApi = {
   partsActivity: (days = 2) => unwrap(api.get('/production/parts-activity', { params: { days } })),
   statusLog: (days = 14) => unwrap(api.get('/production/status-log', { params: { days } })),
   hbmFeed: (limit = 30) => unwrap(api.get('/production/hbm-feed', { params: { limit } })),
+  logHbmView: (page) => unwrap(api.post('/production/hbm-views', { page })),
+  hbmViews: (limit = 100) => unwrap(api.get('/production/hbm-views', { params: { limit } })),
 }
 
 // ── Invoices ──────────────────────────────────────────────────────────────────

@@ -481,3 +481,16 @@ model InventoryPartPhoto {
   storedPath        String
   createdAt         DateTime      @default(now())
 }
+
+// Each time the HBM account opens the HBM board (Towne Parts → Board → HBM). Shown as a live
+// count + log on the main board. One row per visit; refreshes within a minute don't add rows.
+model BoardView {
+  id        Int      @id @default(autoincrement())
+  board     String   @default("HBM")
+  username  String
+  page      String?  // which board version: /board/hbm, /board/v2/hbm, /board/v3/hbm
+  createdAt DateTime @default(now())
+
+  @@index([board, createdAt])
+  @@map("board_views")
+}

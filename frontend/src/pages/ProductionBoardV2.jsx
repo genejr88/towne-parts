@@ -28,6 +28,7 @@ import { useAuth } from '@/lib/auth'
 import { STAGES, STAGE_COLORS, formatTimeAgo } from '@/lib/utils'
 import Spinner from '@/components/ui/Spinner'
 import Textarea from '@/components/ui/Textarea'
+import { useLogHbmView } from '@/components/HbmViews'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function parseStatusNotes(text) {
@@ -448,6 +449,7 @@ function HbmFeedSheet({ open, onClose, onSeen }) {
 
 // ─── Main component ──────────────────────────────────────────────────────────
 export default function ProductionBoardV2({ hbmOnly = false }) {
+  useLogHbmView(hbmOnly)
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { user } = useAuth()

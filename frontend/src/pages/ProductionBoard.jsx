@@ -15,6 +15,7 @@ import Spinner from '@/components/ui/Spinner'
 import EmptyState from '@/components/ui/EmptyState'
 import Textarea from '@/components/ui/Textarea'
 import CustomerInsuranceFields from '@/components/CustomerInsuranceFields'
+import { useLogHbmView, HbmViewsButton } from '@/components/HbmViews'
 
 // Card gradient based on flags / parts status. Flag priority: prestorage > totalLoss > HBM > BMW > parts status
 function cardBg(partsStatus, isTotalLoss, totalLossReleased, prestorageActive, isHBM, isBmw) {
@@ -1280,6 +1281,7 @@ function buildNoteHeader(username) {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function ProductionBoard({ hbmOnly = false }) {
+  useLogHbmView(hbmOnly)
   const queryClient = useQueryClient()
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -1641,6 +1643,7 @@ export default function ProductionBoard({ hbmOnly = false }) {
               HBM{hbmCount > 0 ? ` (${hbmCount})` : ''}
             </button>
           )}
+          {!hbmOnly && <HbmViewsButton />}
           {!hbmOnly && (
             <button
               onClick={() => setHbmFeedOpen(true)}

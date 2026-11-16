@@ -215,6 +215,55 @@ router.get('/hbm-feed', requireAuth, async (req, res) => {
   }
 })
 
+// ── HBM board views ──────────────────────────────────────────────────────────
+// The HBM board calls this when it opens. Only the HBM account's visits are recorded
+// (decided here from the signed-in user, not by the browser). A reload within a minute
+// of the last recorded visit is the same visit and isn't counted again.
+const HBM_ACCOUNT = 'hbm'
+router.post('/hbm-views', requireAuth, async (req, res) => {
+  try {
+    const username = String(req.user?.username || '').toLowerCase()
+    if (username !== HBM_ACCOUNT) return res.json({ success: true, data: { recorded: false } })
+    const page = String(req.body?.page || '').slice(0, 40) || null
+    // One at a time (transaction-scoped lock), so two requests arriving together — two tabs,
+    // a double page load — can't both pass the "seen in the last minute?" check.
+    const recorded = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(724001)`
+      const last = await tx.boardView.findFirst({ where: { board: 'HBM', username }, orderBy: { createdAt: 'desc' } })
+      if (last && Date.now() - last.createdAt.getTime() < 60 * 1000) return false
+      await tx.boardView.create({ data: { board: 'HBM', username, page } })
+      return true
+    })
+    return res.json({ success: true, data: { recorded } })
+  } catch (err) {
+    console.error('Record HBM view error:', err)
+    return res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// GET /api/production/hbm-views?limit=100 — count + log of the HBM account's visits
+router.get('/hbm-views', requireAuth, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 100, 500)
+    // "Today" / "this week" in shop time (Eastern), not the server's UTC day
+    const nowET = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }))
+    const offset = Date.now() - nowET.getTime() // ms from Eastern wall time to real UTC
+    const startToday = new Date(new Date(nowET).setHours(0, 0, 0, 0) + offset)
+    const startWeek = new Date(startToday.getTime() - 6 * 24 * 60 * 60 * 1000)
+    const where = { board: 'HBM', username: HBM_ACCOUNT }
+    const [total, today, week, views] = await Promise.all([
+      prisma.boardView.count({ where }),
+      prisma.boardView.count({ where: { ...where, createdAt: { gte: startToday } } }),
+      prisma.boardView.count({ where: { ...where, createdAt: { gte: startWeek } } }),
+      prisma.boardView.findMany({ where, orderBy: { createdAt: 'desc' }, take: limit }),
+    ])
+    return res.json({ success: true, data: { total, today, week, last: views[0]?.createdAt || null, views } })
+  } catch (err) {
+    console.error('Get HBM views error:', err)
+    return res.status(500).json({ success: false, error: err.message })
+  }
+})
+
 // POST /api/production/:roId — save production stage/notes for an RO
 router.post('/:roId', requireAuth, async (req, res) => {
   const roId = parseInt(req.params.roId)
