@@ -69,14 +69,41 @@ router.get('/', requireAuth, async (req, res) => {
 // list. Off (404) until the key is set. Rotate it by changing the Railway variable.
 const crypto = require('crypto')
 const sha = (v) => crypto.createHash('sha256').update(String(v)).digest()
+// Tech headshots come from Towne Tools' crew list (its public kiosk endpoint), cached for 10 min.
+// The two apps spell some names differently, so a few are aliased (Parts name → Tools name).
+const TOOLS_URL = process.env.TOOLS_URL || 'https://tools.towneapps.com'
+const NAME_ALIASES = { igor: 'ihor', kosta: 'konstantin', kostya: 'konstantin', andrii: 'andrei', andriy: 'andrei' }
+let crewCache = { at: 0, photos: {} }
+async function crewPhotos() {
+  if (Date.now() - crewCache.at < 10 * 60_000) return crewCache.photos
+  try {
+    const r = await fetch(`${TOOLS_URL}/api/tools/employees`, { signal: AbortSignal.timeout(4000) })
+    const j = await r.json()
+    const photos = {}
+    for (const e of j.data || []) if (e.photoUrl) photos[e.name.trim().toLowerCase()] = e.photoUrl
+    crewCache = { at: Date.now(), photos }
+  } catch { crewCache.at = Date.now() - 9 * 60_000 } // Tools unreachable: try again in a minute, keep old photos
+  return crewCache.photos
+}
+function photoFor(photos, tech) {
+  const n = String(tech || '').trim().toLowerCase()
+  if (!n) return null
+  const first = n.split(/s+/)[0]
+  let url = photos[n] || photos[NAME_ALIASES[n]] || photos[first] || photos[NAME_ALIASES[first]] || null
+  // Cloudinary: ask for a small square face crop instead of the full photo
+  if (url && url.includes('/image/upload/')) url = url.replace('/image/upload/', '/image/upload/c_thumb,g_face,w_160,h_160/')
+  return url
+}
+
 router.get('/display', async (req, res) => {
   const key = process.env.ATF_DISPLAY_KEY
   if (!key) return res.status(404).json({ success: false, error: 'Display not set up' })
   if (!crypto.timingSafeEqual(sha(req.query.key || ''), sha(key))) return res.status(401).json({ success: false, error: 'Wrong display key' })
   try {
-    const items = (await listAtf()).map((a) => ({
+    const [list, photos] = await Promise.all([listAtf(), crewPhotos()])
+    const items = list.map((a) => ({
       id: a.id, roNumber: a.roNumber, vehicle: a.vehicle, part: a.part, qty: a.qty, qtyReceived: a.qtyReceived,
-      tech: a.tech, status: a.status, backordered: a.chaseStatus === 'BACKORDERED',
+      tech: a.tech, techPhoto: photoFor(photos, a.tech), status: a.status, backordered: a.chaseStatus === 'BACKORDERED',
       requestedAt: a.requestedAt, etaDate: a.etaDate, receivedAt: a.receivedAt,
     }))
     res.json({ success: true, data: items })
