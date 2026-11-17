@@ -8,6 +8,44 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3002'
 const REFRESH_MS = 20_000
 const PAGE_MS = 12_000
 
+// The key is remembered on the PC the first time the link is opened, so the installed app can start
+// at plain /atf-display (the manifest can't carry the secret key).
+const KEY_STORE = 'atf_display_key'
+function displayKey() {
+  const fromUrl = new URLSearchParams(window.location.search).get('key') || ''
+  try {
+    if (fromUrl) localStorage.setItem(KEY_STORE, fromUrl)
+    return fromUrl || localStorage.getItem(KEY_STORE) || ''
+  } catch { return fromUrl }
+}
+
+// "Install as an app" (Edge/Chrome): this page alone links public/atf.webmanifest, so only the TV
+// screen installs — not the rest of Towne Parts. The browser hands over a one-shot install prompt.
+function useInstall() {
+  const [prompt, setPrompt] = useState(null)
+  const standalone = typeof window !== 'undefined' && window.matchMedia?.('(display-mode: standalone)').matches
+  useEffect(() => {
+    const onPrompt = (e) => { e.preventDefault(); setPrompt(e) }
+    const onDone = () => setPrompt(null)
+    window.addEventListener('beforeinstallprompt', onPrompt)
+    window.addEventListener('appinstalled', onDone)
+    const link = Object.assign(document.createElement('link'), { rel: 'manifest', href: '/atf.webmanifest' })
+    document.head.appendChild(link)
+    const prevTitle = document.title
+    document.title = 'ATF Parts'
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onPrompt)
+      window.removeEventListener('appinstalled', onDone)
+      link.remove(); document.title = prevTitle
+    }
+  }, [])
+  const install = async () => {
+    const e = prompt; setPrompt(null)
+    try { e?.prompt(); await e?.userChoice } catch { /* closed: Edge's menu > Apps > Install still works */ }
+  }
+  return { canInstall: !!prompt && !standalone, install }
+}
+
 const STATUS = {
   NOT_ORDERED: { label: 'Not ordered', pill: 'bg-red-600 text-white', bar: 'bg-red-500' },
   ORDERED: { label: 'Ordered', pill: 'bg-amber-400 text-amber-950', bar: 'bg-amber-400' },
@@ -25,7 +63,8 @@ const ago = (d) => {
 const time = (d) => new Date(d).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
 
 export default function AtfDisplay() {
-  const key = useMemo(() => new URLSearchParams(window.location.search).get('key') || '', [])
+  const key = useMemo(displayKey, [])
+  const { canInstall, install } = useInstall()
   const [items, setItems] = useState(null)
   const [error, setError] = useState(null) // 'nokey' | 'badkey' | 'off' | 'offline'
   const [lastOk, setLastOk] = useState(null)
@@ -203,6 +242,14 @@ export default function AtfDisplay() {
         <span>
           {error === 'offline' && lastOk ? `Can’t reach Towne Parts — showing the list from ${time(lastOk)}` : lastOk ? `Updated ${time(lastOk)}` : ''}
         </span>
+        {canInstall && !cursorHidden && (
+          <button
+            onClick={install}
+            className="rounded-[0.5em] border border-gray-700 bg-gray-900 px-[1em] py-[0.45em] text-[1.1em] font-semibold text-gray-200 hover:bg-gray-800"
+          >
+            Install as an app
+          </button>
+        )}
         {pages > 1 && (
           <span className="flex items-center gap-[0.5em]">
             {Array.from({ length: pages }, (_, p) => (
