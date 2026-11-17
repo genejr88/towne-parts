@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
-import { PackageSearch, X, ExternalLink, Search } from 'lucide-react'
+import { PackageSearch, X, ExternalLink, Search, ClipboardList } from 'lucide-react'
 import { partsApi } from '@/lib/api'
 import { urgency, TONE, chaseStatus, daysOut, partialLabel, fmtDay } from '@/lib/chase'
 import Spinner from '@/components/ui/Spinner'
@@ -62,6 +62,9 @@ export default function StillOut() {
             <h1 className="text-base font-bold text-gray-100 leading-none">Still Out</h1>
             <p className="text-xs text-gray-500 mt-1">{rows.length} part{rows.length === 1 ? '' : 's'} across {roCount} RO{roCount === 1 ? '' : 's'}</p>
           </div>
+          <button onClick={() => navigate('/atf')} className="ml-auto flex items-center gap-1.5 text-xs font-semibold text-amber-300 px-2.5 py-1.5 rounded-lg bg-amber-950/40 border border-amber-900/50">
+            <ClipboardList size={13} /> After-the-fact orders
+          </button>
         </div>
         <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
           {FILTERS.map((f) => (

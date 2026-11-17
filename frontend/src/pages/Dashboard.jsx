@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { PackageCheck, PackageSearch, Package, RotateCcw, FileWarning, ChevronRight, History, Palette } from 'lucide-react'
+import { PackageCheck, PackageSearch, ClipboardList, Package, RotateCcw, FileWarning, ChevronRight, History, Palette } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { rosApi, srcApi, partsApi } from '@/lib/api'
+import { rosApi, srcApi, partsApi, atfApi } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import Spinner from '@/components/ui/Spinner'
 import { urgency } from '@/lib/chase'
@@ -60,6 +60,8 @@ export default function Dashboard() {
     queryFn: () => partsApi.readyForPaint(7),
     staleTime: 60_000,
   })
+
+  const { data: atf } = useQuery({ queryKey: ['atf'], queryFn: atfApi.list })
 
   const { data: stillOut } = useQuery({
     queryKey: ['still-out'],
@@ -144,6 +146,29 @@ export default function Dashboard() {
           />
         </div>
       )}
+
+      {/* After-the-fact orders — techs' requests; also shown on the shop TVs */}
+      <motion.button
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.18, duration: 0.3 }}
+        onClick={() => navigate('/atf')}
+        className="w-full mt-4 flex items-center gap-3 bg-amber-500/10 border border-amber-500/25 rounded-2xl px-4 py-3.5 active:scale-[0.98] transition-transform group"
+      >
+        <div className="p-2.5 rounded-xl border bg-amber-500/15 border-amber-500/20">
+          <ClipboardList size={18} className="text-amber-400" />
+        </div>
+        <div className="flex-1 text-left min-w-0">
+          <p className="text-sm font-bold text-gray-100">After-the-fact orders</p>
+          <p className="text-xs text-gray-500 mt-0.5 truncate">
+            {atf ? (() => {
+              const n = atf.filter((a) => a.status === 'NOT_ORDERED').length, o = atf.filter((a) => a.status === 'ORDERED').length
+              return n + o ? [n && `${n} to order`, o && `${o} on the way`].filter(Boolean).join(' · ') : 'None open — add a tech’s request'
+            })() : 'Techs’ part requests'}
+          </p>
+        </div>
+        <ChevronRight size={16} className="text-gray-500 group-active:translate-x-0.5 transition-transform shrink-0" />
+      </motion.button>
 
       {/* Still Out — parts not here yet across open ROs */}
       {stillOut && stillOut.length > 0 && (() => {

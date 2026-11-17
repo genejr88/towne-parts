@@ -20,6 +20,8 @@ import RecentActivity from '@/pages/RecentActivity'
 import Help from '@/pages/Help'
 import Supplements from '@/pages/Supplements'
 import StillOut from '@/pages/StillOut'
+import Atf from '@/pages/Atf'
+import AtfDisplay from '@/pages/AtfDisplay'
 import CarrierHistory from '@/pages/CarrierHistory'
 import HitchQuotes from '@/pages/HitchQuotes'
 import StatusLog from '@/pages/StatusLog'
@@ -135,6 +137,8 @@ export default function App() {
     <AnimatePresence mode="wait">
       <Routes>
         <Route path="/login" element={<Login />} />
+        {/* Shop TV screen — no login, uses the display key in its link */}
+        <Route path="/atf-display" element={<AtfDisplay />} />
         <Route path="/src/public" element={<PublicReturns />} />
         <Route path="/sms-policy" element={<SMSPolicy />} />
         <Route path="/terms" element={<SMSTerms />} />
@@ -183,6 +187,9 @@ export default function App() {
         } />
         <Route path="/recent" element={
           <ProtectedRoute><AppLayout><RecentActivity /></AppLayout></ProtectedRoute>
+        } />
+        <Route path="/atf" element={
+          <ProtectedRoute><AppLayout><Atf /></AppLayout></ProtectedRoute>
         } />
         <Route path="/still-out" element={
           <ProtectedRoute><AppLayout><StillOut /></AppLayout></ProtectedRoute>

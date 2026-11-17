@@ -172,6 +172,11 @@ model Part {
   chaseStatus  String       @default("ORDERED")
   qtyReceived  Int          @default(0) // partial deliveries; isReceived = all qty here
   receivedBy   String?
+  // After-the-fact (ATF) order: a part a tech asked for once the job was underway. Gene takes the
+  // request, orders it, and it shows on the shop TV screen (/atf-display) until it's here.
+  isAtf        Boolean      @default(false)
+  requestedBy  String?      // tech who asked for it (name from Technician)
+  requestedAt  DateTime?
   photos       PartPhoto[]
   events       PartEvent[]
   createdAt    DateTime     @default(now())

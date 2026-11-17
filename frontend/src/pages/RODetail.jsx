@@ -747,6 +747,11 @@ function PartRow({ part, roId, inventoryMatch }) {
                 ×{part.qty}
               </span>
             )}
+            {part.isAtf && (
+              <span className="inline-flex items-center text-[10px] font-bold tracking-wider px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-300" title="After-the-fact order — shows on the shop TVs">
+                ATF{part.requestedBy ? ` · ${part.requestedBy}` : ''}
+              </span>
+            )}
             {part.isReceived && (
               <span className="inline-flex items-center gap-1 text-[10px] font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300">
                 <Check size={9} strokeWidth={3} /> HERE

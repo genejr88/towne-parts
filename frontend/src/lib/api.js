@@ -149,6 +149,12 @@ export const vendorsApi = {
 }
 
 // ── Technicians ───────────────────────────────────────────────────────────────
+// After-the-fact part orders (techs → Gene → shop TVs)
+export const atfApi = {
+  list: () => unwrap(api.get('/atf')),
+  create: (data) => unwrap(api.post('/atf', data)), // { roNumber, description, partNumber?, qty?, tech, ordered? }
+}
+
 export const techniciansApi = {
   list: (params) => unwrap(api.get('/technicians', { params })),
   create: (data) => unwrap(api.post('/technicians', data)),
