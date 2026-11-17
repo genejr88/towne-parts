@@ -89,8 +89,8 @@ export default function AtfDisplay() {
   }, [])
   const compact = win.w < 1000
   const baseFont = compact
-    ? Math.max(10, Math.min(26, win.w / 34, win.h / 32))
-    : Math.min(win.w * 0.015, win.h * 0.027)
+    ? Math.max(11, Math.min(28, win.w / 31, win.h / 29))
+    : Math.min(win.w * 0.0165, win.h * 0.0297)
   useEffect(() => {
     const el = listRef.current
     if (!el) return
@@ -158,6 +158,26 @@ export default function AtfDisplay() {
   }, [open])
   const openItem = open && (items || []).find((i) => i.id === open.id)
 
+  // Updates itself: every 2 minutes, compare the app bundle the server has now with the one this
+  // screen loaded. After a deploy they differ → reload (the display key is remembered, so it comes
+  // straight back). Waits while a pop-up is open. Off on the dev server (no bundle there).
+  const openRef = useRef(open)
+  openRef.current = open
+  useEffect(() => {
+    const mine = document.querySelector('script[type="module"][src*="/assets/"]')?.getAttribute('src')
+    if (!mine) return
+    const check = async () => {
+      if (openRef.current) return
+      try {
+        const html = await (await fetch(`/?v=${Date.now()}`, { cache: 'no-store' })).text()
+        const now = html.match(/<script[^>]+type="module"[^>]+src="([^"]+)"/)?.[1]
+        if (now && now !== mine) window.location.reload()
+      } catch { /* offline: try again next time */ }
+    }
+    const id = setInterval(check, 120_000)
+    return () => clearInterval(id)
+  }, [])
+
   // Page through long lists
   const pages = Math.max(1, Math.ceil((items?.length || 0) / perPage))
   useEffect(() => { if (page >= pages) setPage(0) }, [page, pages])
@@ -194,7 +214,7 @@ export default function AtfDisplay() {
 
   return (
     <div
-      className={`h-[100dvh] overflow-hidden bg-gray-950 text-gray-100 flex flex-col ${cursorHidden ? 'cursor-none' : ''}`}
+      className={`h-[100dvh] overflow-hidden bg-gray-950 text-gray-50 antialiased flex flex-col ${cursorHidden ? 'cursor-none' : ''}`}
       style={{ fontSize: `${baseFont}px` }}
       onMouseMove={wake}
     >
@@ -202,13 +222,13 @@ export default function AtfDisplay() {
       {compact ? (
         <header className="flex items-center justify-between gap-[0.8em] px-[0.9em] pt-[0.7em] pb-[0.55em] border-b border-gray-800">
           <div className="min-w-0">
-            <p className="text-[0.62em] font-bold uppercase tracking-[0.25em] text-amber-400 leading-none">After-the-fact parts</p>
+            <p className="text-[0.72em] font-bold uppercase tracking-[0.2em] text-amber-400 leading-none">After-the-fact parts</p>
             <div className="flex items-center gap-[0.9em] mt-[0.35em]">
               {counts.map(([s, label]) => (
                 <span key={s} className="flex items-baseline gap-[0.3em] whitespace-nowrap">
                   <span className={`inline-block w-[0.55em] h-[0.55em] rounded-full self-center ${STATUS[s].bar}`} />
                   <b className="text-[1.25em] font-black tabular-nums leading-none">{items ? count(s) : '–'}</b>
-                  <span className="text-[0.68em] text-gray-500 font-semibold uppercase tracking-wide">{label}</span>
+                  <span className="text-[0.76em] text-gray-300 font-semibold uppercase tracking-wide">{label}</span>
                 </span>
               ))}
             </div>
@@ -225,14 +245,14 @@ export default function AtfDisplay() {
             {counts.map(([s, label]) => (
               <div key={s} className="text-right">
                 <p className="text-[2.2em] font-black leading-none tabular-nums">{items ? count(s) : '–'}</p>
-                <p className="text-[0.75em] font-semibold uppercase tracking-wider text-gray-500 mt-[0.2em] flex items-center justify-end gap-[0.4em]">
+                <p className="text-[0.8em] font-semibold uppercase tracking-wider text-gray-300 mt-[0.2em] flex items-center justify-end gap-[0.4em]">
                   <span className={`inline-block w-[0.6em] h-[0.6em] rounded-full ${STATUS[s].bar}`} />{label}
                 </p>
               </div>
             ))}
             <div className="text-right pl-[1.4em] border-l border-gray-800">
               <p className="text-[2.2em] font-black leading-none tabular-nums">{time(now)}</p>
-              <p className="text-[0.75em] font-semibold uppercase tracking-wider text-gray-500 mt-[0.2em]">
+              <p className="text-[0.8em] font-semibold uppercase tracking-wider text-gray-300 mt-[0.2em]">
                 {now.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
               </p>
             </div>
@@ -245,12 +265,12 @@ export default function AtfDisplay() {
         {message ? (
           <div className="h-full grid place-items-center text-center"><p className="text-[1.2em] text-gray-400 max-w-[30em] px-[1em]">{message}</p></div>
         ) : !items ? (
-          <div className="h-full grid place-items-center"><p className="text-[1.3em] text-gray-500">Loading…</p></div>
+          <div className="h-full grid place-items-center"><p className="text-[1.3em] text-gray-400">Loading…</p></div>
         ) : !items.length ? (
           <div className="h-full flex flex-col text-center">
             <div className="pt-[1em]">
               <p className={`${compact ? 'text-[2em]' : 'text-[3em]'} font-black text-gray-300`}>Nothing waiting</p>
-              <p className="text-[1.05em] text-gray-500 mt-[0.3em]">No after-the-fact parts on order right now.</p>
+              <p className="text-[1.05em] text-gray-400 mt-[0.3em]">No after-the-fact parts on order right now.</p>
             </div>
             <DanceFloor crew={crew} className="flex-1 min-h-0" />
           </div>
@@ -274,14 +294,14 @@ export default function AtfDisplay() {
                       {i.part}{i.qty > 1 && <span className="text-gray-400 font-semibold"> ×{i.qty}</span>}
                     </span>
                   </div>
-                  <p className="text-[0.72em] text-gray-500 truncate leading-tight mt-[0.2em]">
-                    <span className="text-gray-300 font-semibold">{i.tech || '—'}</span>
+                  <p className="text-[0.84em] text-gray-300 truncate leading-tight mt-[0.2em]">
+                    <span className="text-white font-semibold">{i.tech || '—'}</span>
                     {i.status === 'HERE' && i.receivedAt ? ` · arrived ${time(i.receivedAt)}` : ` · ${ago(i.requestedAt)} ago`}
                     {i.backordered ? ' · backordered' : ''}
                     {i.vehicle ? ` · ${i.vehicle}` : ''}
                   </p>
                 </div>
-                <span className={`shrink-0 rounded-[0.4em] px-[0.5em] py-[0.25em] text-[0.68em] font-black uppercase tracking-wide whitespace-nowrap ${STATUS[i.status].pill}`}>
+                <span className={`shrink-0 rounded-[0.4em] px-[0.5em] py-[0.25em] text-[0.78em] font-black uppercase tracking-wide whitespace-nowrap ${STATUS[i.status].pill}`}>
                   {STATUS[i.status].label}
                 </span>
               </li>
@@ -291,7 +311,7 @@ export default function AtfDisplay() {
           </div>
         ) : (
           <div className="relative h-full flex flex-col">
-            <div className="grid grid-cols-[6em_minmax(0,1fr)_11em_9.5em] gap-[1.2em] px-[1em] pb-[0.5em] text-[0.75em] font-bold uppercase tracking-[0.2em] text-gray-500">
+            <div className="grid grid-cols-[6em_minmax(0,1fr)_11em_9.5em] gap-[1.2em] px-[1em] pb-[0.5em] text-[0.8em] font-bold uppercase tracking-[0.2em] text-gray-400">
               <span>RO</span><span>Part</span><span>Tech</span><span className="text-right">Status</span>
             </div>
             <ol ref={listRef} className="flex-1 min-h-0 overflow-hidden space-y-[0.35em]">
@@ -307,7 +327,7 @@ export default function AtfDisplay() {
                     <p className="text-[1.25em] font-bold leading-[1.15] line-clamp-2">
                       {i.part}{i.qty > 1 && <span className="text-gray-400 font-semibold"> ×{i.qty}</span>}
                     </p>
-                    <p className="text-[0.8em] text-gray-500 truncate leading-tight">
+                    <p className="text-[0.92em] text-gray-300 truncate leading-tight">
                       {i.vehicle}
                       {i.status === 'HERE' && i.receivedAt ? ` · arrived ${time(i.receivedAt)}` : ` · asked ${ago(i.requestedAt)} ago`}
                       {i.backordered ? ' · backordered' : ''}
@@ -330,7 +350,7 @@ export default function AtfDisplay() {
       </main>
 
       {/* Footer */}
-      <footer className={`flex items-center justify-between gap-[1em] ${compact ? 'px-[0.9em] pb-[0.5em] text-[0.65em]' : 'px-[2em] pb-[1em] text-[0.8em]'} text-gray-600`}>
+      <footer className={`flex items-center justify-between gap-[1em] ${compact ? 'px-[0.9em] pb-[0.5em] text-[0.74em]' : 'px-[2em] pb-[1em] text-[0.8em]'} text-gray-400`}>
         <span className="truncate">
           {error === 'offline' && lastOk ? `Can’t reach Towne Parts — showing ${time(lastOk)}` : lastOk ? `Updated ${time(lastOk)}` : ''}
         </span>
@@ -358,7 +378,7 @@ export default function AtfDisplay() {
             onClick={(e) => e.stopPropagation()}
             className="relative w-full max-w-[34em] max-h-full overflow-y-auto rounded-[1em] bg-gray-900 border border-gray-700 shadow-2xl p-[1.3em]"
           >
-            <button onClick={() => setOpen(null)} className="absolute top-[0.6em] right-[0.8em] text-[1.6em] leading-none text-gray-500 hover:text-gray-200" aria-label="Close">×</button>
+            <button onClick={() => setOpen(null)} className="absolute top-[0.6em] right-[0.8em] text-[1.6em] leading-none text-gray-400 hover:text-gray-200" aria-label="Close">×</button>
             {open.kind === 'tech'
               ? <TechProfile item={openItem} waiting={(items || []).filter((x) => x.tech === openItem.tech && x.status !== 'HERE').length} />
               : <PartDetail item={openItem} onTech={() => setOpen({ kind: 'tech', id: openItem.id })} />}
@@ -401,8 +421,8 @@ function TechProfile({ item, waiting }) {
         </div>
       )}
       {p.languages && <p className="text-[0.8em] text-gray-400 mt-[0.9em]">Speaks {p.languages}</p>}
-      {!item.techProfile && <p className="text-[0.85em] text-gray-500 mt-[1em]">No profile yet. Add one in Towne Parts → Admin → Technicians.</p>}
-      <p className="text-[0.8em] text-gray-500 mt-[1em] pt-[0.8em] border-t border-gray-800">
+      {!item.techProfile && <p className="text-[0.85em] text-gray-400 mt-[1em]">No profile yet. Add one in Towne Parts → Admin → Technicians.</p>}
+      <p className="text-[0.8em] text-gray-400 mt-[1em] pt-[0.8em] border-t border-gray-800">
         {waiting ? `Waiting on ${waiting} after-the-fact part${waiting === 1 ? '' : 's'} right now` : 'Nothing on order for them right now'}
       </p>
     </div>
@@ -444,7 +464,7 @@ function PartDetail({ item, onTech }) {
         <p className="mt-[0.9em] text-[0.85em] text-gray-400">Part # <span className="font-mono text-[1.15em] font-bold text-gray-100 select-all">{item.partNumber}</span></p>
       )}
       <dl className="mt-[0.8em] grid grid-cols-[6em_minmax(0,1fr)] gap-y-[0.25em] text-[0.88em]">
-        {rows.map(([k, v]) => <Fragment key={k}><dt className="text-gray-500">{k}</dt><dd className="text-gray-200">{v}</dd></Fragment>)}
+        {rows.map(([k, v]) => <Fragment key={k}><dt className="text-gray-400">{k}</dt><dd className="text-gray-200">{v}</dd></Fragment>)}
       </dl>
       <button onClick={onTech} className="mt-[1em] flex items-center gap-[0.6em] rounded-[0.6em] bg-gray-800/70 hover:bg-gray-800 px-[0.7em] py-[0.45em] w-full text-left">
         <Avatar name={item.tech} photo={item.techPhoto} size="2.2em" />
@@ -458,7 +478,7 @@ function PartDetail({ item, onTech }) {
           Search Google Images for {item.partNumber}
         </a>
       ) : (
-        <p className="mt-[0.8em] text-[0.8em] text-gray-500">No part # entered — add one on the RO to get a picture search.</p>
+        <p className="mt-[0.8em] text-[0.8em] text-gray-400">No part # entered — add one on the RO to get a picture search.</p>
       )}
     </div>
   )
