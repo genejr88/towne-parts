@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ClipboardList, Check, Truck, PackageCheck, X, ExternalLink, Loader2, Tv } from 'lucide-react'
+import { ClipboardList, Check, Truck, PackageCheck, X, ExternalLink, Loader2, Tv, Pencil, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { atfApi, partsApi, techniciansApi } from '@/lib/api'
 import Spinner from '@/components/ui/Spinner'
@@ -26,6 +26,7 @@ export default function Atf() {
   const qc = useQueryClient()
   const blank = { roNumber: '', description: '', partNumber: '', qty: '1', tech: '', otherTech: '', ordered: true }
   const [form, setForm] = useState(blank)
+  const [editingId, setEditingId] = useState(null)
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
 
   const { data: items = [], isLoading } = useQuery({ queryKey: ['atf'], queryFn: atfApi.list, refetchInterval: 30_000 })
@@ -116,7 +117,9 @@ export default function Atf() {
           <section key={key}>
             <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">{title} · {rows.length}</p>
             <div className="rounded-xl border border-gray-800 divide-y divide-gray-800 overflow-hidden">
-              {rows.map((r) => (
+              {rows.map((r) => editingId === r.id ? (
+                <EditRow key={r.id} row={r} techs={activeTechs} onDone={() => { setEditingId(null); refresh() }} onCancel={() => setEditingId(null)} />
+              ) : (
                 <div key={r.id} className="bg-gray-950 px-3.5 py-3 flex items-center gap-3">
                   <div className="w-14 shrink-0">
                     <p className="text-sm font-bold font-mono text-gray-100">{r.roNumber}</p>
@@ -149,6 +152,9 @@ export default function Atf() {
                         <X size={15} />
                       </button>
                     )}
+                    <button onClick={() => setEditingId(r.id)} className="p-1.5 rounded-lg text-gray-500 hover:text-gray-200" title="Edit">
+                      <Pencil size={14} />
+                    </button>
                     <button onClick={() => navigate(`/ros/${r.roId}`)} className="p-1.5 rounded-lg text-gray-500 hover:text-gray-200" title={`Open RO ${r.roNumber}`}>
                       <ExternalLink size={14} />
                     </button>
@@ -160,5 +166,69 @@ export default function Atf() {
         )
       })}
     </div>
+  )
+}
+
+// Fix a request entered wrong: RO (moves the part to that RO), part, part #, qty, who asked.
+// Delete is for entries that never should have existed; "Not needed" (the ×) keeps the history.
+function EditRow({ row, techs, onDone, onCancel }) {
+  const known = techs.some((t) => t.name === row.tech)
+  const [f, setF] = useState({
+    roNumber: row.roNumber, description: row.part, partNumber: row.partNumber || '', qty: String(row.qty || 1),
+    tech: known ? row.tech : '__other', otherTech: known ? '' : (row.tech || ''),
+  })
+  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }))
+  const save = useMutation({
+    mutationFn: () => atfApi.update(row.id, {
+      roNumber: f.roNumber.trim(), description: f.description.trim(), partNumber: f.partNumber.trim(), qty: f.qty,
+      tech: f.tech === '__other' ? f.otherTech.trim() : f.tech,
+    }),
+    onSuccess: () => { toast.success('Saved'); onDone() },
+    onError: (err) => toast.error(err.response?.data?.error || err.message),
+  })
+  const del = useMutation({
+    mutationFn: () => atfApi.remove(row.id),
+    onSuccess: () => { toast.success('Deleted'); onDone() },
+    onError: (err) => toast.error(err.response?.data?.error || err.message),
+  })
+  const submit = (e) => {
+    e.preventDefault()
+    if (!f.roNumber.trim()) return toast.error('Enter the RO number')
+    if (!f.description.trim()) return toast.error('Enter the part')
+    if (f.tech === '__other' ? !f.otherTech.trim() : !f.tech) return toast.error('Pick the tech who asked')
+    save.mutate()
+  }
+  return (
+    <form onSubmit={submit} className="bg-gray-900 px-3.5 py-3 space-y-2">
+      <div className="grid grid-cols-[90px_minmax(0,1fr)] gap-2">
+        <input value={f.roNumber} onChange={set('roNumber')} placeholder="RO #" inputMode="numeric" className={field + ' font-mono'} />
+        <input value={f.description} onChange={set('description')} placeholder="Part" className={field} autoFocus />
+      </div>
+      <div className="grid grid-cols-[minmax(0,1fr)_70px] gap-2">
+        <input value={f.partNumber} onChange={set('partNumber')} placeholder="Part # (optional)" className={field + ' font-mono'} />
+        <input value={f.qty} onChange={set('qty')} placeholder="Qty" inputMode="numeric" className={field} />
+      </div>
+      <select value={f.tech} onChange={set('tech')} className={field}>
+        <option value="">Tech who asked…</option>
+        {techs.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}
+        <option value="__other">Someone else…</option>
+      </select>
+      {f.tech === '__other' && <input value={f.otherTech} onChange={set('otherTech')} placeholder="Name" className={field} />}
+      <div className="flex items-center gap-2 pt-1">
+        <button
+          type="button"
+          onClick={() => { if (window.confirm(`Delete "${row.part}" on RO ${row.roNumber}? Use this only if it was entered by mistake — for a part that isn't needed any more, use the × instead.`)) del.mutate() }}
+          disabled={del.isPending}
+          className="p-2 rounded-lg text-gray-500 hover:text-red-400 disabled:opacity-50" title="Delete (entered by mistake)"
+        >
+          <Trash2 size={15} />
+        </button>
+        <div className="flex-1" />
+        <button type="button" onClick={onCancel} className="px-3.5 py-2 rounded-lg text-sm font-semibold text-gray-400 hover:text-gray-200">Cancel</button>
+        <button type="submit" disabled={save.isPending} className="px-4 py-2 rounded-lg text-sm font-bold bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50 flex items-center gap-1.5">
+          {save.isPending && <Loader2 size={14} className="animate-spin" />} Save
+        </button>
+      </div>
+    </form>
   )
 }

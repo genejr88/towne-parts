@@ -153,6 +153,8 @@ export const vendorsApi = {
 export const atfApi = {
   list: () => unwrap(api.get('/atf')),
   create: (data) => unwrap(api.post('/atf', data)), // { roNumber, description, partNumber?, qty?, tech, ordered? }
+  update: (id, data) => unwrap(api.put(`/atf/${id}`, data)), // { roNumber?, description?, partNumber?, qty?, tech? }
+  remove: (id) => unwrap(api.delete(`/atf/${id}`)),
 }
 
 export const techniciansApi = {
@@ -160,6 +162,8 @@ export const techniciansApi = {
   create: (data) => unwrap(api.post('/technicians', data)),
   update: (id, data) => unwrap(api.put(`/technicians/${id}`, data)),
   remove: (id) => unwrap(api.delete(`/technicians/${id}`)),
+  photos: () => unwrap(api.get('/technicians/photos')), // { [name]: headshot url } (from Towne Tools)
+  setPhoto: (id, image) => unwrap(api.post(`/technicians/${id}/photo`, { image })), // data URL
 }
 
 // ── Production Stages ─────────────────────────────────────────────────────────

@@ -6,7 +6,7 @@ const fs = require('fs')
 
 const app = express()
 app.use(cors())
-app.use(express.json())
+app.use(express.json({ limit: '15mb' })) // tech headshot uploads (Admin → Technicians)
 
 // Ensure uploads directories exist
 const uploadsBase = path.join(__dirname, '../uploads')

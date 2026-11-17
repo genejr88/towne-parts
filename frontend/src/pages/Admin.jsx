@@ -498,6 +498,33 @@ function TechnicianModal({ open, onClose, tech = null }) {
 
   const area = 'w-full bg-gray-900 border border-gray-700 rounded-xl px-3.5 py-2.5 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-blue-500/60'
 
+  // Headshot: stored in Towne Tools (one photo per person for both apps and the TV screen)
+  const { data: photos = {} } = useQuery({ queryKey: ['technician-photos'], queryFn: techniciansApi.photos, enabled: isEdit })
+  const [photoBusy, setPhotoBusy] = useState(false)
+  const [newPhoto, setNewPhoto] = useState(null)
+  const photo = newPhoto || (isEdit ? photos[tech.name] : null)
+  const pickPhoto = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setPhotoBusy(true)
+    try {
+      // Shrink to at most 1000 px on the long side before sending
+      const bmp = await createImageBitmap(file)
+      const scale = Math.min(1, 1000 / Math.max(bmp.width, bmp.height))
+      const canvas = Object.assign(document.createElement('canvas'), { width: Math.round(bmp.width * scale), height: Math.round(bmp.height * scale) })
+      canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height)
+      const { photoUrl } = await techniciansApi.setPhoto(tech.id, canvas.toDataURL('image/jpeg', 0.88))
+      setNewPhoto(photoUrl)
+      queryClient.invalidateQueries({ queryKey: ['technician-photos'] })
+      toast.success('Photo saved — the TV screen picks it up within a minute')
+    } catch (err) {
+      toast.error(err.message?.includes('decode') || err.name === 'InvalidStateError' ? 'That photo format can’t be read here. Try a JPEG or PNG.' : (err.message || 'Could not save the photo'))
+    } finally {
+      setPhotoBusy(false)
+    }
+  }
+
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Technician' : 'Add Technician'}>
       <div className="space-y-4">
@@ -508,8 +535,22 @@ function TechnicianModal({ open, onClose, tech = null }) {
           placeholder="First name or initials"
           autoFocus
         />
+        {isEdit && (
+          <div className="flex items-center gap-4">
+            {photo
+              ? <img src={photo} alt={tech.name} className="w-20 h-20 rounded-full object-cover ring-2 ring-gray-700 bg-gray-800" />
+              : <div className="w-20 h-20 rounded-full grid place-items-center bg-gray-800 ring-2 ring-gray-700 text-2xl font-black text-gray-400">{tech.name.slice(0, 1).toUpperCase()}</div>}
+            <div>
+              <label className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-gray-700 text-sm font-semibold text-gray-200 cursor-pointer hover:bg-gray-800 ${photoBusy ? 'opacity-50 pointer-events-none' : ''}`}>
+                {photoBusy ? 'Saving…' : photo ? 'Change photo' : 'Add photo'}
+                <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={pickPhoto} />
+              </label>
+              <p className="text-[11px] text-gray-600 mt-1.5">Saved in Towne Tools too — one photo for both.</p>
+            </div>
+          </div>
+        )}
         <div className="pt-1 border-t border-gray-800 space-y-3">
-          <p className="pt-3 text-xs text-gray-500">Profile — shows when someone taps their photo on the after-the-fact TV screen. All optional. The photo comes from Towne Tools.</p>
+          <p className="pt-3 text-xs text-gray-500">Profile — shows when someone taps their photo on the after-the-fact TV screen. All optional.</p>
           <div className="grid grid-cols-[minmax(0,1fr)_110px] gap-3">
             <Input label="Role" value={profile.role || ''} onChange={setP('role')} placeholder="Body tech, painter, prep…" />
             <Input label="At Towne since" value={profile.since || ''} onChange={setP('since')} placeholder="2019" inputMode="numeric" />

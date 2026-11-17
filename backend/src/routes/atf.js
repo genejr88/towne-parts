@@ -69,31 +69,7 @@ router.get('/', requireAuth, async (req, res) => {
 // list. Off (404) until the key is set. Rotate it by changing the Railway variable.
 const crypto = require('crypto')
 const sha = (v) => crypto.createHash('sha256').update(String(v)).digest()
-// Tech headshots come from Towne Tools' crew list (its public kiosk endpoint), cached for 10 min.
-// The two apps spell some names differently, so a few are aliased (Parts name → Tools name).
-const TOOLS_URL = process.env.TOOLS_URL || 'https://tools.towneapps.com'
-const NAME_ALIASES = { igor: 'ihor', kosta: 'konstantin', kostya: 'konstantin', andrii: 'andrei', andriy: 'andrei' }
-let crewCache = { at: 0, photos: {} }
-async function crewPhotos() {
-  if (Date.now() - crewCache.at < 10 * 60_000) return crewCache.photos
-  try {
-    const r = await fetch(`${TOOLS_URL}/api/tools/employees`, { signal: AbortSignal.timeout(4000) })
-    const j = await r.json()
-    const photos = {}
-    for (const e of j.data || []) if (e.photoUrl) photos[e.name.trim().toLowerCase()] = e.photoUrl
-    crewCache = { at: Date.now(), photos }
-  } catch { crewCache.at = Date.now() - 9 * 60_000 } // Tools unreachable: try again in a minute, keep old photos
-  return crewCache.photos
-}
-function photoFor(photos, tech, size = 160) {
-  const n = String(tech || '').trim().toLowerCase()
-  if (!n) return null
-  const first = n.split(/s+/)[0]
-  let url = photos[n] || photos[NAME_ALIASES[n]] || photos[first] || photos[NAME_ALIASES[first]] || null
-  // Cloudinary: ask for a small square face crop instead of the full photo
-  if (url && url.includes('/image/upload/')) url = url.replace('/image/upload/', `/image/upload/c_thumb,g_face,w_${size},h_${size}/`)
-  return url
-}
+const { crewPhotos, photoFor } = require('../lib/crew')
 
 router.get('/display', async (req, res) => {
   const key = process.env.ATF_DISPLAY_KEY
@@ -153,6 +129,77 @@ router.post('/', requireAuth, async (req, res) => {
     res.json({ success: true, data: { id: part.id, roId: ro.id } })
   } catch (err) {
     console.error('ATF create error:', err)
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// PUT /api/atf/:id — fix a request entered wrong: { roNumber?, description?, partNumber?, qty?, tech? }.
+// A new RO number moves the part to that RO. Status changes go through PUT /api/parts/:id as before.
+router.put('/:id', requireAuth, async (req, res) => {
+  const id = parseInt(req.params.id)
+  const b = req.body || {}
+  const username = req.user?.username || null
+  try {
+    const part = await prisma.part.findUnique({ where: { id }, include: { ro: { select: { id: true, roNumber: true } } } })
+    if (!part || !part.isAtf) return res.status(404).json({ success: false, error: 'After-the-fact request not found.' })
+    const data = {}
+    const changes = []
+    if (b.description !== undefined) {
+      const v = String(b.description).trim()
+      if (!v) return res.status(400).json({ success: false, error: 'Enter the part.' })
+      if (v !== part.description) { data.description = v; changes.push(`part "${part.description || ''}" → "${v}"`) }
+    }
+    if (b.partNumber !== undefined) {
+      const v = String(b.partNumber).trim() || null
+      if (v !== part.partNumber) { data.partNumber = v; changes.push(`part # ${part.partNumber || '—'} → ${v || '—'}`) }
+    }
+    if (b.qty !== undefined) {
+      const v = Math.max(1, parseInt(b.qty) || 1)
+      if (v !== part.qty) { data.qty = v; changes.push(`qty ${part.qty} → ${v}`) }
+    }
+    if (b.tech !== undefined) {
+      const v = String(b.tech).trim().slice(0, 80)
+      if (!v) return res.status(400).json({ success: false, error: 'Pick the tech who asked for it.' })
+      if (v !== part.requestedBy) { data.requestedBy = v; changes.push(`asked by ${part.requestedBy || '—'} → ${v}`) }
+    }
+    let newRo = null
+    if (b.roNumber !== undefined) {
+      const v = String(b.roNumber).trim()
+      if (v && v !== part.ro.roNumber) {
+        newRo = await prisma.rO.findUnique({ where: { roNumber: v } })
+        if (!newRo) return res.status(404).json({ success: false, error: `RO ${v} isn't in Towne Parts. Check the number, or add the RO first.` })
+        data.roId = newRo.id
+        changes.push(`moved from RO ${part.ro.roNumber} to RO ${v}`)
+      }
+    }
+    if (!changes.length) return res.json({ success: true, data: { id } })
+    await prisma.part.update({ where: { id }, data })
+    await prisma.partEvent.create({ data: { partId: id, type: 'NOTE', message: `Edited: ${changes.join('; ')}`, username } })
+    const label = data.description || part.description || part.partNumber || 'part'
+    await prisma.activityLog.create({ data: { roId: part.ro.id, eventType: 'PART_UPDATED', message: `After-the-fact request edited (${label}): ${changes.join('; ')}${username ? ` by ${username}` : ''}` } })
+    if (newRo) {
+      await prisma.activityLog.create({ data: { roId: newRo.id, eventType: 'PART_ADDED', message: `After-the-fact part moved here from RO ${part.ro.roNumber}: ${label}` } })
+      if (!part.isReceived) await prisma.rO.update({ where: { id: newRo.id }, data: { partsStatus: 'MISSING' } })
+    }
+    res.json({ success: true, data: { id } })
+  } catch (err) {
+    console.error('ATF edit error:', err)
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// DELETE /api/atf/:id — remove a request that was entered by mistake (it never existed).
+// For a part that just isn't needed any more, use "Not needed" instead so the history stays.
+router.delete('/:id', requireAuth, async (req, res) => {
+  const id = parseInt(req.params.id)
+  try {
+    const part = await prisma.part.findUnique({ where: { id } })
+    if (!part || !part.isAtf) return res.status(404).json({ success: false, error: 'After-the-fact request not found.' })
+    await prisma.part.delete({ where: { id } })
+    await prisma.activityLog.create({ data: { roId: part.roId, eventType: 'PART_DELETED', message: `After-the-fact request deleted: ${part.description || part.partNumber || 'part'} (asked by ${part.requestedBy || '—'})${req.user?.username ? ` by ${req.user.username}` : ''}` } })
+    res.json({ success: true })
+  } catch (err) {
+    console.error('ATF delete error:', err)
     res.status(500).json({ success: false, error: err.message })
   }
 })

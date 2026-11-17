@@ -37,6 +37,32 @@ router.get('/', requireAuth, async (req, res) => {
   }
 })
 
+// GET /api/technicians/photos — { [tech name]: headshot url } from Towne Tools (for Admin)
+router.get('/photos', requireAuth, async (req, res) => {
+  try {
+    const { crewPhotos, photoFor } = require('../lib/crew')
+    const [techs, photos] = await Promise.all([prisma.technician.findMany({ select: { name: true } }), crewPhotos()])
+    res.json({ success: true, data: Object.fromEntries(techs.map((t) => [t.name, photoFor(photos, t.name, 240)])) })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// POST /api/technicians/:id/photo — { image: data URL } (admin). Saved in Towne Tools so both apps
+// (and the after-the-fact TV screen) use the same headshot.
+router.post('/:id/photo', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const tech = await prisma.technician.findUnique({ where: { id: parseInt(req.params.id) } })
+    if (!tech) return res.status(404).json({ success: false, error: 'Technician not found.' })
+    const { setCrewPhoto, crewPhotos, photoFor } = require('../lib/crew')
+    await setCrewPhoto(tech.name, req.body?.image)
+    res.json({ success: true, data: { photoUrl: photoFor(await crewPhotos(), tech.name, 240) } })
+  } catch (err) {
+    console.error('Tech photo error:', err)
+    res.status(err.status || 500).json({ success: false, error: err.message })
+  }
+})
+
 // POST /api/technicians — create (admin)
 router.post('/', requireAuth, requireAdmin, async (req, res) => {
   const { name, sortOrder, profile } = req.body
