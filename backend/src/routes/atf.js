@@ -76,7 +76,7 @@ router.get('/display', async (req, res) => {
   if (!key) return res.status(404).json({ success: false, error: 'Display not set up' })
   if (!crypto.timingSafeEqual(sha(req.query.key || ''), sha(key))) return res.status(401).json({ success: false, error: 'Wrong display key' })
   try {
-    const [list, photos, techs] = await Promise.all([listAtf(), crewPhotos(), prisma.technician.findMany({ select: { name: true, profile: true } })])
+    const [list, photos, techs] = await Promise.all([listAtf(), crewPhotos(), prisma.technician.findMany({ select: { name: true, profile: true, isActive: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] })])
     const profiles = Object.fromEntries(techs.map((t) => [t.name.trim().toLowerCase(), t.profile]))
     const items = list.map((a) => ({
       id: a.id, roNumber: a.roNumber, vehicle: a.vehicle, part: a.part, qty: a.qty, qtyReceived: a.qtyReceived,
@@ -84,7 +84,9 @@ router.get('/display', async (req, res) => {
       techProfile: profiles[String(a.tech || '').trim().toLowerCase()] || null, partNumber: a.partNumber, status: a.status, backordered: a.chaseStatus === 'BACKORDERED',
       requestedAt: a.requestedAt, orderedAt: a.orderedAt, etaDate: a.etaDate, receivedAt: a.receivedAt,
     }))
-    res.json({ success: true, data: items })
+    // The whole active crew, for the dancing heads in the empty space under the list
+    const crew = techs.filter((t) => t.isActive).map((t) => ({ name: t.name, photo: photoFor(photos, t.name) }))
+    res.json({ success: true, data: items, crew })
   } catch (err) {
     console.error('ATF display error:', err)
     res.status(500).json({ success: false, error: 'Could not load the list' })

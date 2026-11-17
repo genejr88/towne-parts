@@ -66,6 +66,8 @@ export default function AtfDisplay() {
   const key = useMemo(displayKey, [])
   const { canInstall, install } = useInstall()
   const [items, setItems] = useState(null)
+  const [crew, setCrew] = useState([]) // whole active crew, for the dancing heads
+  const [free, setFree] = useState(0) // empty px under the last row
   const [error, setError] = useState(null) // 'nokey' | 'badkey' | 'off' | 'offline'
   const [lastOk, setLastOk] = useState(null)
   const [now, setNow] = useState(() => new Date())
@@ -100,6 +102,9 @@ export default function AtfDisplay() {
       const gap = rows.length > 1 ? rows[1].getBoundingClientRect().top - rows[0].getBoundingClientRect().bottom : parseFloat(getComputedStyle(el).fontSize) * 0.45
       const fit = Math.max(1, Math.floor((el.clientHeight + gap) / Math.max(h + gap, 1)))
       setPerPage((p) => (p === fit ? p : fit))
+      // Room left under the last row on this page → the dance floor
+      const room = Math.max(0, Math.floor(el.getBoundingClientRect().bottom - rows[rows.length - 1].getBoundingClientRect().bottom - gap))
+      setFree((f) => (Math.abs(f - room) < 2 ? f : room))
     }
     measure()
     const ro = new ResizeObserver(measure)
@@ -119,7 +124,7 @@ export default function AtfDisplay() {
         const j = await r.json()
         if (!j.success) throw new Error(j.error)
         if (!alive) return
-        setItems(j.data); setError(null); setLastOk(new Date())
+        setItems(j.data); setCrew(j.crew || []); setError(null); setLastOk(new Date())
       } catch (e) {
         if (alive) setError(e.code || 'offline') // keep showing the last list if we had one
       }
@@ -242,13 +247,15 @@ export default function AtfDisplay() {
         ) : !items ? (
           <div className="h-full grid place-items-center"><p className="text-[1.3em] text-gray-500">Loading…</p></div>
         ) : !items.length ? (
-          <div className="h-full grid place-items-center text-center">
-            <div>
+          <div className="h-full flex flex-col text-center">
+            <div className="pt-[1em]">
               <p className={`${compact ? 'text-[2em]' : 'text-[3em]'} font-black text-gray-300`}>Nothing waiting</p>
               <p className="text-[1.05em] text-gray-500 mt-[0.3em]">No after-the-fact parts on order right now.</p>
             </div>
+            <DanceFloor crew={crew} className="flex-1 min-h-0" />
           </div>
         ) : compact ? (
+          <div className="relative h-full">
           <ol ref={listRef} className="h-full overflow-hidden space-y-[0.4em]">
             {shown.map((i) => (
               <li
@@ -280,8 +287,10 @@ export default function AtfDisplay() {
               </li>
             ))}
           </ol>
+          {free > 0 && <DanceFloor crew={crew} style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: free }} />}
+          </div>
         ) : (
-          <div className="h-full flex flex-col">
+          <div className="relative h-full flex flex-col">
             <div className="grid grid-cols-[6em_minmax(0,1fr)_11em_9.5em] gap-[1.2em] px-[1em] pb-[0.5em] text-[0.75em] font-bold uppercase tracking-[0.2em] text-gray-500">
               <span>RO</span><span>Part</span><span>Tech</span><span className="text-right">Status</span>
             </div>
@@ -315,6 +324,7 @@ export default function AtfDisplay() {
                 </li>
               ))}
             </ol>
+            {free > 0 && <DanceFloor crew={crew} style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: free }} />}
           </div>
         )}
       </main>
@@ -471,5 +481,55 @@ function Avatar({ name, photo, size }) {
     <span style={{ ...box, background: color }} className="shrink-0 rounded-full grid place-items-center font-black text-white ring-2 ring-gray-700">
       <span style={{ fontSize: `calc(${size} * 0.4)` }} className="leading-none">{initials}</span>
     </span>
+  )
+}
+
+// Just for fun: the crew's heads bopping around a slowly turning circle, with a disco ball in the
+// middle, in whatever space is left under the list. Pure CSS animation; ignores clicks.
+function DanceFloor({ crew, className = '', style }) {
+  const ref = useRef(null)
+  const [box, setBox] = useState({ w: 0, h: 0 })
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const on = () => setBox((b) => (b.w === el.clientWidth && b.h === el.clientHeight ? b : { w: el.clientWidth, h: el.clientHeight }))
+    on()
+    const ro = new ResizeObserver(on)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const n = crew.length
+  const D = Math.min(box.h, box.w) * 0.86 // circle diameter
+  const head = n ? Math.min(D * 0.26, (Math.PI * D) / n * 0.7) : 0
+  const R = (D - head) / 2
+  const show = n > 0 && D >= 70 && head >= 18
+  return (
+    <div ref={ref} className={`pointer-events-none grid place-items-center overflow-hidden ${className}`} style={style} aria-hidden="true">
+      <style>{`
+        @keyframes atf-spin { to { transform: rotate(360deg) } }
+        @keyframes atf-unspin { to { transform: rotate(-360deg) } }
+        @keyframes atf-bop { 0%, 100% { transform: translateY(0) rotate(-12deg) scale(1) } 50% { transform: translateY(-22%) rotate(12deg) scale(1.08) } }
+        @keyframes atf-ball { 0%, 100% { filter: brightness(1) drop-shadow(0 0 0.2em #fbbf24) } 50% { filter: brightness(1.35) drop-shadow(0 0 0.6em #38bdf8) } }
+      `}</style>
+      {show && (
+        <div style={{ width: D, height: D, position: 'relative', animation: 'atf-spin 16s linear infinite' }}>
+          <div style={{ position: 'absolute', left: '50%', top: '50%', fontSize: D * 0.22, lineHeight: 1, transform: 'translate(-50%, -50%)' }}>
+            <div style={{ animation: 'atf-unspin 16s linear infinite, atf-ball 1.2s ease-in-out infinite' }}>🪩</div>
+          </div>
+          {crew.map((c, i) => {
+            const a = (360 / n) * i
+            return (
+              <div key={c.name} style={{ position: 'absolute', left: '50%', top: '50%', width: head, height: head, marginLeft: -head / 2, marginTop: -head / 2, transform: `rotate(${a}deg) translateY(${-R}px) rotate(${-a}deg)` }}>
+                <div style={{ animation: 'atf-unspin 16s linear infinite' }}>
+                  <div style={{ animation: `atf-bop ${0.55 + (i % 3) * 0.08}s ease-in-out ${-i * 0.17}s infinite` }}>
+                    <Avatar name={c.name} photo={c.photo} size={`${head}px`} />
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
   )
 }
