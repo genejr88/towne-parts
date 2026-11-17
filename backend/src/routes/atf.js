@@ -85,7 +85,7 @@ router.get('/display', async (req, res) => {
       requestedAt: a.requestedAt, orderedAt: a.orderedAt, etaDate: a.etaDate, receivedAt: a.receivedAt,
     }))
     // The whole active crew, for the dancing heads in the empty space under the list
-    const crew = techs.filter((t) => t.isActive).map((t) => ({ name: t.name, photo: photoFor(photos, t.name) }))
+    const crew = techs.filter((t) => t.isActive).map((t) => ({ name: t.name, photo: photoFor(photos, t.name) })).filter((c) => c.photo) // only techs with a headshot dance
     res.json({ success: true, data: items, crew })
   } catch (err) {
     console.error('ATF display error:', err)
