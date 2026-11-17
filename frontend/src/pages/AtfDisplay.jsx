@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 
 // Shop TV screen for after-the-fact part orders: /atf-display?key=<ATF_DISPLAY_KEY>
 // Full screen, no login (a login would expire on an always-on PC), refreshes every 20 s, keeps the
@@ -141,14 +141,26 @@ export default function AtfDisplay() {
     return () => { document.removeEventListener('visibilitychange', vis); lock?.release?.() }
   }, [])
 
+  // Tap a photo → that tech's profile; tap a part → its details. Closes itself after 30 s so the
+  // TV never gets stuck on a pop-up; paging pauses while one is open.
+  const [open, setOpen] = useState(null) // { kind: 'tech' | 'part', id }
+  useEffect(() => {
+    if (!open) return
+    const t = setTimeout(() => setOpen(null), 30_000)
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(null) }
+    window.addEventListener('keydown', onKey)
+    return () => { clearTimeout(t); window.removeEventListener('keydown', onKey) }
+  }, [open])
+  const openItem = open && (items || []).find((i) => i.id === open.id)
+
   // Page through long lists
   const pages = Math.max(1, Math.ceil((items?.length || 0) / perPage))
   useEffect(() => { if (page >= pages) setPage(0) }, [page, pages])
   useEffect(() => {
-    if (pages < 2) return
+    if (pages < 2 || open) return
     const id = setInterval(() => setPage((p) => (p + 1) % pages), PAGE_MS)
     return () => clearInterval(id)
-  }, [pages])
+  }, [pages, open])
 
   // Hide the mouse when idle; F = full screen
   const wake = () => {
@@ -241,10 +253,13 @@ export default function AtfDisplay() {
             {shown.map((i) => (
               <li
                 key={i.id}
-                className={`relative flex items-center gap-[0.65em] rounded-[0.6em] bg-gray-900 border border-gray-800 pl-[0.75em] pr-[0.6em] py-[0.45em] overflow-hidden ${i.status === 'HERE' ? 'opacity-60' : ''}`}
+                onClick={() => setOpen({ kind: 'part', id: i.id })}
+                className={`relative flex items-center gap-[0.65em] rounded-[0.6em] bg-gray-900 border border-gray-800 pl-[0.75em] pr-[0.6em] py-[0.45em] overflow-hidden cursor-pointer hover:border-gray-600 ${i.status === 'HERE' ? 'opacity-60' : ''}`}
               >
                 <span className={`absolute left-0 top-0 bottom-0 w-[0.28em] ${STATUS[i.status].bar}`} />
-                <Avatar name={i.tech} photo={i.techPhoto} size="2.7em" />
+                <button onClick={(e) => { e.stopPropagation(); setOpen({ kind: 'tech', id: i.id }) }} className="shrink-0 rounded-full" title={`About ${i.tech}`}>
+                  <Avatar name={i.tech} photo={i.techPhoto} size="2.7em" />
+                </button>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline gap-[0.5em] min-w-0">
                     <span className="font-mono text-[1.2em] font-black tabular-nums leading-none shrink-0">{i.roNumber}</span>
@@ -274,7 +289,8 @@ export default function AtfDisplay() {
               {shown.map((i) => (
                 <li
                   key={i.id}
-                  className={`relative grid grid-cols-[6em_minmax(0,1fr)_11em_9.5em] gap-[1.2em] items-center rounded-[0.6em] bg-gray-900 border border-gray-800 pl-[1em] pr-[1em] py-[0.35em] overflow-hidden ${i.status === 'HERE' ? 'opacity-60' : ''}`}
+                  onClick={() => setOpen({ kind: 'part', id: i.id })}
+                  className={`relative grid grid-cols-[6em_minmax(0,1fr)_11em_9.5em] gap-[1.2em] items-center rounded-[0.6em] bg-gray-900 border border-gray-800 pl-[1em] pr-[1em] py-[0.35em] overflow-hidden cursor-pointer hover:border-gray-600 ${i.status === 'HERE' ? 'opacity-60' : ''}`}
                 >
                   <span className={`absolute left-0 top-0 bottom-0 w-[0.35em] ${STATUS[i.status].bar}`} />
                   <span className="font-mono text-[1.55em] font-black tracking-tight tabular-nums leading-none">{i.roNumber}</span>
@@ -289,10 +305,10 @@ export default function AtfDisplay() {
                       {i.status !== 'HERE' && i.qty > 1 && i.qtyReceived > 0 ? ` · ${i.qtyReceived} of ${i.qty} here` : ''}
                     </p>
                   </div>
-                  <span className="flex items-center gap-[0.55em] min-w-0">
+                  <button onClick={(e) => { e.stopPropagation(); setOpen({ kind: 'tech', id: i.id }) }} className="flex items-center gap-[0.55em] min-w-0 text-left" title={`About ${i.tech}`}>
                     <Avatar name={i.tech} photo={i.techPhoto} size="2.3em" />
                     <span className="text-[1.2em] font-semibold truncate">{i.tech || '—'}</span>
-                  </span>
+                  </button>
                   <span className={`justify-self-end rounded-[0.45em] px-[0.7em] py-[0.3em] text-[0.95em] font-black uppercase tracking-wide whitespace-nowrap ${STATUS[i.status].pill}`}>
                     {STATUS[i.status].label}
                   </span>
@@ -325,6 +341,115 @@ export default function AtfDisplay() {
           </span>
         )}
       </footer>
+
+      {openItem && (
+        <div className="fixed inset-0 z-50 bg-black/75 grid place-items-center p-[1em]" onClick={() => setOpen(null)}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-[34em] max-h-full overflow-y-auto rounded-[1em] bg-gray-900 border border-gray-700 shadow-2xl p-[1.3em]"
+          >
+            <button onClick={() => setOpen(null)} className="absolute top-[0.6em] right-[0.8em] text-[1.6em] leading-none text-gray-500 hover:text-gray-200" aria-label="Close">×</button>
+            {open.kind === 'tech'
+              ? <TechProfile item={openItem} waiting={(items || []).filter((x) => x.tech === openItem.tech && x.status !== 'HERE').length} />
+              : <PartDetail item={openItem} onTech={() => setOpen({ kind: 'tech', id: openItem.id })} />}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TechProfile({ item, waiting }) {
+  const p = item.techProfile || {}
+  const year = /^\d{4}$/.test(String(p.since || '').trim()) ? +p.since : null
+  const years = year ? new Date().getFullYear() - year : null
+  const chips = String(p.specialties || '').split(',').map((s) => s.trim()).filter(Boolean)
+  return (
+    <div>
+      <div className="flex items-center gap-[1em]">
+        <Avatar name={item.tech} photo={item.techPhotoLarge || item.techPhoto} size="6.5em" />
+        <div className="min-w-0">
+          <p className="text-[2em] font-black leading-none truncate">{item.tech}</p>
+          {p.role && <p className="text-[1.05em] text-amber-400 font-semibold mt-[0.3em]">{p.role}</p>}
+          {p.since && (
+            <p className="text-[0.85em] text-gray-400 mt-[0.2em]">
+              At Towne since {p.since}{years != null && years >= 1 ? ` · ${years} year${years === 1 ? '' : 's'}` : ''}
+            </p>
+          )}
+        </div>
+      </div>
+      {chips.length > 0 && (
+        <div className="flex flex-wrap gap-[0.4em] mt-[1em]">
+          {chips.map((c) => <span key={c} className="rounded-full bg-gray-800 border border-gray-700 px-[0.75em] py-[0.25em] text-[0.8em] font-semibold text-gray-200">{c}</span>)}
+        </div>
+      )}
+      {p.about && <p className="text-[0.95em] text-gray-200 leading-snug mt-[1em] whitespace-pre-line">{p.about}</p>}
+      {p.funFact && (
+        <div className="mt-[1em] rounded-[0.6em] bg-amber-400/10 border border-amber-400/30 px-[0.9em] py-[0.6em]">
+          <p className="text-[0.65em] font-bold uppercase tracking-[0.2em] text-amber-400">Fun fact</p>
+          <p className="text-[0.95em] text-gray-100 mt-[0.2em] whitespace-pre-line">{p.funFact}</p>
+        </div>
+      )}
+      {p.languages && <p className="text-[0.8em] text-gray-400 mt-[0.9em]">Speaks {p.languages}</p>}
+      {!item.techProfile && <p className="text-[0.85em] text-gray-500 mt-[1em]">No profile yet. Add one in Towne Parts → Admin → Technicians.</p>}
+      <p className="text-[0.8em] text-gray-500 mt-[1em] pt-[0.8em] border-t border-gray-800">
+        {waiting ? `Waiting on ${waiting} after-the-fact part${waiting === 1 ? '' : 's'} right now` : 'Nothing on order for them right now'}
+      </p>
+    </div>
+  )
+}
+
+const longWhen = (d) => (d ? new Date(d).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : null)
+const shortDate = (d) => (d ? new Date(d).toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }) : null)
+
+function PartDetail({ item, onTech }) {
+  const make = String(item.vehicle || '').split(' ')[1] || ''
+  // Google Images for the part #, with the make to cut out other brands' parts that share a number
+  const searchUrl = item.partNumber
+    ? `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(`${item.partNumber} ${make}`.trim())}`
+    : null
+  const rows = [
+    ['Asked', longWhen(item.requestedAt)],
+    ['Ordered', shortDate(item.orderedAt)],
+    ['ETA', item.status !== 'HERE' ? shortDate(item.etaDate) : null],
+    ['Arrived', longWhen(item.receivedAt)],
+  ].filter(([, v]) => v)
+  return (
+    <div>
+      <div className="flex items-start justify-between gap-[1em] pr-[1.5em]">
+        <div className="min-w-0">
+          <p className="font-mono text-[1.1em] font-black text-gray-400">RO {item.roNumber}</p>
+          <p className="text-[1.6em] font-black leading-tight mt-[0.1em]">
+            {item.part}{item.qty > 1 && <span className="text-gray-400"> ×{item.qty}</span>}
+          </p>
+          {item.vehicle && <p className="text-[0.9em] text-gray-400 mt-[0.2em]">{item.vehicle}</p>}
+        </div>
+      </div>
+      <div className="flex items-center gap-[0.6em] mt-[0.8em] flex-wrap">
+        <span className={`rounded-[0.4em] px-[0.6em] py-[0.25em] text-[0.8em] font-black uppercase tracking-wide ${STATUS[item.status].pill}`}>{STATUS[item.status].label}</span>
+        {item.backordered && <span className="rounded-[0.4em] px-[0.6em] py-[0.25em] text-[0.8em] font-bold uppercase bg-gray-800 text-gray-300">Backordered</span>}
+        {item.qty > 1 && item.qtyReceived > 0 && item.status !== 'HERE' && <span className="text-[0.85em] text-gray-400">{item.qtyReceived} of {item.qty} here</span>}
+      </div>
+      {item.partNumber && (
+        <p className="mt-[0.9em] text-[0.85em] text-gray-400">Part # <span className="font-mono text-[1.15em] font-bold text-gray-100 select-all">{item.partNumber}</span></p>
+      )}
+      <dl className="mt-[0.8em] grid grid-cols-[6em_minmax(0,1fr)] gap-y-[0.25em] text-[0.88em]">
+        {rows.map(([k, v]) => <Fragment key={k}><dt className="text-gray-500">{k}</dt><dd className="text-gray-200">{v}</dd></Fragment>)}
+      </dl>
+      <button onClick={onTech} className="mt-[1em] flex items-center gap-[0.6em] rounded-[0.6em] bg-gray-800/70 hover:bg-gray-800 px-[0.7em] py-[0.45em] w-full text-left">
+        <Avatar name={item.tech} photo={item.techPhoto} size="2.2em" />
+        <span className="text-[0.9em] text-gray-300">Asked for by <b className="text-gray-100">{item.tech || '—'}</b></span>
+      </button>
+      {searchUrl ? (
+        <a
+          href={searchUrl} target="_blank" rel="noopener noreferrer"
+          className="mt-[0.8em] flex items-center justify-center gap-[0.5em] rounded-[0.6em] bg-blue-600 hover:bg-blue-500 py-[0.7em] text-[1em] font-bold text-white"
+        >
+          Search Google Images for {item.partNumber}
+        </a>
+      ) : (
+        <p className="mt-[0.8em] text-[0.8em] text-gray-500">No part # entered — add one on the RO to get a picture search.</p>
+      )}
     </div>
   )
 }
@@ -336,13 +461,15 @@ function Avatar({ name, photo, size }) {
   const n = String(name || '').trim()
   const initials = n ? n.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase() : '?'
   const color = AVATAR_COLORS[[...n].reduce((h, c) => h + c.charCodeAt(0), 0) % AVATAR_COLORS.length]
-  const box = { width: size, height: size, fontSize: `calc(${size} * 0.4)` }
+  // Size in the parent's em; the initials get their own font size inside (setting it on the box
+  // itself would make the box's em-based width grow with it)
+  const box = { width: size, height: size }
   if (photo && !broken) {
     return <img src={photo} alt={n} onError={() => setBroken(true)} style={box} className="shrink-0 rounded-full object-cover ring-2 ring-gray-700 bg-gray-800" />
   }
   return (
     <span style={{ ...box, background: color }} className="shrink-0 rounded-full grid place-items-center font-black text-white ring-2 ring-gray-700">
-      {initials}
+      <span style={{ fontSize: `calc(${size} * 0.4)` }} className="leading-none">{initials}</span>
     </span>
   )
 }

@@ -85,13 +85,13 @@ async function crewPhotos() {
   } catch { crewCache.at = Date.now() - 9 * 60_000 } // Tools unreachable: try again in a minute, keep old photos
   return crewCache.photos
 }
-function photoFor(photos, tech) {
+function photoFor(photos, tech, size = 160) {
   const n = String(tech || '').trim().toLowerCase()
   if (!n) return null
   const first = n.split(/s+/)[0]
   let url = photos[n] || photos[NAME_ALIASES[n]] || photos[first] || photos[NAME_ALIASES[first]] || null
   // Cloudinary: ask for a small square face crop instead of the full photo
-  if (url && url.includes('/image/upload/')) url = url.replace('/image/upload/', '/image/upload/c_thumb,g_face,w_160,h_160/')
+  if (url && url.includes('/image/upload/')) url = url.replace('/image/upload/', `/image/upload/c_thumb,g_face,w_${size},h_${size}/`)
   return url
 }
 
@@ -100,11 +100,13 @@ router.get('/display', async (req, res) => {
   if (!key) return res.status(404).json({ success: false, error: 'Display not set up' })
   if (!crypto.timingSafeEqual(sha(req.query.key || ''), sha(key))) return res.status(401).json({ success: false, error: 'Wrong display key' })
   try {
-    const [list, photos] = await Promise.all([listAtf(), crewPhotos()])
+    const [list, photos, techs] = await Promise.all([listAtf(), crewPhotos(), prisma.technician.findMany({ select: { name: true, profile: true } })])
+    const profiles = Object.fromEntries(techs.map((t) => [t.name.trim().toLowerCase(), t.profile]))
     const items = list.map((a) => ({
       id: a.id, roNumber: a.roNumber, vehicle: a.vehicle, part: a.part, qty: a.qty, qtyReceived: a.qtyReceived,
-      tech: a.tech, techPhoto: photoFor(photos, a.tech), status: a.status, backordered: a.chaseStatus === 'BACKORDERED',
-      requestedAt: a.requestedAt, etaDate: a.etaDate, receivedAt: a.receivedAt,
+      tech: a.tech, techPhoto: photoFor(photos, a.tech), techPhotoLarge: photoFor(photos, a.tech, 480),
+      techProfile: profiles[String(a.tech || '').trim().toLowerCase()] || null, partNumber: a.partNumber, status: a.status, backordered: a.chaseStatus === 'BACKORDERED',
+      requestedAt: a.requestedAt, orderedAt: a.orderedAt, etaDate: a.etaDate, receivedAt: a.receivedAt,
     }))
     res.json({ success: true, data: items })
   } catch (err) {

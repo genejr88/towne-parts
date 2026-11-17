@@ -487,10 +487,16 @@ function TechnicianModal({ open, onClose, tech = null }) {
     onError: (err) => toast.error(err.message || 'Failed to save'),
   })
 
+  // Profile card shown when someone taps this tech's photo on the after-the-fact TV screen
+  const [profile, setProfile] = useState(() => ({ ...(tech?.profile || {}) }))
+  const setP = (k) => (e) => setProfile((p) => ({ ...p, [k]: e.target.value }))
+
   const handleSubmit = () => {
     if (!name.trim()) { toast.error('Name is required'); return }
-    mutation.mutate({ name: name.trim() })
+    mutation.mutate({ name: name.trim(), profile })
   }
+
+  const area = 'w-full bg-gray-900 border border-gray-700 rounded-xl px-3.5 py-2.5 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-blue-500/60'
 
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Technician' : 'Add Technician'}>
@@ -502,6 +508,23 @@ function TechnicianModal({ open, onClose, tech = null }) {
           placeholder="First name or initials"
           autoFocus
         />
+        <div className="pt-1 border-t border-gray-800 space-y-3">
+          <p className="pt-3 text-xs text-gray-500">Profile — shows when someone taps their photo on the after-the-fact TV screen. All optional. The photo comes from Towne Tools.</p>
+          <div className="grid grid-cols-[minmax(0,1fr)_110px] gap-3">
+            <Input label="Role" value={profile.role || ''} onChange={setP('role')} placeholder="Body tech, painter, prep…" />
+            <Input label="At Towne since" value={profile.since || ''} onChange={setP('since')} placeholder="2019" inputMode="numeric" />
+          </div>
+          <Input label="Specialties" value={profile.specialties || ''} onChange={setP('specialties')} placeholder="Frame work, aluminum, Tesla…  (commas between)" />
+          <Input label="Languages" value={profile.languages || ''} onChange={setP('languages')} placeholder="Ukrainian, Russian, English" />
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-gray-300">About</label>
+            <textarea rows={3} value={profile.about || ''} onChange={setP('about')} maxLength={600} className={area} placeholder="A couple of sentences about them" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-gray-300">Fun fact</label>
+            <textarea rows={2} value={profile.funFact || ''} onChange={setP('funFact')} maxLength={300} className={area} placeholder="Something the crew would laugh at" />
+          </div>
+        </div>
         <div className="flex gap-3 pt-2">
           <Button variant="secondary" onClick={onClose} className="flex-1">Cancel</Button>
           <Button

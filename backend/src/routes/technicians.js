@@ -1,8 +1,23 @@
 const express = require('express')
 const prisma = require('../lib/prisma')
+const { Prisma } = require('@prisma/client')
 const { requireAuth, requireAdmin } = require('../middleware/auth')
 
 const router = express.Router()
+
+// Profile shown when someone taps a tech's photo on the after-the-fact TV screen. Free text,
+// only these keys are kept; empty values are dropped.
+const PROFILE_KEYS = { role: 80, since: 20, specialties: 200, languages: 120, about: 600, funFact: 300 }
+function cleanProfile(p) {
+  if (!p || typeof p !== 'object') return null
+  const out = {}
+  for (const [k, max] of Object.entries(PROFILE_KEYS)) {
+    const v = String(p[k] ?? '').trim().slice(0, max)
+    if (v) out[k] = v
+  }
+  return Object.keys(out).length ? out : null
+}
+
 
 // GET /api/technicians — list active techs (or all with ?all=true)
 router.get('/', requireAuth, async (req, res) => {
@@ -24,7 +39,7 @@ router.get('/', requireAuth, async (req, res) => {
 
 // POST /api/technicians — create (admin)
 router.post('/', requireAuth, requireAdmin, async (req, res) => {
-  const { name, sortOrder } = req.body
+  const { name, sortOrder, profile } = req.body
 
   if (!name || !name.trim()) {
     return res.status(400).json({ success: false, error: 'Technician name is required.' })
@@ -40,6 +55,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
       data: {
         name: name.trim(),
         sortOrder: typeof sortOrder === 'number' ? sortOrder : 0,
+        profile: cleanProfile(profile) ?? undefined,
       },
     })
 
@@ -53,7 +69,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
 // PUT /api/technicians/:id — update (admin)
 router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id)
-  const { name, isActive, sortOrder } = req.body
+  const { name, isActive, sortOrder, profile } = req.body
 
   try {
     const existing = await prisma.technician.findUnique({ where: { id } })
@@ -72,6 +88,7 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
     if (name      !== undefined) updateData.name      = name.trim()
     if (isActive  !== undefined) updateData.isActive  = Boolean(isActive)
     if (sortOrder !== undefined) updateData.sortOrder = Number(sortOrder) || 0
+    if (profile   !== undefined) updateData.profile   = cleanProfile(profile) ?? Prisma.DbNull
 
     const tech = await prisma.technician.update({ where: { id }, data: updateData })
     return res.json({ success: true, data: tech })

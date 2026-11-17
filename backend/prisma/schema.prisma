@@ -42,6 +42,7 @@ model Technician {
   name      String   @unique
   isActive  Boolean  @default(true)
   sortOrder Int      @default(0)
+  profile   Json?    // TV profile card: { role, since, specialties, languages, about, funFact }
   createdAt DateTime @default(now())
 
   @@map("technicians")
