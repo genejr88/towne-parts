@@ -175,14 +175,23 @@ function EditRow({ row, techs, onDone, onCancel }) {
   const known = techs.some((t) => t.name === row.tech)
   const [f, setF] = useState({
     roNumber: row.roNumber, description: row.part, partNumber: row.partNumber || '', qty: String(row.qty || 1),
-    tech: known ? row.tech : '__other', otherTech: known ? '' : (row.tech || ''),
+    tech: known ? row.tech : '__other', otherTech: known ? '' : (row.tech || ''), status: row.status,
   })
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }))
   const save = useMutation({
-    mutationFn: () => atfApi.update(row.id, {
-      roNumber: f.roNumber.trim(), description: f.description.trim(), partNumber: f.partNumber.trim(), qty: f.qty,
-      tech: f.tech === '__other' ? f.otherTech.trim() : f.tech,
-    }),
+    mutationFn: async () => {
+      await atfApi.update(row.id, {
+        roNumber: f.roNumber.trim(), description: f.description.trim(), partNumber: f.partNumber.trim(), qty: f.qty,
+        tech: f.tech === '__other' ? f.otherTech.trim() : f.tech,
+      })
+      // Status fix (e.g. hit "Here" by mistake): undo receiving and/or step back to not ordered
+      if (f.status !== row.status) {
+        const patch = f.status === 'HERE' ? { isReceived: true }
+          : f.status === 'ORDERED' ? { isReceived: false, ...(row.status === 'NOT_ORDERED' ? { chaseStatus: 'ORDERED' } : {}) }
+          : { isReceived: false, chaseStatus: 'NEED_TO_ORDER', dateOrdered: null }
+        await partsApi.update(row.id, patch)
+      }
+    },
     onSuccess: () => { toast.success('Saved'); onDone() },
     onError: (err) => toast.error(err.response?.data?.error || err.message),
   })
@@ -214,6 +223,16 @@ function EditRow({ row, techs, onDone, onCancel }) {
         <option value="__other">Someone else…</option>
       </select>
       {f.tech === '__other' && <input value={f.otherTech} onChange={set('otherTech')} placeholder="Name" className={field} />}
+      <div className="grid grid-cols-3 gap-1.5">
+        {Object.entries(STATUS).map(([k, s]) => (
+          <button
+            key={k} type="button" onClick={() => setF((x) => ({ ...x, status: k }))}
+            className={`py-2 rounded-lg border text-xs font-semibold ${f.status === k ? s.cls + ' ring-1 ring-current' : 'border-gray-700 text-gray-500 hover:text-gray-300'}`}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
       <div className="flex items-center gap-2 pt-1">
         <button
           type="button"
