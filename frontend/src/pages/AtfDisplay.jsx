@@ -505,9 +505,17 @@ function Avatar({ name, photo, size }) {
 }
 
 // Just for fun: the crew's heads bopping around a slowly turning circle, with a disco ball in the
-// middle, in whatever space is left under the list. Pure CSS animation; ignores clicks.
+// middle, in whatever space is left under the list. Easter egg for the touch screen: grab the
+// circle and flick it like a fidget spinner. It follows your finger, keeps the speed you let go
+// at, and slowly coasts back down to its normal lazy turn. Driven by requestAnimationFrame and
+// direct style writes (no React re-render per frame).
+const SPIN_BASE = 360 / 16 // deg/s, the idle turn
+const SPIN_MAX = 3600 // deg/s cap (10 turns a second)
+const SPIN_COAST = 7 // s: how long a flick takes to wind down (time constant)
 function DanceFloor({ crew, className = '', style }) {
   const ref = useRef(null)
+  const wheel = useRef(null)
+  const spin = useRef({ angle: 0, vel: SPIN_BASE, drag: null })
   const [box, setBox] = useState({ w: 0, h: 0 })
   useEffect(() => {
     const el = ref.current
@@ -523,24 +531,83 @@ function DanceFloor({ crew, className = '', style }) {
   const head = n ? Math.min(D * 0.26, (Math.PI * D) / n * 0.7) : 0
   const R = (D - head) / 2
   const show = n > 0 && D >= 70 && head >= 18
+
+  useEffect(() => {
+    if (!show) return
+    let raf, last = performance.now()
+    const tick = (now) => {
+      const dt = Math.min(0.1, (now - last) / 1000)
+      last = now
+      const st = spin.current
+      if (!st.drag) {
+        st.vel = SPIN_BASE + (st.vel - SPIN_BASE) * Math.exp(-dt / SPIN_COAST)
+        st.angle = (st.angle + st.vel * dt) % 360
+      }
+      const el = wheel.current
+      if (el) {
+        el.style.transform = `rotate(${st.angle}deg)`
+        el.querySelectorAll('[data-upright]').forEach((u) => { u.style.transform = `rotate(${-st.angle}deg)` })
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [show])
+
+  // Finger/mouse angle around the wheel's centre, in degrees
+  const fingerAngle = (e) => {
+    const r = wheel.current.getBoundingClientRect()
+    return (Math.atan2(e.clientY - (r.top + r.height / 2), e.clientX - (r.left + r.width / 2)) * 180) / Math.PI
+  }
+  const onDown = (e) => {
+    e.preventDefault()
+    try { e.currentTarget.setPointerCapture(e.pointerId) } catch {}
+    spin.current.drag = { id: e.pointerId, a: fingerAngle(e), t: performance.now() }
+    spin.current.vel = 0
+  }
+  const onMove = (e) => {
+    const st = spin.current
+    if (!st.drag || st.drag.id !== e.pointerId) return
+    const a = fingerAngle(e)
+    const now = performance.now()
+    let d = a - st.drag.a
+    if (d > 180) d -= 360
+    if (d < -180) d += 360
+    const dt = Math.max(0.001, (now - st.drag.t) / 1000)
+    st.angle = (st.angle + d) % 360
+    // smoothed finger speed, so the release speed matches the flick
+    st.vel = Math.max(-SPIN_MAX, Math.min(SPIN_MAX, st.vel * 0.6 + (d / dt) * 0.4))
+    st.drag = { id: e.pointerId, a, t: now }
+  }
+  const onUp = (e) => {
+    const st = spin.current
+    if (!st.drag || st.drag.id !== e.pointerId) return
+    if (performance.now() - st.drag.t > 120) st.vel = 0 // held still before letting go: just stops, then drifts back
+    st.drag = null
+  }
+
   return (
     <div ref={ref} className={`pointer-events-none grid place-items-center overflow-hidden ${className}`} style={style} aria-hidden="true">
       <style>{`
-        @keyframes atf-spin { to { transform: rotate(360deg) } }
-        @keyframes atf-unspin { to { transform: rotate(-360deg) } }
         @keyframes atf-bop { 0%, 100% { transform: translateY(0) rotate(-12deg) scale(1) } 50% { transform: translateY(-22%) rotate(12deg) scale(1.08) } }
         @keyframes atf-ball { 0%, 100% { filter: brightness(1) drop-shadow(0 0 0.2em #fbbf24) } 50% { filter: brightness(1.35) drop-shadow(0 0 0.6em #38bdf8) } }
       `}</style>
       {show && (
-        <div style={{ width: D, height: D, position: 'relative', animation: 'atf-spin 16s linear infinite' }}>
+        <div
+          ref={wheel}
+          onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onDragStart={(e) => e.preventDefault()}
+          style={{ width: D, height: D, position: 'relative', borderRadius: '50%', pointerEvents: 'auto', touchAction: 'none', cursor: 'grab', userSelect: 'none' }}
+        >
           <div style={{ position: 'absolute', left: '50%', top: '50%', fontSize: D * 0.22, lineHeight: 1, transform: 'translate(-50%, -50%)' }}>
-            <div style={{ animation: 'atf-unspin 16s linear infinite, atf-ball 1.2s ease-in-out infinite' }}>🪩</div>
+            <div data-upright="">
+              <div style={{ animation: 'atf-ball 1.2s ease-in-out infinite' }}>🪩</div>
+            </div>
           </div>
           {crew.map((c, i) => {
             const a = (360 / n) * i
             return (
               <div key={c.name} style={{ position: 'absolute', left: '50%', top: '50%', width: head, height: head, marginLeft: -head / 2, marginTop: -head / 2, transform: `rotate(${a}deg) translateY(${-R}px) rotate(${-a}deg)` }}>
-                <div style={{ animation: 'atf-unspin 16s linear infinite' }}>
+                <div data-upright="">
                   <div style={{ animation: `atf-bop ${0.55 + (i % 3) * 0.08}s ease-in-out ${-i * 0.17}s infinite` }}>
                     <Avatar name={c.name} photo={c.photo} size={`${head}px`} />
                   </div>
